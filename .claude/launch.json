@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mr-baseball-dynasty",
+      "runtimeExecutable": "/Users/kevin/.nvm/versions/node/v24.14.0/bin/node",
+      "runtimeArgs": ["/Users/kevin/.nvm/versions/node/v24.14.0/bin/npm", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-gray-950 text-gray-300 font-mono text-xs;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-950;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-orange-600;
+  }
+}
+
+@layer utilities {
+  .bloomberg-border {
+    @apply border border-gray-800;
+  }
+  .bloomberg-header {
+    @apply bg-gray-900 border-b border-gray-800 px-3 py-1.5 text-orange-500 font-bold uppercase tracking-wider text-xs;
+  }
+  .bloomberg-cell {
+    @apply px-2 py-1 tabular-nums;
+  }
+  .bloomberg-row {
+    @apply border-b border-gray-900 hover:bg-gray-900 transition-colors;
+  }
+  .bloomberg-row-selected {
+    @apply bg-orange-950 hover:bg-orange-950;
+  }
+  .stat-good {
+    @apply text-green-400;
+  }
+  .stat-bad {
+    @apply text-red-400;
+  }
+  .stat-neutral {
+    @apply text-gray-300;
+  }
+  .grade-80 { @apply text-orange-400 font-bold; }
+  .grade-70 { @apply text-yellow-400; }
+  .grade-60 { @apply text-green-400; }
+  .grade-50 { @apply text-gray-300; }
+  .grade-40 { @apply text-blue-400; }
+  .grade-30 { @apply text-gray-500; }
+  .grade-20 { @apply text-red-500; }
+  .bloomberg-btn {
+    @apply px-4 py-2 border border-orange-600 text-orange-400 hover:bg-orange-900/30 text-xs uppercase tracking-widest transition-colors;
+  }
+}
