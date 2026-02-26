@@ -390,7 +390,7 @@ function managePitcher(
 ): Player {
   const isPitcher = (p: Player) => p.isPitcher;
   const pc = pitchCountRef.value;
-  const tto = timesThroughRef.value;
+  void timesThroughRef; // used elsewhere; ref checked at call site
 
   // Stamina-gated inning cap — prevents low-K/efficient pitchers from gaming pitch limits:
   //   stamina < 380: max 5 innings (SP goes ~165 IP)

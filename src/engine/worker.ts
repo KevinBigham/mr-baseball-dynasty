@@ -14,6 +14,8 @@ import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTe
 import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
+import { advanceOffseason } from './player/development';
+import { computeAwards, computeDivisionChampions } from './player/awards';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -114,7 +116,6 @@ const api = {
 
     // Advance the gen
     [, gen] = gen.next();
-    state.prngState = serializeState(gen);
 
     // Update team records from result
     for (const ts of result.teamSeasons) {
@@ -129,15 +130,36 @@ const api = {
       _playerSeasonStats.set(ps.playerId, ps);
     }
 
-    // Advance service time (172 game-days)
+    // ── Awards (computed before aging — players are at their in-season state) ──
+    const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
+    const divisionChampions = computeDivisionChampions(state.teams);
+
+    // ── Advance service time (172 game-days) ──────────────────────────────────
     for (let d = 0; d < 172; d++) {
       advanceServiceTime(state.players, d);
     }
 
+    // ── Offseason: player development + aging ─────────────────────────────────
+    const offseasonResult = advanceOffseason(state.players, gen);
+    state.players = offseasonResult.players;
+    gen = offseasonResult.gen;
+
+    // Rebuild the player map after development (ages/attrs changed)
+    rebuildMaps();
+
+    state.prngState = serializeState(gen);
     _seasonResults.push(result);
     state.season++;
 
-    return result;
+    // Augment the result with post-season data
+    const fullResult: SeasonResult = {
+      ...result,
+      awards,
+      divisionChampions,
+      developmentEvents: offseasonResult.events,
+    };
+
+    return fullResult;
   },
 
   // ── Standings ──────────────────────────────────────────────────────────────

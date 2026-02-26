@@ -1,6 +1,8 @@
 import type { Player, PlayerSeasonStats } from './player';
 import type { Team, TeamSeasonStats } from './team';
 import type { ScheduleEntry, BoxScore } from './game';
+import type { SeasonAwards, DivisionChampion } from '../engine/player/awards';
+import type { DevelopmentEvent } from '../engine/player/development';
 
 export interface LeagueEnvironment {
   // Calibration factors (1.0 = neutral)
@@ -28,6 +30,11 @@ export interface SeasonResult {
   leagueERA: number;
   leagueRPG: number;
   teamWinsSD: number;
+  // Post-season results (populated by worker after simulation + offseason)
+  // Optional so seasonSimulator.ts can return the base result; worker enriches it.
+  awards?: SeasonAwards;
+  divisionChampions?: DivisionChampion[];
+  developmentEvents?: DevelopmentEvent[];
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────
