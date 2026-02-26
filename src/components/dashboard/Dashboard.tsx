@@ -69,35 +69,13 @@ function DivChamp({ champ }: { champ: DivisionChampion }) {
 
 export default function Dashboard() {
   const {
-    gameStarted, season, userTeamId, isSimulating,
-    setGameStarted, setSeason, setUserTeamId, setSimulating, setSimProgress,
+    season, userTeamId, isSimulating,
+    setSeason, setSimulating, setSimProgress,
   } = useGameStore();
   const { setStandings, setLeaderboard, setLastSeasonStats } = useLeagueStore();
-  const { setActiveTab, setSelectedTeam } = useUIStore();
+  const { setActiveTab } = useUIStore();
   const [lastResult, setLastResult] = useState<SeasonResult | null>(null);
-  const [selectedTeamForNew, setSelectedTeamForNew] = useState(6);
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState('');
-
-  const startNewGame = useCallback(async () => {
-    setError(null);
-    setStatus('Generating league…');
-    try {
-      const engine = getEngine();
-      const seed = Date.now() % 2147483647;
-      await engine.newGame(seed, selectedTeamForNew);
-      setUserTeamId(selectedTeamForNew);
-      setSelectedTeam(selectedTeamForNew);
-      setSeason(2026);
-      setGameStarted(true);
-      const standings = await engine.getStandings();
-      setStandings(standings);
-      setStatus('');
-    } catch (e) {
-      setError(String(e));
-      setStatus('');
-    }
-  }, [selectedTeamForNew, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings]);
 
   const simulateSeason = useCallback(async () => {
     setError(null);
@@ -123,43 +101,6 @@ export default function Dashboard() {
       setSimulating(false);
     }
   }, [setSeason, setSimulating, setSimProgress, setStandings, setLeaderboard, setLastSeasonStats]);
-
-  // ── New game screen ─────────────────────────────────────────────────────────
-
-  if (!gameStarted) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 p-8">
-        <div className="text-center">
-          <div className="text-orange-500 font-bold text-2xl tracking-widest mb-2">MR. BASEBALL DYNASTY</div>
-          <div className="text-gray-500 text-xs">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
-        </div>
-
-        <div className="bloomberg-border bg-gray-900 p-6 w-full max-w-md">
-          <div className="bloomberg-header -mx-6 -mt-6 mb-4 px-4">SELECT YOUR FRANCHISE</div>
-          <div className="mb-4">
-            <label className="text-gray-500 text-xs block mb-1">TEAM</label>
-            <select
-              value={selectedTeamForNew}
-              onChange={e => setSelectedTeamForNew(Number(e.target.value))}
-              className="w-full bg-gray-950 border border-gray-700 text-gray-200 text-xs px-2 py-1.5 rounded focus:border-orange-500 focus:outline-none"
-            >
-              {TEAM_OPTIONS.map(t => (
-                <option key={t.id} value={t.id}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-          {error && <div className="text-red-400 text-xs mb-3">{error}</div>}
-          {status && <div className="text-orange-400 text-xs mb-3 animate-pulse">{status}</div>}
-          <button
-            onClick={startNewGame}
-            className="w-full bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs py-2 uppercase tracking-widest transition-colors"
-          >
-            START DYNASTY
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // ── In-game dashboard ───────────────────────────────────────────────────────
 

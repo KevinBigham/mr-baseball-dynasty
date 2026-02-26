@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import Shell from './components/layout/Shell';
+import SetupFlow from './components/setup/SetupFlow';
 import { acquireTabLock } from './db/tabGuard';
 import { listSaves, loadGame } from './db/schema';
 import { getEngine } from './engine/engineClient';
 import { useGameStore } from './store/gameStore';
 
 export default function App() {
-  const { setGameStarted, setSeason } = useGameStore();
+  const { gameStarted, setGameStarted, setSeason } = useGameStore();
   const [tabBlocked, setTabBlocked] = useState(false);
   const [initializing, setInitializing] = useState(true);
 
@@ -74,5 +75,6 @@ export default function App() {
     );
   }
 
-  return <Shell />;
+  // Show setup wizard for new games; Shell for active dynasties
+  return gameStarted ? <Shell /> : <SetupFlow />;
 }

@@ -60,7 +60,10 @@ export type RosterStatus =
   | 'MLB_IL_60'
   | 'MINORS_AAA'
   | 'MINORS_AA'
+  | 'MINORS_APLUS'    // High-A
+  | 'MINORS_AMINUS'   // Low-A
   | 'MINORS_ROOKIE'
+  | 'MINORS_INTL'     // International (age 16–17, DSL/FCL)
   | 'DFA'
   | 'WAIVERS'
   | 'FREE_AGENT'
