@@ -1,10 +1,21 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import type { SeasonResult } from '../../types/league';
 import type { AwardWinner, DivisionChampion } from '../../engine/player/awards';
+import {
+  getOwnerArchetype,
+  calcOwnerPatienceDelta,
+  calcMoraleDelta,
+  generateSeasonNews,
+  generateBreakoutWatch,
+  resolveBreakoutWatch,
+} from '../../engine/narrative';
+import {
+  OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
+} from './FranchisePanel';
 
 const TEAM_OPTIONS = [
   { id: 1,  label: 'ADM — New Harbor Admirals (AL East)' },
@@ -69,14 +80,22 @@ function DivChamp({ champ }: { champ: DivisionChampion }) {
 
 export default function Dashboard() {
   const {
-    season, userTeamId, isSimulating,
+    season, userTeamId, isSimulating, difficulty,
     setSeason, setSimulating, setSimProgress,
+    ownerArchetype, adjustOwnerPatience, adjustTeamMorale, setOwnerArchetype,
+    breakoutWatch, setBreakoutWatch, incrementSeasonsManaged,
   } = useGameStore();
-  const { setStandings, setLeaderboard, setLastSeasonStats } = useLeagueStore();
+  const { setStandings, setLeaderboard, setLastSeasonStats, addNewsItems } = useLeagueStore();
   const { setActiveTab } = useUIStore();
   const [lastResult, setLastResult] = useState<SeasonResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
 
+  // ── Set owner archetype on mount (derived from team choice) ─────────────────
+  useEffect(() => {
+    setOwnerArchetype(getOwnerArchetype(userTeamId));
+  }, [userTeamId, setOwnerArchetype]);
+
+  // ── Simulate season ─────────────────────────────────────────────────────────
   const simulateSeason = useCallback(async () => {
     setError(null);
     setSimulating(true);
@@ -85,9 +104,10 @@ export default function Dashboard() {
       const engine = getEngine();
       const result = await engine.simulateSeason();
       setLastResult(result);
-      // Worker increments season internally; result.season is the just-completed season
       setSeason(result.season + 1);
       setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
+
+      // Standings + leaderboards
       const [standings, hrLeaders] = await Promise.all([
         engine.getStandings(),
         engine.getLeaderboard('hr', 10),
@@ -95,20 +115,79 @@ export default function Dashboard() {
       setStandings(standings);
       setLeaderboard(hrLeaders);
       setSimProgress(1);
+
+      // ── Narrative engine ────────────────────────────────────────────────────
+      const userTeamSeason = result.teamSeasons.find(ts => ts.teamId === userTeamId);
+      if (userTeamSeason) {
+        const userWins      = userTeamSeason.record.wins;
+        const isPlayoff     = !!userTeamSeason.playoffRound;
+        const isChampion    = userTeamSeason.playoffRound === 'Champion';
+
+        // Count breakouts on user's roster (we don't have teamId on dev events, so use league total as proxy)
+        const breakoutsLeague = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
+        const breakoutsProxy  = Math.round(breakoutsLeague / 10); // rough per-team average
+
+        // Owner patience
+        const patienceDelta = calcOwnerPatienceDelta(
+          ownerArchetype, userTeamSeason, isPlayoff, isChampion, difficulty, breakoutsProxy,
+        );
+        adjustOwnerPatience(patienceDelta);
+
+        // Team morale
+        const retirements = (result.developmentEvents ?? []).filter(e => e.type === 'retirement').length;
+        const breakouts   = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
+        const busts       = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
+        const moraleDelta = calcMoraleDelta(userWins, isPlayoff, isChampion, breakouts, retirements, busts);
+        adjustTeamMorale(moraleDelta);
+      }
+
+      // Resolve last season's breakout watch
+      if (breakoutWatch.length > 0) {
+        try {
+          const roster = await engine.getRoster(userTeamId);
+          const allPlayers = [...roster.active, ...roster.minors, ...roster.il];
+          const resolved = resolveBreakoutWatch(breakoutWatch, allPlayers);
+          setBreakoutWatch(resolved);
+        } catch { /* non-fatal */ }
+      }
+
+      // Generate news
+      const newsItems = generateSeasonNews(result, userTeamId);
+      addNewsItems(newsItems);
+
+      incrementSeasonsManaged();
+
     } catch (e) {
       setError(String(e));
     } finally {
       setSimulating(false);
     }
-  }, [setSeason, setSimulating, setSimProgress, setStandings, setLeaderboard, setLastSeasonStats]);
+  }, [
+    userTeamId, difficulty, ownerArchetype, breakoutWatch,
+    setSeason, setSimulating, setSimProgress,
+    setStandings, setLeaderboard, setLastSeasonStats,
+    adjustOwnerPatience, adjustTeamMorale,
+    setBreakoutWatch, addNewsItems, incrementSeasonsManaged,
+  ]);
 
-  // ── In-game dashboard ───────────────────────────────────────────────────────
+  // ── Generate breakout watch at start of season ───────────────────────────────
+  const refreshBreakoutWatch = useCallback(async () => {
+    if (breakoutWatch.length > 0 && breakoutWatch.some(c => c.hit === null)) return; // already watching
+    try {
+      const engine = getEngine();
+      const roster = await engine.getRoster(userTeamId);
+      const allPlayers = [...roster.active, ...roster.minors, ...roster.il];
+      const candidates = generateBreakoutWatch(allPlayers);
+      setBreakoutWatch(candidates);
+    } catch { /* non-fatal */ }
+  }, [userTeamId, breakoutWatch, setBreakoutWatch]);
 
   const completedSeason = lastResult ? lastResult.season : null;
 
   return (
     <div className="p-4 space-y-4">
-      {/* Control row */}
+
+      {/* ── Control row ──────────────────────────────────────────────────────── */}
       <div className="flex gap-3 items-center flex-wrap">
         <div className="bloomberg-border bg-gray-900 px-4 py-2 flex-1 min-w-48">
           <div className="text-gray-500 text-xs">FRANCHISE</div>
@@ -125,18 +204,14 @@ export default function Dashboard() {
           disabled={isSimulating}
           className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 disabled:text-gray-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
         >
-          {isSimulating ? 'SIMULATING…' : `SIM ${season} SEASON`}
+          {isSimulating ? 'SIMULATING…' : `⚾ SIM ${season} SEASON`}
         </button>
-        <button
-          onClick={() => setActiveTab('standings')}
-          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
-        >
+        <button onClick={() => setActiveTab('standings')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
           STANDINGS
         </button>
-        <button
-          onClick={() => setActiveTab('roster')}
-          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
-        >
+        <button onClick={() => setActiveTab('roster')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
           ROSTER
         </button>
       </div>
@@ -145,16 +220,31 @@ export default function Dashboard() {
         <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{error}</div>
       )}
 
-      {/* Pre-sim state */}
+      {/* ── Owner Patience + Team Morale (always visible) ────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <OwnerPatiencePanel />
+        <MoralePanel />
+      </div>
+
+      {/* ── Pre-sim state ─────────────────────────────────────────────────────── */}
       {!lastResult && (
-        <div className="bloomberg-border bg-gray-900 p-6 text-center">
-          <div className="text-gray-500 text-xs mb-2">READY TO SIM YOUR FIRST SEASON</div>
+        <div className="bloomberg-border bg-gray-900 p-6 text-center space-y-3">
+          <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
           <div className="text-gray-600 text-xs">Click "SIM {season} SEASON" to run all 2,430 games</div>
-          <div className="text-gray-600 text-xs mt-1">
-            Log5 · 25-state Markov chain · 3-stage PA engine · SDE aging
+          <div className="text-gray-700 text-xs">
+            Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
           </div>
+          <button
+            onClick={refreshBreakoutWatch}
+            className="mx-auto block border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors"
+          >
+            🔍 Generate Breakout Watch
+          </button>
         </div>
       )}
+
+      {/* ── Breakout Watch (visible pre- and post-sim) ───────────────────────── */}
+      <BreakoutWatchPanel />
 
       {/* ── Season Report ─────────────────────────────────────────────────────── */}
       {lastResult && (
@@ -194,7 +284,6 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-
             {lastResult.awards && (
               <div className="bloomberg-border bg-gray-900">
                 <div className="bloomberg-header px-4">AWARDS</div>
@@ -219,14 +308,11 @@ export default function Dashboard() {
                 <div>
                   <div className="text-green-500 text-xs font-bold mb-1.5">▲ BREAKOUTS</div>
                   {lastResult.developmentEvents
-                    .filter(e => e.type === 'breakout')
-                    .slice(0, 8)
+                    .filter(e => e.type === 'breakout').slice(0, 8)
                     .map(e => (
                       <div key={e.playerId} className="flex justify-between py-0.5 border-b border-gray-800 last:border-0">
                         <span className="text-gray-300 font-mono text-xs">{e.playerName}</span>
-                        <span className="text-green-400 font-mono text-xs tabular-nums">
-                          +{e.overallDelta}
-                        </span>
+                        <span className="text-green-400 font-mono text-xs tabular-nums">+{e.overallDelta}</span>
                       </div>
                     ))
                   }
@@ -234,21 +320,17 @@ export default function Dashboard() {
                     <div className="text-gray-600 text-xs">No major breakouts</div>
                   )}
                 </div>
-
                 {/* Declines + Retirements */}
                 <div>
                   {lastResult.developmentEvents.filter(e => e.type === 'bust').length > 0 && (
                     <>
                       <div className="text-red-500 text-xs font-bold mb-1.5">▼ DECLINES</div>
                       {lastResult.developmentEvents
-                        .filter(e => e.type === 'bust')
-                        .slice(0, 5)
+                        .filter(e => e.type === 'bust').slice(0, 5)
                         .map(e => (
                           <div key={e.playerId} className="flex justify-between py-0.5 border-b border-gray-800 last:border-0">
                             <span className="text-gray-300 font-mono text-xs">{e.playerName}</span>
-                            <span className="text-red-400 font-mono text-xs tabular-nums">
-                              {e.overallDelta}
-                            </span>
+                            <span className="text-red-400 font-mono text-xs tabular-nums">{e.overallDelta}</span>
                           </div>
                         ))
                       }
@@ -258,8 +340,7 @@ export default function Dashboard() {
                     <>
                       <div className="text-gray-500 text-xs font-bold mb-1 mt-3">◼ RETIREMENTS</div>
                       {lastResult.developmentEvents
-                        .filter(e => e.type === 'retirement')
-                        .slice(0, 6)
+                        .filter(e => e.type === 'retirement').slice(0, 6)
                         .map(e => (
                           <div key={e.playerId} className="py-0.5 border-b border-gray-800 last:border-0">
                             <span className="text-gray-500 font-mono text-xs">{e.playerName}</span>
@@ -270,51 +351,35 @@ export default function Dashboard() {
                   )}
                 </div>
               </div>
-
-              {/* Summary line */}
               <div className="px-4 py-2 border-t border-gray-800 flex gap-6 text-xs text-gray-500">
-                <span>
-                  <span className="text-green-400 font-bold">
-                    {lastResult.developmentEvents.filter(e => e.type === 'breakout').length}
-                  </span>{' '}breakouts
-                </span>
-                <span>
-                  <span className="text-red-400 font-bold">
-                    {lastResult.developmentEvents.filter(e => e.type === 'bust').length}
-                  </span>{' '}declines
-                </span>
-                <span>
-                  <span className="text-gray-400 font-bold">
-                    {lastResult.developmentEvents.filter(e => e.type === 'retirement').length}
-                  </span>{' '}retirements
-                </span>
+                <span><span className="text-green-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'breakout').length}</span> breakouts</span>
+                <span><span className="text-red-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'bust').length}</span> declines</span>
+                <span><span className="text-gray-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'retirement').length}</span> retirements</span>
               </div>
             </div>
           )}
 
           {/* Quick nav */}
           <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={() => setActiveTab('standings')}
-              className="border border-orange-700 hover:border-orange-500 text-orange-600 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors"
-            >
+            <button onClick={() => setActiveTab('standings')}
+              className="border border-orange-700 hover:border-orange-500 text-orange-600 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               FINAL STANDINGS →
             </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors"
-            >
+            <button onClick={() => setActiveTab('stats')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               LEADERBOARDS →
             </button>
-            <button
-              onClick={() => setActiveTab('roster')}
-              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors"
-            >
+            <button onClick={() => setActiveTab('roster')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               YOUR ROSTER →
             </button>
           </div>
         </div>
       )}
+
+      {/* ── News Feed (always at bottom, grows with each season) ─────────────── */}
+      <NewsFeedPanel />
+
     </div>
   );
 }
