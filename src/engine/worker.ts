@@ -14,8 +14,6 @@ import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTe
 import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
-import { PARK_FACTORS } from '../data/parkFactors';
-
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -38,9 +36,6 @@ function rebuildMaps(): void {
   _teamMap   = new Map(_state.teams.map(t => [t.teamId, t]));
 }
 
-function computeOverall(player: Player): number {
-  return player.overall;
-}
 
 function playerToRosterPlayer(p: Player, stats: import('../types/player').PlayerSeasonStats | undefined): RosterPlayer {
   const s = stats;
@@ -192,7 +187,7 @@ const api = {
 
   // ── Leaderboard ────────────────────────────────────────────────────────────
   async getLeaderboard(stat: string, limit = 50): Promise<LeaderboardEntry[]> {
-    const state = requireState();
+    requireState();
     const results: Array<{ player: Player; value: number }> = [];
 
     for (const [playerId, s] of _playerSeasonStats) {
@@ -260,14 +255,14 @@ const api = {
       grades['STM'] = toScoutingScale(p.stamina);
     }
 
-    const seasonStats: Record<string, number> = s ? {
+    const seasonStats: null | { season: number; [key: string]: number } = s ? {
       season: state.season - 1,
       pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
       avg: s.ab > 0 ? Number((s.h / s.ab).toFixed(3)) : 0,
       obp: s.pa > 0 ? Number(((s.h + s.bb + s.hbp) / s.pa).toFixed(3)) : 0,
       w: s.w, l: s.l, sv: s.sv, era: s.outs > 0 ? Number(((s.er / s.outs) * 27).toFixed(2)) : 0,
       ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
-    } : {};
+    } : null;
 
     return {
       player: {
@@ -285,8 +280,8 @@ const api = {
         salary: player.rosterData.salary,
         contractYearsRemaining: player.rosterData.contractYearsRemaining,
       },
-      seasonStats: s ? { ...seasonStats } : null,
-      careerStats: { seasons: 1, ...seasonStats },
+      seasonStats,
+      careerStats: { seasons: 1, ...(seasonStats ?? {}) },
     };
   },
 

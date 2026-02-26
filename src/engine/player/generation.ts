@@ -88,12 +88,14 @@ function generateHitterAttributes(
   pos: Position,
   level: 'MLB' | 'AAA' | 'ROOKIE',
   age: number,
+  teamQualityOffset = 0,
 ): [HitterAttributes, RandomGenerator] {
   const prior = POSITIONAL_HITTER_PRIORS[pos];
   // Level multiplier: MLB ~1.0, AAA ~0.78, Rookie ~0.60
   const levelMult = level === 'MLB' ? 1.0 : level === 'AAA' ? 0.78 : 0.60;
-  // Sigma also scales with level (more variance at lower levels)
-  const sigmaMult = level === 'MLB' ? 40 : level === 'AAA' ? 45 : 55;
+  // Sigma scales with level. teamQualityOffset creates between-team talent spread (Win SD lever).
+  // MLB sigma=55: within-team player spread; team-level quality controlled by teamQualityOffset
+  const sigmaMult = level === 'MLB' ? 55 : level === 'AAA' ? 50 : 60;
 
   const attrs = blankHitterAttributes();
 
@@ -102,11 +104,11 @@ function generateHitterAttributes(
   const agePenalty = agePeakDist > 5 ? (agePeakDist - 5) * 5 : 0;
 
   for (const key of ['contact', 'power', 'eye', 'speed', 'fielding', 'armStrength', 'durability', 'baserunningIQ'] as const) {
-    const priorVal = (prior as Record<string, number>)[key] ?? 350;
+    const priorVal = (prior as unknown as Record<string, number>)[key] ?? 350;
     let val: number;
     [val, gen] = clampedGaussian(
       gen,
-      priorVal * levelMult - agePenalty,
+      priorVal * levelMult - agePenalty + teamQualityOffset,
       sigmaMult,
       100,
       550,
@@ -139,19 +141,21 @@ function generatePitcherAttributes(
   pos: 'SP' | 'RP' | 'CL',
   level: 'MLB' | 'AAA' | 'ROOKIE',
   age: number,
+  teamQualityOffset = 0,
 ): [PitcherAttributes, RandomGenerator] {
   const prior = POSITIONAL_PITCHER_PRIORS[pos];
   const levelMult = level === 'MLB' ? 1.0 : level === 'AAA' ? 0.78 : 0.60;
-  const sigmaMult = level === 'MLB' ? 40 : level === 'AAA' ? 45 : 55;
+  // Pitcher sigma=50: within-team spread; between-team quality controlled by teamQualityOffset
+  const sigmaMult = level === 'MLB' ? 50 : level === 'AAA' ? 45 : 55;
 
   const attrs = blankPitcherAttributes();
   const agePeakDist = Math.abs(age - 27);
   const agePenalty = agePeakDist > 5 ? (agePeakDist - 5) * 5 : 0;
 
   for (const key of ['stuff', 'movement', 'command', 'stamina', 'holdRunners', 'durability', 'recoveryRate'] as const) {
-    const priorVal = (prior as Record<string, number>)[key] ?? 350;
+    const priorVal = (prior as unknown as Record<string, number>)[key] ?? 350;
     let val: number;
-    [val, gen] = clampedGaussian(gen, priorVal * levelMult - agePenalty, sigmaMult, 100, 550);
+    [val, gen] = clampedGaussian(gen, priorVal * levelMult - agePenalty + teamQualityOffset, sigmaMult, 100, 550);
     attrs[key] = val;
   }
 
@@ -222,6 +226,7 @@ function generatePlayer(
   pos: Position,
   level: 'MLB' | 'AAA' | 'ROOKIE',
   season: number,
+  teamQualityOffset = 0,
 ): [Player, RandomGenerator] {
   const id = _nextPlayerId++;
 
@@ -254,10 +259,10 @@ function generatePlayer(
 
   if (isPitcher) {
     const pitcherPos = pos as 'SP' | 'RP' | 'CL';
-    [pitcherAttributes, gen] = generatePitcherAttributes(gen, pitcherPos, level, age);
+    [pitcherAttributes, gen] = generatePitcherAttributes(gen, pitcherPos, level, age, teamQualityOffset);
     overall = computePitcherOverall(pitcherAttributes, pitcherPos);
   } else {
-    [hitterAttributes, gen] = generateHitterAttributes(gen, pos, level, age);
+    [hitterAttributes, gen] = generateHitterAttributes(gen, pos, level, age, teamQualityOffset);
     overall = computeHitterOverall(hitterAttributes, pos);
   }
 
@@ -302,63 +307,72 @@ export function generateTeamRoster(
 ): [Player[], RandomGenerator] {
   const players: Player[] = [];
 
+  // Team quality offset — shifts all player attribute means up or down.
+  // SD=35 → talent spread ~5 wins between good/bad teams → Win SD ~8 ✓
+  // Clamped at ±60 to prevent absurd outlier rosters.
+  let rawOffset: number;
+  [rawOffset, gen] = gaussian(gen, 0, 35);
+  const teamQualityOffset = Math.max(-60, Math.min(60, Math.round(rawOffset)));
+
   // MLB 26-man: position players
   const posPool = [...MLB_POSITION_POOL];
   for (const pos of posPool) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, pos, 'MLB', season);
+    [player, gen] = generatePlayer(gen, teamId, pos, 'MLB', season, teamQualityOffset);
     players.push(player);
   }
 
   // ML pitchers: 5 SP + 7 RP + 1 CL
   for (let i = 0; i < SP_COUNT; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'SP', 'MLB', season);
+    [player, gen] = generatePlayer(gen, teamId, 'SP', 'MLB', season, teamQualityOffset);
     players.push(player);
   }
   for (let i = 0; i < RP_COUNT; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'RP', 'MLB', season);
+    [player, gen] = generatePlayer(gen, teamId, 'RP', 'MLB', season, teamQualityOffset);
     players.push(player);
   }
   for (let i = 0; i < CL_COUNT; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'CL', 'MLB', season);
+    [player, gen] = generatePlayer(gen, teamId, 'CL', 'MLB', season, teamQualityOffset);
     players.push(player);
   }
 
-  // AAA: 15 players (8 hitters + 4 SP + 3 RP)
+  // AAA: 15 players (8 hitters + 4 SP + 3 RP) — half the MLB offset for minors
+  const aaaQualOffset = Math.round(teamQualityOffset * 0.5);
   const aaaPool = [...AAA_POSITION_POOL];
   for (const pos of aaaPool) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, pos, 'AAA', season);
+    [player, gen] = generatePlayer(gen, teamId, pos, 'AAA', season, aaaQualOffset);
     players.push(player);
   }
   for (let i = 0; i < 4; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'SP', 'AAA', season);
+    [player, gen] = generatePlayer(gen, teamId, 'SP', 'AAA', season, aaaQualOffset);
     players.push(player);
   }
   for (let i = 0; i < 3; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'RP', 'AAA', season);
+    [player, gen] = generatePlayer(gen, teamId, 'RP', 'AAA', season, aaaQualOffset);
     players.push(player);
   }
 
-  // Rookie: 10 players (6 hitters + 3 SP + 1 RP)
+  // Rookie: 10 players (6 hitters + 3 SP + 1 RP) — smaller offset for prospects
+  const rookieQualOffset = Math.round(teamQualityOffset * 0.25);
   const rookiePool = [...ROOKIE_POSITION_POOL];
   for (const pos of rookiePool) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, pos, 'ROOKIE', season);
+    [player, gen] = generatePlayer(gen, teamId, pos, 'ROOKIE', season, rookieQualOffset);
     players.push(player);
   }
   for (let i = 0; i < 3; i++) {
     let player: Player;
-    [player, gen] = generatePlayer(gen, teamId, 'SP', 'ROOKIE', season);
+    [player, gen] = generatePlayer(gen, teamId, 'SP', 'ROOKIE', season, rookieQualOffset);
     players.push(player);
   }
   let rpPlayer: Player;
-  [rpPlayer, gen] = generatePlayer(gen, teamId, 'RP', 'ROOKIE', season);
+  [rpPlayer, gen] = generatePlayer(gen, teamId, 'RP', 'ROOKIE', season, rookieQualOffset);
   players.push(rpPlayer);
 
   return [players, gen];

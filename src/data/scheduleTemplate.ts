@@ -15,9 +15,6 @@ const NL_WEST:    number[] = [26, 27, 28, 29, 30];
 const AL_DIVISIONS = [AL_EAST, AL_CENTRAL, AL_WEST];
 const NL_DIVISIONS = [NL_EAST, NL_CENTRAL, NL_WEST];
 
-const AL_TEAMS = [...AL_EAST, ...AL_CENTRAL, ...AL_WEST];
-const NL_TEAMS = [...NL_EAST, ...NL_CENTRAL, ...NL_WEST];
-
 function getDivision(teamId: number): number[] {
   for (const div of [...AL_DIVISIONS, ...NL_DIVISIONS]) {
     if (div.includes(teamId)) return div;

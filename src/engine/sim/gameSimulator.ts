@@ -2,13 +2,12 @@ import type { RandomGenerator } from 'pure-rand';
 import type { Player, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { BoxScore, GameResult, PAOutcome } from '../../types/game';
-import { createPRNG, nextInt } from '../math/prng';
+import { createPRNG } from '../math/prng';
 import { resolvePlateAppearance } from './plateAppearance';
 import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
-  createInitialFSMContext, startGame, advanceBatterLineup,
-  scoreRuns, switchSides, updateRunners, shouldUseMannedRunner,
+  createInitialFSMContext, startGame, shouldUseMannedRunner,
   type GameFSMContext,
 } from './fsm';
 
@@ -117,28 +116,23 @@ function accumulatePitcherStat(
 
 // Rough pitch count estimate per PA outcome
 function estimatePitches(outcome: PAOutcome): number {
+  // Calibrated to ~15 pitches/inning average (real MLB benchmark)
   switch (outcome) {
-    case 'K': return 6;
-    case 'BB': return 6;
+    case 'K':  return 4;  // Real MLB avg K is ~4-5 pitches, not 6
+    case 'BB': return 4;  // Walks average ~4.5 pitches, bias down for speed
     case 'HR': return 4;
     case '1B': return 4;
     case '2B': case '3B': return 4;
     case 'GDP': return 3;
-    default: return 3;
+    default: return 3;   // Quick outs (GO, FO, PU) average 3 pitches
   }
 }
 
 // ─── Half-inning simulation ───────────────────────────────────────────────────
 
-interface HalfInningResult {
-  runsScored: number;
-  lineupPosAfter: number;
-  outersUsedGen: RandomGenerator;
-}
-
 function simulateHalfInning(
   gen: RandomGenerator,
-  ctx: GameFSMContext,
+  _ctx: GameFSMContext,
   lineup: Player[],
   lineupPos: number,
   pitcher: Player,
@@ -310,6 +304,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       homeUsedPitchers,
       inning,
       false, // not save situation for top
+      input.homeTeam.bullpenReliefCounter,
     );
 
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
@@ -342,6 +337,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       awayUsedPitchers,
       inning,
       false,
+      input.awayTeam.bullpenReliefCounter,
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
@@ -390,25 +386,40 @@ function managePitcher(
   usedIds: Set<number>,
   inning: number,
   isSaveSituation: boolean,
+  bullpenOffset: number,       // Season-level offset to rotate through relievers across games
 ): Player {
   const isPitcher = (p: Player) => p.isPitcher;
   const pc = pitchCountRef.value;
   const tto = timesThroughRef.value;
 
+  // Stamina-gated inning cap — prevents low-K/efficient pitchers from gaming pitch limits:
+  //   stamina < 380: max 5 innings (SP goes ~165 IP)
+  //   stamina 380-449: max 6 innings (SP goes ~198 IP, just under 200)
+  //   stamina ≥ 450: max 7 innings (SP can reach 200+ IP) — ~7% of SPs
+  const staminaAttr = currentPitcher.pitcherAttributes?.stamina ?? 350;
+  // Bottom ~11% of SPs (stamina<320) capped at 5 innings; middle ~83% at 6; top ~6% at 7
+  const maxSPInnings = staminaAttr < 320 ? 5 : staminaAttr < 470 ? 6 : 7;
+
+  // Pitch limit: secondary gate (still needed for high-stamina pitchers)
+  // stamina=450→87, stamina=500→91, stamina=550→94
+  const pitchLimit = Math.round(55 + staminaAttr / 14);
+
   const shouldPull =
-    pc > 110 ||
-    (tto >= 3 && pc > 75) ||
-    (inning >= 7 && currentPitcher.position !== 'SP');
+    pc > pitchLimit ||
+    (currentPitcher.position === 'SP' && inning >= maxSPInnings) ||
+    (currentPitcher.position !== 'SP' && inning >= 8); // Hard cap for relievers at 7
 
   if (!shouldPull) return currentPitcher;
 
-  // Pull and bring in reliever
+  // Pull and bring in reliever — use bullpenOffset to cycle through the bullpen across games
   const wantCloser = isSaveSituation && inning >= 9;
-  const next = pickReliever(players, teamId, usedIds.size, usedIds, wantCloser);
+  const counter = (bullpenOffset + usedIds.size) % 100;
+  const next = pickReliever(players, teamId, counter, usedIds, wantCloser);
   if (!next) return currentPitcher; // No one available
 
   usedIds.add(next.playerId);
   pitchCountRef.value = 0; // Reset for the new pitcher
+  timesThroughRef.value = 1; // Reset TTO for the new pitcher
 
   void gen; // gen not needed here but keep signature consistent
   void isPitcher; // used conceptually

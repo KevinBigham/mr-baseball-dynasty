@@ -1,4 +1,3 @@
-import React from 'react';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
 import Dashboard from '../dashboard/Dashboard';

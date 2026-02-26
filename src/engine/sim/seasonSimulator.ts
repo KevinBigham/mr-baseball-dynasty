@@ -1,11 +1,10 @@
-import { createPRNG, nextInt } from '../math/prng';
+import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
 import type { ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
-import { pythagenpatWinPct } from '../math/bayesian';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -144,7 +143,12 @@ export async function simulateSeason(
 
   // Track rotation indices per team (so each game advances the rotation)
   const rotationIndex = new Map<number, number>();
-  for (const t of teams) rotationIndex.set(t.teamId, 0);
+  // Track bullpen cycle offset per team (so different relievers pitch each game)
+  const bullpenOffset = new Map<number, number>();
+  for (const t of teams) {
+    rotationIndex.set(t.teamId, 0);
+    bullpenOffset.set(t.teamId, 0);
+  }
 
   const total = schedule.length;
   let completed = 0;
@@ -165,14 +169,16 @@ export async function simulateSeason(
     // Deterministic per-game seed: combine baseSeed with gameId via mixing
     const gameSeed = (baseSeed ^ (entry.gameId * 2654435761)) >>> 0;
 
-    // Snapshot rotation indices into team objects for this game
+    // Snapshot rotation + bullpen indices into team objects for this game
     const homeWithRotation: Team = {
       ...homeTeam,
       rotationIndex: rotationIndex.get(entry.homeTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.homeTeamId) ?? 0,
     };
     const awayWithRotation: Team = {
       ...awayTeam,
       rotationIndex: rotationIndex.get(entry.awayTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
     };
 
     const input: SimulateGameInput = {
@@ -190,6 +196,9 @@ export async function simulateSeason(
     // Advance rotation (each game uses next starter in 5-man rotation)
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
     rotationIndex.set(entry.awayTeamId, (rotationIndex.get(entry.awayTeamId) ?? 0) + 1);
+    // Advance bullpen offset so different relievers pitch each game
+    bullpenOffset.set(entry.homeTeamId, (bullpenOffset.get(entry.homeTeamId) ?? 0) + 3);
+    bullpenOffset.set(entry.awayTeamId, (bullpenOffset.get(entry.awayTeamId) ?? 0) + 3);
 
     // Update team records
     if (result.homeScore > result.awayScore) {
@@ -255,8 +264,9 @@ export async function simulateSeason(
 
   const leagueBA  = totalAB   > 0 ? totalHits / totalAB          : 0.255;
   const leagueERA = totalOuts > 0 ? (totalER / totalOuts) * 27   : 4.10;
-  // totalRuns counts runs from both teams via pitching stats; total games = schedule.length
-  const leagueRPG = schedule.length > 0 ? totalRuns / schedule.length : 4.5;
+  // totalRuns sums each pitcher's RA (= runs scored by opponents).
+  // Each game has 2 teams pitching, so divide by games*2 to get per-team-per-game.
+  const leagueRPG = schedule.length > 0 ? totalRuns / (schedule.length * 2) : 4.5;
 
   const winTotals = teamSeasons.map(ts => ts.record.wins);
   const teamWinsSD = stddev(winTotals);

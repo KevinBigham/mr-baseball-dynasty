@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Shell from './components/layout/Shell';
 import { acquireTabLock } from './db/tabGuard';
 import { listSaves, loadGame } from './db/schema';

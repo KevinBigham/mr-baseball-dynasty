@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createPRNG } from '../../src/engine/math/prng';
-import { applyOutcome, INITIAL_INNING_STATE } from '../../src/engine/sim/markov';
+import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from '../../src/engine/sim/markov';
 import type { PAOutcome } from '../../src/types/game';
 
 const AVG_SPEED = 350; // average speed tier
@@ -86,13 +86,10 @@ describe('Markov chain — basic state transitions', () => {
   });
 
   it('3B clears all runners', () => {
-    // Load bases then triple
+    // Directly set up bases loaded — tests the 3B logic, not the path to get there.
+    // (Relying on specific singles rolls is too fragile across PRNG versions.)
     let gen = createPRNG(42);
-    let state = { ...INITIAL_INNING_STATE };
-    for (const o of ['1B', '1B', '1B'] as PAOutcome[]) {
-      [state, gen] = applyOutcome(gen, state, o, AVG_SPEED, AVG_SPEED);
-    }
-    expect(state.runners).toBe(0b111); // loaded
+    let state: MarkovState = { runners: 0b111, outs: 0, runsScored: 0 };
 
     [state, gen] = applyOutcome(gen, state, '3B', AVG_SPEED, AVG_SPEED);
     expect(state.runsScored).toBe(3); // 3 runners scored

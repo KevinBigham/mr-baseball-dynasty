@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
@@ -21,8 +21,8 @@ const PITCHING_STATS = [
 ];
 
 export default function Leaderboards() {
-  const { leaderboard, setLeaderboard, leaderboardStat: _ls } = useLeagueStore();
-  const { setLeaderboardStat: _sls, setSelectedPlayer, setActiveTab } = useUIStore();
+  const { leaderboard, setLeaderboard } = useLeagueStore();
+  const { setSelectedPlayer, setActiveTab } = useUIStore();
   const { gameStarted } = useGameStore();
   const [activeStat, setActiveStat] = useState('hr');
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,6 @@ export default function Leaderboards() {
       .finally(() => setLoading(false));
   }, [gameStarted, activeStat, setLeaderboard]);
 
-  const isPitcherStat = ['era', 'wins', 'k', 'whip'].includes(activeStat);
 
   const openPlayer = (id: number) => {
     setSelectedPlayer(id);

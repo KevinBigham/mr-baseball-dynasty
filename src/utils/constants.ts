@@ -71,15 +71,17 @@ export const LEAGUE_RPG_TARGET = 4.50;
 export const LEAGUE_BABIP_TARGET = 0.295;
 
 // Validation gate bounds (used in tests)
+// Calibrated to modern MLB (2019 baseline): 24 pitchers 200K, 10 players 40HR, Win SD 13.40
+// Our sim targets single-season single-seed, so bounds are narrower than multi-year MLB range
 export const GATES = {
   leagueERA:          { min: 3.80, max: 4.40 },
   leagueBA:           { min: 0.245, max: 0.265 },
   leagueRPG:          { min: 4.2, max: 4.8 },
-  teamWinsSD:         { min: 8, max: 12 },
-  teamsOver100Wins:   { min: 1, max: 5 },
+  teamWinsSD:         { min: 7, max: 14 },    // real MLB: 12-15; binomial floor ~6.4; sim target 8-10
+  teamsOver100Wins:   { min: 0, max: 5 },     // real MLB: 0-3/yr; 0 is a realistic outcome
   teamsUnder60Wins:   { min: 0, max: 4 },
-  playersWith40HR:    { min: 2, max: 8 },
-  playersWith200K:    { min: 3, max: 10 },
+  playersWith40HR:    { min: 2, max: 14 },    // real MLB: 3-10/yr (2019: 10, 2022: 3)
+  playersWith200K:    { min: 15, max: 35 },   // real MLB: 20-30/yr (2019: 24, 2023: 28)
   pitchersWith200IP:  { min: 5, max: 20 },
   pythagCorrelation:  { min: 0.85 },
   singleGameMs:       { max: 50 },

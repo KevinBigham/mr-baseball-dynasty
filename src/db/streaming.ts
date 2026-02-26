@@ -50,15 +50,17 @@ export async function exportSave(state: LeagueState, label: string): Promise<voi
 
 // ─── Import ───────────────────────────────────────────────────────────────────
 
-export interface ImportResult {
-  ok: true;
-  state: LeagueState;
-  label: string;
-  savedAt: string;
-} | {
-  ok: false;
-  error: string;
-}
+export type ImportResult =
+  | {
+      ok: true;
+      state: LeagueState;
+      label: string;
+      savedAt: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 
 /**
  * Reads a .mrbd file (File object from an <input type="file"> event),

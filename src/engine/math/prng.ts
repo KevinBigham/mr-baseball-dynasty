@@ -6,7 +6,15 @@ import { xoroshiro128plus, type RandomGenerator } from 'pure-rand';
 // Never use a module-level mutable generator.
 
 export function createPRNG(seed: number): RandomGenerator {
-  return xoroshiro128plus(seed);
+  // Apply splitmix32 mixing before seeding to avoid bias with small integer seeds.
+  // xoroshiro128+ has poor initial randomness when seeded with small values like 0, 1, 2…
+  // splitmix32 spreads the bits uniformly.
+  let s = (seed >>> 0);               // treat as unsigned 32-bit
+  s = Math.imul(s + 0x9e3779b9, s + 0x9e3779b9) >>> 0;
+  s = Math.imul(s ^ (s >>> 15), 0x85ebca6b) >>> 0;
+  s = Math.imul(s ^ (s >>> 13), 0xc2b2ae35) >>> 0;
+  s = (s ^ (s >>> 16)) >>> 0;
+  return xoroshiro128plus(s | 0);  // pure-rand expects signed 32-bit
 }
 
 // Float in [0, 1)
@@ -67,7 +75,7 @@ export function clampedGaussian(
 
 // Serialize PRNG state for save files
 export function serializeState(gen: RandomGenerator): number[] {
-  return (gen as RandomGenerator & { getState(): number[] }).getState();
+  return Array.from((gen as RandomGenerator & { getState(): readonly number[] }).getState());
 }
 
 // Restore PRNG from save

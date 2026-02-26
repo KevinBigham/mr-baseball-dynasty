@@ -66,7 +66,9 @@ function hitterToRates(h: HitterAttributes): {
   return {
     kRate:     Math.max(0.05, LEAGUE_RATES.kRate    * (2 - contactFactor)),
     bbRate:    Math.max(0.03, LEAGUE_RATES.bbRate   * eyeFactor),
-    hrRate:    Math.max(0.005, LEAGUE_RATES.hrRate  * powerFactor),
+    // exponent=1.8: balanced HR sensitivity — enough 40HR seasons (gate ≥ 2) while
+    // controlling ERA tail; at avg power (400) = league rate, at 500 = +48% vs +56% with 2.0
+    hrRate:    Math.max(0.005, LEAGUE_RATES.hrRate  * Math.pow(powerFactor, 1.8)),
     hbpRate:   LEAGUE_RATES.hbpRate, // not player-specific yet
     babip:     Math.max(0.22, Math.min(0.38, LEAGUE_RATES.babip * (0.85 + 0.15 * contactFactor))),
     gbPercent: Math.max(0.30, Math.min(0.65, 0.45 - (h.power - 400) * 0.0002)),
@@ -82,7 +84,9 @@ function pitcherToRates(p: PitcherAttributes): {
   const commandFactor = p.command / 400;
 
   return {
-    kRate:     Math.max(0.08, LEAGUE_RATES.pitcherKRate  * stuffFactor),
+    // exponent=0.9: moderates K tail — elite stuff (stuffFactor~1.12→kRate=0.250) allows
+    // 200+K seasons without over-producing 200K pitchers; capped at 0.38 for realism
+    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 0.9))),
     bbRate:    Math.max(0.03, LEAGUE_RATES.pitcherBBRate * (2 - commandFactor)),
     hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor)),
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),

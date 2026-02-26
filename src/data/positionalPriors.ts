@@ -41,7 +41,7 @@ export interface PitcherPrior {
 
 // SP: more stamina, command; CL: more stuff; RP: balanced
 export const POSITIONAL_PITCHER_PRIORS: Record<'SP' | 'RP' | 'CL', PitcherPrior> = {
-  'SP': { stuff: 360, movement: 370, command: 380, stamina: 380, gbFbTendency: 50 },
+  'SP': { stuff: 400, movement: 370, command: 445, stamina: 380, gbFbTendency: 50 },
   'RP': { stuff: 390, movement: 360, command: 370, stamina: 290, gbFbTendency: 48 },
   'CL': { stuff: 420, movement: 350, command: 390, stamina: 270, gbFbTendency: 45 },
 };
