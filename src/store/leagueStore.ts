@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { StandingsData, RosterData, LeaderboardEntry } from '../types/league';
 import type { NewsItem } from '../engine/narrative';
 import type { RivalRecord } from '../engine/rivalry';
+import type { MFSNReport } from '../engine/predictions';
+import type { StaffPoachEvent } from '../engine/staffPoaching';
 
 // ─── Franchise history record ─────────────────────────────────────────────────
 
@@ -43,6 +45,12 @@ interface LeagueStore {
   presserAvailable: boolean;
   presserDone:      boolean;
 
+  // ── MFSN Predictions ─────────────────────────────────────────────────────────
+  mfsnReport:       MFSNReport | null;
+
+  // ── Staff Poaching ────────────────────────────────────────────────────────────
+  poachEvent:       StaffPoachEvent | null;
+
   setStandings:           (d: StandingsData) => void;
   setRoster:              (d: RosterData) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
@@ -58,6 +66,12 @@ interface LeagueStore {
 
   setPresserAvailable:    (v: boolean) => void;
   setPresserDone:         (v: boolean) => void;
+
+  setMFSNReport:          (report: MFSNReport) => void;
+  clearMFSNReport:        () => void;
+
+  setPoachEvent:          (event: StaffPoachEvent | null) => void;
+  resolvePoachEvent:      (decision: 'let_go' | 'block') => void;
 }
 
 // ─── Key moment generator ─────────────────────────────────────────────────────
@@ -107,6 +121,8 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   franchiseHistory: [],
   presserAvailable: false,
   presserDone:      false,
+  mfsnReport:       null,
+  poachEvent:       null,
 
   setStandings:       d => set({ standings: d }),
   setRoster:          d => set({ roster: d }),
@@ -127,4 +143,14 @@ export const useLeagueStore = create<LeagueStore>(set => ({
 
   setPresserAvailable: v => set({ presserAvailable: v }),
   setPresserDone:      v => set({ presserDone: v }),
+
+  setMFSNReport:   report => set({ mfsnReport: report }),
+  clearMFSNReport: ()     => set({ mfsnReport: null }),
+
+  setPoachEvent:   event  => set({ poachEvent: event }),
+  resolvePoachEvent: decision => set(state => ({
+    poachEvent: state.poachEvent
+      ? { ...state.poachEvent, resolved: true, decision }
+      : null,
+  })),
 }));

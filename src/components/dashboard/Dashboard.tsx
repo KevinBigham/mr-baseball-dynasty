@@ -10,12 +10,18 @@ import {
   generateSeasonNews, generateBreakoutWatch, resolveBreakoutWatch,
 } from '../../engine/narrative';
 import { initRivals, updateRivals } from '../../engine/rivalry';
+import { generatePreseasonPredictions, resolvePredictions } from '../../engine/predictions';
+import { shouldTriggerPoach, generatePoachEvent } from '../../engine/staffPoaching';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
-import PressConference from './PressConference';
-import RivalryPanel    from './RivalryPanel';
-import LegacyTimeline  from './LegacyTimeline';
+import PressConference   from './PressConference';
+import RivalryPanel      from './RivalryPanel';
+import LegacyTimeline    from './LegacyTimeline';
+import MFSNPanel         from './MFSNPanel';
+import DevGradeCard      from './DevGradeCard';
+import StaffPoachModal   from './StaffPoachModal';
+import ReputationCard    from './ReputationCard';
 import type { PressContext } from '../../data/pressConference';
 
 const TEAM_OPTIONS = [
@@ -86,24 +92,39 @@ export default function Dashboard() {
     ownerArchetype, ownerPatience, teamMorale,
     adjustOwnerPatience, adjustTeamMorale, setOwnerArchetype,
     breakoutWatch, setBreakoutWatch, incrementSeasonsManaged, seasonsManaged,
+    frontOffice,
   } = useGameStore();
 
   const {
     setStandings, setLeaderboard, setLastSeasonStats,
     addNewsItems, rivals, setRivals, updateRivals: storeUpdateRivals,
     addSeasonSummary, setPresserAvailable, presserAvailable, presserDone, setPresserDone,
+    mfsnReport, setMFSNReport,
+    poachEvent, setPoachEvent, resolvePoachEvent,
+    standings: currentStandings,
   } = useLeagueStore();
 
   const { setActiveTab } = useUIStore();
 
-  const [lastResult,   setLastResult]   = useState<SeasonResult | null>(null);
-  const [error,        setError]        = useState<string | null>(null);
-  const [pressCtx,     setPressCtx]     = useState<PressContext | null>(null);
+  const [lastResult,       setLastResult]       = useState<SeasonResult | null>(null);
+  const [error,            setError]            = useState<string | null>(null);
+  const [pressCtx,         setPressCtx]         = useState<PressContext | null>(null);
+  const [lastBreakouts,    setLastBreakouts]    = useState(0);
+  const [lastBusts,        setLastBusts]        = useState(0);
 
   // ── Set owner archetype on mount ──────────────────────────────────────────
   useEffect(() => {
     setOwnerArchetype(getOwnerArchetype(userTeamId));
   }, [userTeamId, setOwnerArchetype]);
+
+  // ── Generate MFSN pre-season predictions on first render (or season change) ─
+  useEffect(() => {
+    if (!mfsnReport || mfsnReport.season !== season) {
+      const lastStandings = currentStandings?.standings ?? null;
+      setMFSNReport(generatePreseasonPredictions(lastStandings, userTeamId, season));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season, userTeamId]);
 
   // ── Simulate season ────────────────────────────────────────────────────────
   const simulateSeason = useCallback(async () => {
@@ -125,6 +146,11 @@ export default function Dashboard() {
       setLeaderboard(hrLeaders);
       setSimProgress(1);
 
+      // ── Resolve MFSN predictions ───────────────────────────────────────────
+      if (mfsnReport && !mfsnReport.resolved && standings.standings) {
+        setMFSNReport(resolvePredictions(mfsnReport, standings.standings));
+      }
+
       // ── Narrative ──────────────────────────────────────────────────────────
       const userTeamSeason = result.teamSeasons.find(ts => ts.teamId === userTeamId);
       const userWins       = userTeamSeason?.record.wins ?? 81;
@@ -133,7 +159,10 @@ export default function Dashboard() {
       const isChampion     = userTeamSeason?.playoffRound === 'Champion';
 
       const breakoutsLeague = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
+      const bustsLeague     = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
       const breakoutsProxy  = Math.round(breakoutsLeague / 10);
+      setLastBreakouts(breakoutsLeague);
+      setLastBusts(bustsLeague);
 
       if (userTeamSeason) {
         // Owner patience
@@ -208,6 +237,12 @@ export default function Dashboard() {
       setPresserAvailable(true);
       setPresserDone(false);
 
+      // ── Staff poaching check ──────────────────────────────────────────────
+      if (shouldTriggerPoach(userWins, frontOffice.length, result.season) && !poachEvent) {
+        const event = generatePoachEvent(frontOffice, result.season);
+        if (event) setPoachEvent(event);
+      }
+
     } catch (e) {
       setError(String(e));
     } finally {
@@ -215,12 +250,13 @@ export default function Dashboard() {
     }
   }, [
     userTeamId, difficulty, ownerArchetype, ownerPatience, teamMorale,
-    breakoutWatch, rivals, seasonsManaged,
+    breakoutWatch, rivals, seasonsManaged, frontOffice, mfsnReport, poachEvent,
     setSeason, setSimulating, setSimProgress,
     setStandings, setLeaderboard, setLastSeasonStats,
     adjustOwnerPatience, adjustTeamMorale,
     setBreakoutWatch, setRivals, storeUpdateRivals, addNewsItems,
     addSeasonSummary, incrementSeasonsManaged, setPresserAvailable, setPresserDone,
+    setMFSNReport, setPoachEvent,
   ]);
 
   // ── Breakout watch at start of season ─────────────────────────────────────
@@ -245,6 +281,23 @@ export default function Dashboard() {
         <PressConference
           context={pressCtx}
           onClose={() => setPresserAvailable(false)}
+        />
+      )}
+
+      {/* ── Staff Poaching modal ─────────────────────────────────────────────── */}
+      {poachEvent && !poachEvent.resolved && (
+        <StaffPoachModal
+          event={poachEvent}
+          onLetGo={() => {
+            resolvePoachEvent('let_go');
+            adjustTeamMorale(-5);
+            adjustOwnerPatience(2);
+          }}
+          onBlock={() => {
+            resolvePoachEvent('block');
+            adjustTeamMorale(3);
+            adjustOwnerPatience(-4);
+          }}
         />
       )}
 
@@ -298,25 +351,42 @@ export default function Dashboard() {
         <MoralePanel />
       </div>
 
-      {/* ── Pre-sim state ─────────────────────────────────────────────────────── */}
+      {/* ── Pre-sim state: MFSN predictions + opening day ─────────────────────── */}
       {!lastResult && (
-        <div className="bloomberg-border bg-gray-900 p-6 text-center space-y-3">
-          <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
-          <div className="text-gray-600 text-xs">Click "SIM {season} SEASON" to run all 2,430 games</div>
-          <div className="text-gray-700 text-xs">
-            Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
+        <div className="space-y-3">
+          {/* Opening Day card */}
+          <div className="bloomberg-border bg-gray-900 px-4 py-3 flex items-center justify-between">
+            <div>
+              <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
+              <div className="text-gray-600 text-xs">
+                Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
+              </div>
+            </div>
+            <button
+              onClick={refreshBreakoutWatch}
+              className="border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors shrink-0"
+            >
+              🔍 Breakout Watch
+            </button>
           </div>
-          <button
-            onClick={refreshBreakoutWatch}
-            className="mx-auto block border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors"
-          >
-            🔍 Generate Breakout Watch
-          </button>
+
+          {/* MFSN pre-season predictions */}
+          {mfsnReport && !mfsnReport.resolved && (
+            <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
+          )}
         </div>
       )}
 
       {/* ── Breakout Watch ────────────────────────────────────────────────────── */}
       <BreakoutWatchPanel />
+
+      {/* ── Development Grade (post-season only) ─────────────────────────────── */}
+      {lastResult && (
+        <DevGradeCard
+          lastSeasonBreakouts={lastBreakouts}
+          lastSeasonBusts={lastBusts}
+        />
+      )}
 
       {/* ── Season Report ─────────────────────────────────────────────────────── */}
       {lastResult && (
@@ -429,8 +499,16 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── MFSN Resolved Predictions ─────────────────────────────────────────── */}
+      {mfsnReport && mfsnReport.resolved && (
+        <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
+      )}
+
       {/* ── Rivalry Panel ─────────────────────────────────────────────────────── */}
       <RivalryPanel />
+
+      {/* ── Franchise Reputation ──────────────────────────────────────────────── */}
+      <ReputationCard />
 
       {/* ── Legacy Timeline ───────────────────────────────────────────────────── */}
       <LegacyTimeline />
