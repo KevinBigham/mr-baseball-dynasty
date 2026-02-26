@@ -4,8 +4,75 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
+import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'MINORS' | 'DFA';
+
+// ─── Trait badge chip ─────────────────────────────────────────────────────────
+
+function TraitChip({ trait }: { trait: PlayerTrait }) {
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs"
+      style={{
+        background: `${trait.color}15`,
+        border:     `1px solid ${trait.color}40`,
+        color:      trait.color,
+        fontSize:   '0.65rem',
+      }}
+      title={trait.desc}
+    >
+      {trait.emoji} {trait.label}
+    </span>
+  );
+}
+
+// ─── Prospect traits panel (shown in MINORS tab) ──────────────────────────────
+
+function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
+  // Only show eligible prospects (high potential gap)
+  const prospects = players
+    .filter(p => p.potential - p.overall >= 5 && p.age <= 28)
+    .sort((a, b) => (b.potential - b.overall) - (a.potential - a.overall))
+    .slice(0, 12);
+
+  if (prospects.length === 0) return null;
+
+  return (
+    <div className="bloomberg-border mt-4">
+      <div className="bloomberg-header">PROSPECT DEVELOPMENT TRAITS</div>
+      <div className="p-3 grid grid-cols-2 gap-2">
+        {prospects.map(p => {
+          const traits = assignTraits(p);
+          if (traits.length === 0) return null;
+          return (
+            <div
+              key={p.playerId}
+              className="flex items-start gap-2 py-1.5 border-b border-gray-800 last:border-0"
+            >
+              {/* OVR → POT */}
+              <div className="shrink-0 text-right w-14">
+                <div className="text-orange-400 font-mono text-xs font-bold">{p.overall}</div>
+                <div className="text-gray-700 text-xs">→{p.potential}</div>
+              </div>
+              {/* Name + traits */}
+              <div className="flex-1 min-w-0">
+                <div className="text-gray-200 font-mono text-xs font-bold truncate">{p.name}</div>
+                <div className="text-gray-600 text-xs">{p.position} · Age {p.age}</div>
+                <div className="flex gap-1 flex-wrap mt-0.5">
+                  {traits.map(t => <TraitChip key={t.id} trait={t} />)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="px-3 pb-2 text-gray-700 text-xs">
+        Traits are scouting assessments of player development DNA. Tap a badge for details.
+      </div>
+    </div>
+  );
+}
 
 function formatSalary(s: number): string {
   if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
@@ -181,6 +248,11 @@ export default function RosterView() {
 
       {players.length === 0 && (
         <div className="text-gray-500 text-xs text-center py-8">No players in this category.</div>
+      )}
+
+      {/* ── Prospect Traits panel — shows only on MINORS tab ───────────────── */}
+      {activeTab === 'MINORS' && players.length > 0 && (
+        <ProspectTraitsPanel players={players} />
       )}
     </div>
   );

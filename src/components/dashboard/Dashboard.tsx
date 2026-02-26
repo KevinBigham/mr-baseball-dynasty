@@ -12,6 +12,8 @@ import {
 import { initRivals, updateRivals } from '../../engine/rivalry';
 import { generatePreseasonPredictions, resolvePredictions } from '../../engine/predictions';
 import { shouldTriggerPoach, generatePoachEvent } from '../../engine/staffPoaching';
+import { generateSeasonArc } from '../../engine/storyboard';
+import { generateSeasonMoments } from '../../engine/moments';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
@@ -22,6 +24,9 @@ import MFSNPanel         from './MFSNPanel';
 import DevGradeCard      from './DevGradeCard';
 import StaffPoachModal   from './StaffPoachModal';
 import ReputationCard    from './ReputationCard';
+import StoryboardPanel   from './StoryboardPanel';
+import MomentsPanel      from './MomentsPanel';
+import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
 import type { PressContext } from '../../data/pressConference';
 
 const TEAM_OPTIONS = [
@@ -102,6 +107,9 @@ export default function Dashboard() {
     mfsnReport, setMFSNReport,
     poachEvent, setPoachEvent, resolvePoachEvent,
     standings: currentStandings,
+    moments, addMoments,
+    weeklyStories, setWeeklyStories,
+    franchiseHistory,
   } = useLeagueStore();
 
   const { setActiveTab } = useUIStore();
@@ -111,6 +119,9 @@ export default function Dashboard() {
   const [pressCtx,         setPressCtx]         = useState<PressContext | null>(null);
   const [lastBreakouts,    setLastBreakouts]    = useState(0);
   const [lastBusts,        setLastBusts]        = useState(0);
+  const [postSimArcWins,   setPostSimArcWins]   = useState<number | undefined>(undefined);
+  const [postSimArcPO,     setPostSimArcPO]     = useState<boolean | undefined>(undefined);
+  const [postSimArcChamp,  setPostSimArcChamp]  = useState<boolean | undefined>(undefined);
 
   // ── Set owner archetype on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -222,6 +233,21 @@ export default function Dashboard() {
       // Season count
       incrementSeasonsManaged();
 
+      // ── Storyboard arc resolution ─────────────────────────────────────────
+      setPostSimArcWins(userWins);
+      setPostSimArcPO(isPlayoff);
+      setPostSimArcChamp(isChampion);
+
+      // ── Season Moments ────────────────────────────────────────────────────
+      const newMoments = generateSeasonMoments(result, summary, userTeamId);
+      if (newMoments.length > 0) addMoments(newMoments);
+
+      // ── Weekly MRBD Card ──────────────────────────────────────────────────
+      const weekStories = buildWeeklyCard(
+        result, standings.standings ?? null, userTeamId, userWins, isChampion, isPlayoff,
+      );
+      setWeeklyStories(weekStories);
+
       // Queue presser
       setPressCtx({
         wins:           userWins,
@@ -257,6 +283,7 @@ export default function Dashboard() {
     setBreakoutWatch, setRivals, storeUpdateRivals, addNewsItems,
     addSeasonSummary, incrementSeasonsManaged, setPresserAvailable, setPresserDone,
     setMFSNReport, setPoachEvent,
+    addMoments, setWeeklyStories,
   ]);
 
   // ── Breakout watch at start of season ─────────────────────────────────────
@@ -351,9 +378,17 @@ export default function Dashboard() {
         <MoralePanel />
       </div>
 
-      {/* ── Pre-sim state: MFSN predictions + opening day ─────────────────────── */}
+      {/* ── Pre-sim state: Storyboard arc + MFSN predictions + opening day ──────── */}
       {!lastResult && (
         <div className="space-y-3">
+          {/* Season Storyboard — pre-sim narrative */}
+          <StoryboardPanel
+            arc={generateSeasonArc(
+              franchiseHistory, ownerPatience, seasonsManaged, season, 'pre',
+            )}
+            phase="pre"
+          />
+
           {/* Opening Day card */}
           <div className="bloomberg-border bg-gray-900 px-4 py-3 flex items-center justify-between">
             <div>
@@ -499,6 +534,22 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* ── Post-sim Storyboard arc resolution ────────────────────────────────── */}
+      {lastResult && (
+        <StoryboardPanel
+          arc={generateSeasonArc(
+            franchiseHistory, ownerPatience, seasonsManaged, season - 1, 'post',
+            postSimArcWins, postSimArcPO, postSimArcChamp,
+          )}
+          phase="post"
+        />
+      )}
+
+      {/* ── This Week in MRBD ─────────────────────────────────────────────────── */}
+      {weeklyStories.length > 0 && (
+        <WeeklyCard stories={weeklyStories} season={lastResult?.season ?? season - 1} />
+      )}
+
       {/* ── MFSN Resolved Predictions ─────────────────────────────────────────── */}
       {mfsnReport && mfsnReport.resolved && (
         <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
@@ -512,6 +563,9 @@ export default function Dashboard() {
 
       {/* ── Legacy Timeline ───────────────────────────────────────────────────── */}
       <LegacyTimeline />
+
+      {/* ── Franchise Moments Gallery ─────────────────────────────────────────── */}
+      <MomentsPanel moments={moments} />
 
       {/* ── News Feed ─────────────────────────────────────────────────────────── */}
       <NewsFeedPanel />

@@ -4,6 +4,8 @@ import type { NewsItem } from '../engine/narrative';
 import type { RivalRecord } from '../engine/rivalry';
 import type { MFSNReport } from '../engine/predictions';
 import type { StaffPoachEvent } from '../engine/staffPoaching';
+import type { SeasonMoment } from '../engine/moments';
+import type { WeeklyStory } from '../components/dashboard/WeeklyCard';
 
 // ─── Franchise history record ─────────────────────────────────────────────────
 
@@ -51,6 +53,12 @@ interface LeagueStore {
   // ── Staff Poaching ────────────────────────────────────────────────────────────
   poachEvent:       StaffPoachEvent | null;
 
+  // ── Season Moments Gallery ────────────────────────────────────────────────────
+  moments:          SeasonMoment[];
+
+  // ── Weekly MRBD Card ──────────────────────────────────────────────────────────
+  weeklyStories:    WeeklyStory[];
+
   setStandings:           (d: StandingsData) => void;
   setRoster:              (d: RosterData) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
@@ -72,6 +80,9 @@ interface LeagueStore {
 
   setPoachEvent:          (event: StaffPoachEvent | null) => void;
   resolvePoachEvent:      (decision: 'let_go' | 'block') => void;
+
+  addMoments:             (items: SeasonMoment[]) => void;
+  setWeeklyStories:       (stories: WeeklyStory[]) => void;
 }
 
 // ─── Key moment generator ─────────────────────────────────────────────────────
@@ -123,6 +134,8 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   presserDone:      false,
   mfsnReport:       null,
   poachEvent:       null,
+  moments:          [],
+  weeklyStories:    [],
 
   setStandings:       d => set({ standings: d }),
   setRoster:          d => set({ roster: d }),
@@ -153,4 +166,10 @@ export const useLeagueStore = create<LeagueStore>(set => ({
       ? { ...state.poachEvent, resolved: true, decision }
       : null,
   })),
+
+  addMoments:      items   => set(state => ({
+    // Keep all moments but cap at 100; newest first
+    moments: [...items, ...state.moments].slice(0, 100),
+  })),
+  setWeeklyStories: stories => set({ weeklyStories: stories }),
 }));
