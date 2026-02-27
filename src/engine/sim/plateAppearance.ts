@@ -183,6 +183,25 @@ function stage2(
 // ─── STAGE 3: Hit/out resolution ──────────────────────────────────────────────
 // Returns the final PAOutcome given batted ball type
 
+// ─── Error probability by batted ball type ──────────────────────────────────
+// MLB average: ~0.55 errors/team/game ≈ 1 error per ~65 BIP
+// Better defense → fewer errors; poor defense → more errors
+
+function errorProbability(battedBall: string, defenseRating: number): number {
+  // Base error rates per batted ball type
+  const baseRates: Record<string, number> = {
+    'GB':  0.022,  // Ground balls — most common error type (bad hops, bobbles, throws)
+    'LD':  0.004,  // Line drives — rare (hot shot off glove)
+    'FB':  0.005,  // Fly balls — misjudged, lost in sun
+    'PU':  0.002,  // Popups — very rare
+  };
+  const base = baseRates[battedBall] ?? 0.01;
+
+  // Defense modifier: avg (400) = neutral, elite (550) cuts errors by ~40%, poor (250) increases by ~40%
+  const defFactor = 1.0 - (defenseRating - 400) / 375;
+  return Math.max(0.001, Math.min(0.06, base * defFactor));
+}
+
 function stage3(
   gen: RandomGenerator,
   battedBall: string,
@@ -217,6 +236,10 @@ function stage3(
         if (hitRoll < 0.25 + xbhBonus * 0.2)                 return ['2B', gen];
         return ['1B', gen];
       }
+      // Out — but check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('LD', defenseRating)) return ['E', gen];
       return ['LD_OUT', gen];
     }
 
@@ -224,7 +247,11 @@ function stage3(
       if (roll < effectiveBabip * 0.85) { // GBs have slightly lower BABIP than average
         return ['1B', gen];
       }
-      // Out — possible GDP?
+      // Out — check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('GB', defenseRating)) return ['E', gen];
+      // possible GDP?
       const runnerOn1st = (runners & 0b001) !== 0;
       if (runnerOn1st && outs < 2) {
         let dpRoll: number;
@@ -244,7 +271,11 @@ function stage3(
         if (hitRoll < 0.45 + xbhBonus * 0.25)                 return ['2B', gen];
         return ['1B', gen];
       }
-      // Out — possible sac fly?
+      // Out — check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('FB', defenseRating)) return ['E', gen];
+      // possible sac fly?
       const runnerOn3rd = (runners & 0b100) !== 0;
       if (runnerOn3rd && outs < 2) {
         let sfRoll: number;
@@ -257,6 +288,10 @@ function stage3(
     case 'PU': {
       // Popup: almost always out, very rarely hit
       if (roll < 0.02) return ['1B', gen];
+      // Error check
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('PU', defenseRating)) return ['E', gen];
       return ['PU_OUT', gen];
     }
 

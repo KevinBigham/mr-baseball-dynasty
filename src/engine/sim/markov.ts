@@ -138,6 +138,14 @@ export function applyOutcome(
       break;
     }
 
+    case 'E': {
+      // Error: batter reaches like a single, runners advance
+      let runs: number;
+      [newRunners, runs, gen] = advanceOnHit(gen, state.runners, '1B', leadRunnerSpeedVal);
+      additionalRuns = runs;
+      break;
+    }
+
     case 'BB':
     case 'HBP': {
       const { newRunners: nr, runs } = forceWalk(state.runners);

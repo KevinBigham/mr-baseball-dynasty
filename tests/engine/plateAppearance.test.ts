@@ -134,7 +134,7 @@ describe('Plate Appearance Engine — outcome distribution', () => {
   it('produces valid outcomes only', () => {
     const VALID_OUTCOMES = new Set([
       'K', 'BB', 'HBP', 'HR', '1B', '2B', '3B',
-      'GB_OUT', 'FB_OUT', 'LD_OUT', 'PU_OUT', 'GDP', 'SF',
+      'GB_OUT', 'FB_OUT', 'LD_OUT', 'PU_OUT', 'GDP', 'SF', 'E',
     ]);
     for (const key of Object.keys(counts)) {
       expect(VALID_OUTCOMES.has(key), `Unknown outcome: ${key}`).toBe(true);

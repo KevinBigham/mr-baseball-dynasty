@@ -96,8 +96,9 @@ function accumulateBatterStat(
   if (outcome === '2B')  { s.h++; s.doubles++; }
   if (outcome === '3B')  { s.h++; s.triples++; }
   if (outcome === 'HR')  { s.h++; s.hr++; }
+  // 'E' — reached on error: counts as AB (above) but NOT a hit. No RBI credited.
   if (scored) s.r++;
-  s.rbi += rbi;
+  if (outcome !== 'E') s.rbi += rbi; // No RBI on errors
   stats.set(playerId, s);
 }
 
@@ -106,16 +107,18 @@ function accumulatePitcherStat(
   playerId: number,
   outcome: PAOutcome,
   runsAllowed: number,
+  unearnedRuns: number,
   pitches: number,
 ): void {
   const s = stats.get(playerId) ?? blankPitcherStats(playerId);
   s.pitchCount += pitches;
   s.r += runsAllowed;
-  s.er += runsAllowed; // simplified: all runs earned
+  s.er += runsAllowed - unearnedRuns; // Only count earned runs
   if (outcome === 'K')  s.k++;
   if (outcome === 'BB') s.bb++;
   if (outcome === 'HR') { s.hr++; }
   if (outcome === '1B' || outcome === '2B' || outcome === '3B' || outcome === 'HR') s.h++;
+  if (outcome === 'E') s.h++; // Error counts as a hit allowed for pitcher tracking
   // Count outs
   if (outcome === 'K' || outcome === 'GB_OUT' || outcome === 'FB_OUT'
     || outcome === 'LD_OUT' || outcome === 'PU_OUT' || outcome === 'SF') {
@@ -135,6 +138,7 @@ function estimatePitches(outcome: PAOutcome): number {
     case '1B': return 4;
     case '2B': case '3B': return 4;
     case 'GDP': return 3;
+    case 'E':  return 3;  // Error on a BIP — same as a quick out (the pitch count is the same)
     default: return 3;   // Quick outs (GO, FO, PU) average 3 pitches
   }
 }
@@ -185,6 +189,11 @@ function simulateHalfInning(
   ) ?? null;
 
   let pos = lineupPos;
+
+  // Error tracking for unearned runs:
+  // If an error occurs at 2 outs (would-have-been 3rd out), all subsequent runs are unearned.
+  // Otherwise, only runs scoring directly on the error play are unearned.
+  let allRunsUnearned = false;
 
   while (markov.outs < 3) {
     // ── Stolen base attempts (before next PA) ──
@@ -255,14 +264,25 @@ function simulateHalfInning(
     const pitchesThisPA = estimatePitches(outcome);
     pitchCountRef.value += pitchesThisPA;
 
+    // Handle error: if error at 2 outs, all subsequent runs become unearned
+    if (outcome === 'E' && preOuts === 2) {
+      allRunsUnearned = true;
+    }
+
     // Update Markov state
     const runsBefore2 = markov.runsScored;
     [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, 350);
     const runsThisPA = markov.runsScored - runsBefore2;
 
+    // Determine unearned runs:
+    // 1) If allRunsUnearned flag is set (error extended the inning), all runs are unearned
+    // 2) If this play is an error, runs scoring on this play are unearned
+    const unearnedThisPA = allRunsUnearned ? runsThisPA
+      : (outcome === 'E' ? runsThisPA : 0);
+
     // Accumulate stats
     accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false);
-    accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, pitchesThisPA);
+    accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, unearnedThisPA, pitchesThisPA);
 
     // Add to play log
     if (playLog) {
