@@ -56,3 +56,18 @@ export interface ScheduleEntry {
   isInterleague: boolean;
   isDivisional: boolean;
 }
+
+/** Lightweight game summary for recent games display (no full stat arrays) */
+export interface GameSummary {
+  gameId: number;
+  date: string;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeScore: number;
+  awayScore: number;
+  innings: number;
+  walkOff?: boolean;
+  lineScore?: { away: number[]; home: number[] };
+  homeHits: number;
+  awayHits: number;
+}

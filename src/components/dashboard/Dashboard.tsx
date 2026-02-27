@@ -18,6 +18,7 @@ import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
 import ParkFactorPanel   from './ParkFactorPanel';
+import RecentGamesPanel  from './RecentGamesPanel';
 import PressConference   from './PressConference';
 import RivalryPanel      from './RivalryPanel';
 import LegacyTimeline    from './LegacyTimeline';
@@ -380,6 +381,7 @@ export default function Dashboard() {
         <MoralePanel />
       </div>
       <ParkFactorPanel />
+      <RecentGamesPanel />
 
       {/* ── Pre-sim state: Storyboard arc + MFSN predictions + opening day ──────── */}
       {!lastResult && (

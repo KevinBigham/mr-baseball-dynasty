@@ -1,7 +1,7 @@
 import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
-import type { ScheduleEntry } from '../../types/game';
+import type { ScheduleEntry, GameSummary } from '../../types/game';
 import type { Player, PlayerSeasonStats, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
@@ -154,6 +154,7 @@ export interface PartialSimInput {
   rotationIndex?: Map<number, number>;
   bullpenOffset?: Map<number, number>;
   pitcherRestMap?: PitcherRestMap;
+  userTeamId?: number;  // Track recent games for this team
   onProgress?: (pct: number) => void;
 }
 
@@ -166,6 +167,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
   rotationIndex: Map<number, number>;
   bullpenOffset: Map<number, number>;
   pitcherRestMap: PitcherRestMap;
+  recentGames: GameSummary[];
   gamesCompleted: number;
 }> {
   const { teams, players, schedule, baseSeed } = input;
@@ -204,6 +206,8 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
 
   const sliceLength = input.endGameIndex - input.startGameIndex;
   let completed = 0;
+  const recentGames: GameSummary[] = [];
+  const MAX_RECENT = 10;
 
   for (let i = input.startGameIndex; i < Math.min(input.endGameIndex, schedule.length); i++) {
     const entry = schedule[i]!;
@@ -261,6 +265,26 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
     accumulatePitching(playerStatsMap, box.homePitching, playerTeamMap, playerPositionMap, season);
     accumulatePitching(playerStatsMap, box.awayPitching, playerTeamMap, playerPositionMap, season);
 
+    // Collect recent games for the user's team
+    if (input.userTeamId !== undefined &&
+        (entry.homeTeamId === input.userTeamId || entry.awayTeamId === input.userTeamId)) {
+      recentGames.push({
+        gameId: entry.gameId,
+        date: entry.date,
+        homeTeamId: entry.homeTeamId,
+        awayTeamId: entry.awayTeamId,
+        homeScore: result.homeScore,
+        awayScore: result.awayScore,
+        innings: result.innings,
+        walkOff: result.walkOff,
+        lineScore: box.lineScore,
+        homeHits: box.homeBatting.reduce((s, b) => s + b.h, 0),
+        awayHits: box.awayBatting.reduce((s, b) => s + b.h, 0),
+      });
+      // Keep only the last N
+      if (recentGames.length > MAX_RECENT) recentGames.shift();
+    }
+
     completed++;
 
     if (completed % 50 === 0 && input.onProgress) {
@@ -280,6 +304,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
     rotationIndex,
     bullpenOffset,
     pitcherRestMap,
+    recentGames,
     gamesCompleted: completed,
   };
 }

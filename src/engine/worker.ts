@@ -68,6 +68,7 @@ let _gamesPlayed = 0;         // How many schedule entries have been simulated t
 let _simRotationIndex = new Map<number, number>();
 let _simBullpenOffset = new Map<number, number>();
 let _simPitcherRestMap: PitcherRestMap = new Map();
+let _recentGames: import('../types/game').GameSummary[] = [];
 let _simTeamWins = new Map<number, number>();
 let _simTeamLosses = new Map<number, number>();
 let _simTeamRS = new Map<number, number>();
@@ -492,6 +493,7 @@ const api = {
       rotationIndex: _simRotationIndex,
       bullpenOffset: _simBullpenOffset,
       pitcherRestMap: _simPitcherRestMap,
+      userTeamId: state.userTeamId,
       onProgress,
     });
 
@@ -504,6 +506,7 @@ const api = {
     _simRotationIndex = result.rotationIndex;
     _simBullpenOffset = result.bullpenOffset;
     _simPitcherRestMap = result.pitcherRestMap;
+    _recentGames = result.recentGames;
     _gamesPlayed = endIdx;
 
     // Update team records so standings reflect partial season
@@ -561,6 +564,11 @@ const api = {
       totalScheduled: total,
       pct: total > 0 ? _gamesPlayed / total : 0,
     };
+  },
+
+  // ── Recent Games ─────────────────────────────────────────────────────────
+  async getRecentGames(): Promise<import('../types/game').GameSummary[]> {
+    return _recentGames;
   },
 
   // ── Standings ──────────────────────────────────────────────────────────────
@@ -767,6 +775,7 @@ const api = {
         simRotationIndex: Array.from(_simRotationIndex.entries()),
         simBullpenOffset: Array.from(_simBullpenOffset.entries()),
         simPitcherRestMap: Array.from(_simPitcherRestMap.entries()),
+        recentGames: _recentGames,
         simTeamWins: Array.from(_simTeamWins.entries()),
         simTeamLosses: Array.from(_simTeamLosses.entries()),
         simTeamRS: Array.from(_simTeamRS.entries()),
@@ -814,6 +823,7 @@ const api = {
       _simRotationIndex = new Map(a.simRotationIndex ?? []);
       _simBullpenOffset = new Map(a.simBullpenOffset ?? []);
       _simPitcherRestMap = new Map(a.simPitcherRestMap ?? []);
+      _recentGames = (a.recentGames as typeof _recentGames) ?? [];
       _simTeamWins = new Map(a.simTeamWins ?? []);
       _simTeamLosses = new Map(a.simTeamLosses ?? []);
       _simTeamRS = new Map(a.simTeamRS ?? []);
