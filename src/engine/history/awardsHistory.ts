@@ -185,3 +185,21 @@ export function getTransactionLog(teamId?: number, limit = 100): TransactionLog[
 export function getMilestones(): SeasonMilestone[] {
   return [..._milestones].sort((a, b) => b.season - a.season);
 }
+
+// ─── Restore from save ──────────────────────────────────────────────────────────
+
+export function restoreAwardsHistory(data: {
+  awardHistory: AwardHistoryEntry[];
+  championHistory: ChampionHistoryEntry[];
+  transactionLog: TransactionLog[];
+  milestones: SeasonMilestone[];
+}): void {
+  _awardHistory.length = 0;
+  _awardHistory.push(...data.awardHistory);
+  _championHistory.length = 0;
+  _championHistory.push(...data.championHistory);
+  _transactionLog.length = 0;
+  _transactionLog.push(...data.transactionLog);
+  _milestones.length = 0;
+  _milestones.push(...data.milestones);
+}

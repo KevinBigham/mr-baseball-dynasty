@@ -46,13 +46,23 @@ function pickReliever(
   bullpenCounter: number,
   excludeIds: Set<number>,
   wantCloser: boolean,
+  preferredHand?: 'L' | 'R',
 ): Player | null {
-  const relievers = players.filter(
+  let relievers = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
       && (p.position === 'RP' || (wantCloser && p.position === 'CL'))
       && !excludeIds.has(p.playerId),
   );
   if (relievers.length === 0) return null;
+
+  // If we have a hand preference, try to match it
+  if (preferredHand) {
+    const matchingHand = relievers.filter(p => p.throws === preferredHand);
+    if (matchingHand.length > 0) {
+      relievers = matchingHand;
+    }
+  }
+
   relievers.sort((a, b) => b.overall - a.overall);
   return relievers[bullpenCounter % relievers.length] ?? null;
 }
@@ -383,7 +393,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
 
-    // Pitcher management: pull home starter?
+    // Pitcher management: pull home starter? (home team pitches in top half)
+    const homeSave = isSaveSituation(inning, ctx.homeScore, ctx.awayScore);
     homePitcher = managePitcher(
       gen,
       homePitcher,
@@ -393,8 +404,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.homeTeam.teamId,
       homeUsedPitchers,
       inning,
-      false, // not save situation for top
+      homeSave,
       input.homeTeam.bullpenReliefCounter,
+      awayLineup,
+      awayLineupPos,
     );
 
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
@@ -419,7 +432,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
 
-    // Pitcher management: pull away starter?
+    // Pitcher management: pull away starter? (away team pitches in bottom half)
+    const awaySave = isSaveSituation(inning, ctx.awayScore, ctx.homeScore);
     awayPitcher = managePitcher(
       gen,
       awayPitcher,
@@ -429,8 +443,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.awayTeam.teamId,
       awayUsedPitchers,
       inning,
-      false,
+      awaySave,
       input.awayTeam.bullpenReliefCounter,
+      homeLineup,
+      homeLineupPos,
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
@@ -470,6 +486,35 @@ export function simulateGame(input: SimulateGameInput): GameResult {
 
 // ─── Pitcher management ───────────────────────────────────────────────────────
 
+// Determine the platoon-optimal hand for the next few batters
+function getPreferredBullpenHand(
+  opposingLineup: Player[],
+  lineupPos: number,
+): 'L' | 'R' | undefined {
+  // Look at next 3 batters — if majority bat from one side, prefer opposite hand
+  let leftBats = 0;
+  let rightBats = 0;
+  for (let i = 0; i < 3; i++) {
+    const batter = opposingLineup[(lineupPos + i) % 9];
+    if (!batter) continue;
+    if (batter.bats === 'L') leftBats++;
+    else if (batter.bats === 'R') rightBats++;
+    // Switch hitters count as neutral
+  }
+  if (leftBats >= 2) return 'L';  // Use LHP vs lefty-heavy lineup segment
+  if (rightBats >= 2) return 'R'; // Use RHP vs righty-heavy segment
+  return undefined; // No strong preference
+}
+
+// Detect save situation: leading by 1-3 runs in 9th+ with < 3 innings left to play
+function isSaveSituation(
+  inning: number,
+  teamScore: number,
+  opponentScore: number,
+): boolean {
+  return inning >= 9 && teamScore > opponentScore && (teamScore - opponentScore) <= 3;
+}
+
 function managePitcher(
   gen: RandomGenerator,
   currentPitcher: Player,
@@ -479,45 +524,43 @@ function managePitcher(
   teamId: number,
   usedIds: Set<number>,
   inning: number,
-  isSaveSituation: boolean,
-  bullpenOffset: number,       // Season-level offset to rotate through relievers across games
+  saveSituation: boolean,
+  bullpenOffset: number,
+  opposingLineup?: Player[],
+  lineupPos?: number,
 ): Player {
-  const isPitcher = (p: Player) => p.isPitcher;
   const pc = pitchCountRef.value;
-  void timesThroughRef; // used elsewhere; ref checked at call site
 
-  // Stamina-gated inning cap — prevents low-K/efficient pitchers from gaming pitch limits:
-  //   stamina < 380: max 5 innings (SP goes ~165 IP)
-  //   stamina 380-449: max 6 innings (SP goes ~198 IP, just under 200)
-  //   stamina ≥ 450: max 7 innings (SP can reach 200+ IP) — ~7% of SPs
+  // Stamina-gated inning cap
   const staminaAttr = currentPitcher.pitcherAttributes?.stamina ?? 350;
-  // Bottom ~11% of SPs (stamina<320) capped at 5 innings; middle ~83% at 6; top ~6% at 7
   const maxSPInnings = staminaAttr < 320 ? 5 : staminaAttr < 470 ? 6 : 7;
 
-  // Pitch limit: secondary gate (still needed for high-stamina pitchers)
-  // stamina=450→87, stamina=500→91, stamina=550→94
+  // Pitch limit: secondary gate
   const pitchLimit = Math.round(55 + staminaAttr / 14);
 
   const shouldPull =
     pc > pitchLimit ||
     (currentPitcher.position === 'SP' && inning >= maxSPInnings) ||
-    (currentPitcher.position !== 'SP' && inning >= 8); // Hard cap for relievers at 7
+    (currentPitcher.position !== 'SP' && inning >= 8);
 
   if (!shouldPull) return currentPitcher;
 
-  // Pull and bring in reliever — use bullpenOffset to cycle through the bullpen across games
-  const wantCloser = isSaveSituation && inning >= 9;
+  // Determine optimal reliever hand based on upcoming batters
+  const preferredHand = opposingLineup && lineupPos !== undefined
+    ? getPreferredBullpenHand(opposingLineup, lineupPos)
+    : undefined;
+
+  // Pull and bring in reliever
+  const wantCloser = saveSituation && inning >= 9;
   const counter = (bullpenOffset + usedIds.size) % 100;
-  const next = pickReliever(players, teamId, counter, usedIds, wantCloser);
-  if (!next) return currentPitcher; // No one available
+  const next = pickReliever(players, teamId, counter, usedIds, wantCloser, preferredHand);
+  if (!next) return currentPitcher;
 
   usedIds.add(next.playerId);
-  pitchCountRef.value = 0; // Reset for the new pitcher
-  timesThroughRef.value = 1; // Reset TTO for the new pitcher
+  pitchCountRef.value = 0;
+  timesThroughRef.value = 1;
 
-  void gen; // gen not needed here but keep signature consistent
-  void isPitcher; // used conceptually
-
+  void gen;
   return next;
 }
 
@@ -529,20 +572,36 @@ function assignPitcherDecisions(
   homeScore: number,
   awayScore: number,
 ): void {
-  // Win goes to pitcher of record for winning team (last pitcher to lead while they pitched)
-  // Simplified: win goes to starter of winning team, save to last reliever if applicable
+  if (homeScore === awayScore) return; // Tie game — shouldn't happen but be safe
+
   const winnerStats = homeScore > awayScore ? homePitcherStats : awayPitcherStats;
   const loserStats  = homeScore > awayScore ? awayPitcherStats : homePitcherStats;
+  const margin = Math.abs(homeScore - awayScore);
 
-  // Starter gets the W (first pitcher in map)
   const winnerArr = Array.from(winnerStats.values());
+  const loserArr = Array.from(loserStats.values());
+
+  // Win goes to the starter (first pitcher)
   if (winnerArr.length > 0) {
     winnerArr[0]!.decision = 'W';
-    // Last reliever of winner gets save if SP didn't finish and margin ≤ 3
   }
-  const loserArr = Array.from(loserStats.values());
+
+  // Loss goes to the starter of the losing team
   if (loserArr.length > 0) {
     loserArr[0]!.decision = 'L';
+  }
+
+  // Save: last reliever of winning team gets the save if:
+  //   1. They're not the starter (didn't get the W)
+  //   2. They finished the game (they're the last pitcher)
+  //   3. Lead was ≤ 3 when they entered OR they pitched 3+ innings
+  if (winnerArr.length > 1) {
+    const lastPitcher = winnerArr[winnerArr.length - 1]!;
+    if (margin <= 3 || lastPitcher.outs >= 9) {
+      lastPitcher.decision = 'S';
+    } else {
+      lastPitcher.decision = 'H'; // Hold if not a save situation
+    }
   }
 }
 

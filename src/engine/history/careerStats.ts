@@ -80,6 +80,13 @@ export function getCareerRecord(playerId: number): CareerRecord | undefined {
   return _careerRecords.get(playerId);
 }
 
+export function restoreCareerRecords(records: Array<[number, CareerRecord]>): void {
+  _careerRecords.clear();
+  for (const [id, record] of records) {
+    _careerRecords.set(id, record);
+  }
+}
+
 // ─── Record season stats ────────────────────────────────────────────────────────
 
 export function recordSeasonStats(

@@ -12,6 +12,34 @@ export interface LeagueEnvironment {
   babipAdjustment: number;
 }
 
+// Auxiliary worker state that was previously lost on save/load
+export interface WorkerAuxState {
+  seasonResults: unknown[];
+  tradeHistory: unknown[];
+  lineups: Array<[number, unknown]>;
+  financialHistory: Array<[number, unknown[]]>;
+  teamCash: Array<[number, number]>;
+  luxuryTaxYears: Array<[number, number]>;
+  seasonInjuries: unknown[];
+  arbHistory: unknown[];
+  rule5History: unknown[];
+  deadlineDeals: unknown[];
+  intlProspects: unknown[];
+  coachingStaff: Array<[number, unknown[]]>;
+  coachingPool: unknown[];
+  extensionHistory: unknown[];
+  waiverHistory: unknown[];
+  ownerGoals: unknown | null;
+  playerSeasonStats: Array<[number, unknown]>;
+  careerRecords: Array<[number, unknown]>;
+  awardsHistory: {
+    awardHistory: unknown[];
+    championHistory: unknown[];
+    transactionLog: unknown[];
+    milestones: unknown[];
+  };
+}
+
 export interface LeagueState {
   season: number;
   teams: Team[];
@@ -20,6 +48,7 @@ export interface LeagueState {
   environment: LeagueEnvironment;
   prngState: number[];  // Serialized PRNG state
   userTeamId: number;
+  aux?: WorkerAuxState; // Persisted auxiliary state (coaching, finance, history, etc.)
 }
 
 export interface SeasonResult {

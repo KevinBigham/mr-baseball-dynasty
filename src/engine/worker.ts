@@ -24,13 +24,13 @@ import type { TradeablePlayer, LineupData } from '../types/trade';
 import { generateDraftClass, buildDraftOrder, aiSelectPick, executeDraftPick, type DraftProspect, type DraftState } from './draft/draftEngine';
 import { generateLeagueProspectRankings, generateOrgProspectRankings, type ProspectReport } from './scouting/prospectRankings';
 import { computeTeamFinancials, computePayroll, type TeamFinancials, type FinancialHistory } from './finance/financeEngine';
-import { recordSeasonStats, evaluateHOFCandidates, getAllTimeLeaders, getCareerRecords, getFranchiseRecords, type CareerStat, type AllTimeLeader, type HOFCandidate, type FranchiseRecord, type CareerRecord } from './history/careerStats';
+import { recordSeasonStats, evaluateHOFCandidates, getAllTimeLeaders, getCareerRecords, restoreCareerRecords, getFranchiseRecords, type CareerStat, type AllTimeLeader, type HOFCandidate, type FranchiseRecord, type CareerRecord } from './history/careerStats';
 import { processSeasonInjuries, type Injury } from './injuries/injuryEngine';
 import { runRule5Draft, identifyRule5Eligible, protectPlayer, type Rule5Selection, type Rule5Eligible } from './offseason/rule5Draft';
 import { processArbitration, type ArbitrationCase } from './offseason/arbitration';
 import { simulateTradeDeadline, type DeadlineDeal } from './trade/tradeDeadline';
 import { generateIntlClass, runAIIntlSigning, type IntlProspect } from './offseason/intlSigning';
-import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
+import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, restoreAwardsHistory, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
 import { computeAllAdvancedStats, type AdvancedHitterStats, type AdvancedPitcherStats, type LeagueEnvironment } from './analytics/sabermetrics';
 import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, computeCoachingEffects, advanceCoachContracts, type Coach, type CoachingStaffData } from './coaching/coachingStaff';
 import { getExtensionCandidates, evaluateExtension, runAIExtensions, type ExtensionOffer, type ExtensionResult, type ExtensionCandidate } from './contracts/extensions';
@@ -583,19 +583,105 @@ const api = {
         contractYearsRemaining: player.rosterData.contractYearsRemaining,
       },
       seasonStats,
-      careerStats: { seasons: 1, ...(seasonStats ?? {}) },
+      careerStats: (() => {
+        const career = getCareerRecords().get(playerId);
+        if (career) {
+          const cAvg = career.ab > 0 ? Number((career.h / career.ab).toFixed(3)) : 0;
+          const cObp = career.pa > 0 ? Number(((career.h + career.bb + career.hbp) / career.pa).toFixed(3)) : 0;
+          const cEra = career.outs > 0 ? Number(((career.er / career.outs) * 27).toFixed(2)) : 0;
+          return {
+            seasons: career.seasons,
+            pa: career.pa, ab: career.ab, h: career.h, hr: career.hr,
+            rbi: career.rbi, bb: career.bb, k: career.k, sb: career.sb,
+            avg: cAvg, obp: cObp,
+            w: career.w, l: career.l, sv: career.sv, era: cEra,
+            ip: Number((career.outs / 3).toFixed(1)), ka: career.ka, bba: career.bba,
+          };
+        }
+        // Fallback: first season — use current season stats or zeros
+        const ss = seasonStats ?? {};
+        const base: Record<string, number> = { seasons: 1 };
+        for (const [k, v] of Object.entries(ss)) {
+          if (typeof v === 'number') base[k] = v;
+        }
+        return base as { seasons: number; [key: string]: number };
+      })(),
     };
   },
 
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
-    return _state;
+    if (!_state) return null;
+    // Snapshot all auxiliary state so it survives save/load
+    return {
+      ..._state,
+      aux: {
+        seasonResults: _seasonResults,
+        tradeHistory: _tradeHistory,
+        lineups: Array.from(_lineups.entries()),
+        financialHistory: Array.from(_financialHistory.entries()),
+        teamCash: Array.from(_teamCash.entries()),
+        luxuryTaxYears: Array.from(_luxuryTaxYears.entries()),
+        seasonInjuries: _seasonInjuries,
+        arbHistory: _arbHistory,
+        rule5History: _rule5History,
+        deadlineDeals: _deadlineDeals,
+        intlProspects: _intlProspects,
+        coachingStaff: Array.from(_coachingStaff.entries()),
+        coachingPool: _coachingPool,
+        extensionHistory: _extensionHistory,
+        waiverHistory: _waiverHistory,
+        ownerGoals: _ownerGoals,
+        playerSeasonStats: Array.from(_playerSeasonStats.entries()),
+        careerRecords: Array.from(getCareerRecords().entries()),
+        awardsHistory: {
+          awardHistory: getAwardHistory(),
+          championHistory: getChampionHistory(),
+          transactionLog: getTransactionLog(),
+          milestones: getMilestones(),
+        },
+      },
+    };
   },
 
   async loadState(state: LeagueState): Promise<void> {
     _state = state;
-    _playerSeasonStats = new Map();
     rebuildMaps();
+
+    // Restore auxiliary state if present
+    if (state.aux) {
+      const a = state.aux;
+      _seasonResults = a.seasonResults as typeof _seasonResults;
+      _tradeHistory = a.tradeHistory as typeof _tradeHistory;
+      _lineups = new Map(a.lineups as Array<[number, LineupData]>);
+      _financialHistory = new Map(a.financialHistory as Array<[number, FinancialHistory[]]>);
+      _teamCash = new Map(a.teamCash);
+      _luxuryTaxYears = new Map(a.luxuryTaxYears);
+      _seasonInjuries = a.seasonInjuries as typeof _seasonInjuries;
+      _arbHistory = a.arbHistory as typeof _arbHistory;
+      _rule5History = a.rule5History as typeof _rule5History;
+      _deadlineDeals = a.deadlineDeals as typeof _deadlineDeals;
+      _intlProspects = a.intlProspects as typeof _intlProspects;
+      _coachingStaff = new Map(a.coachingStaff as Array<[number, Coach[]]>);
+      _coachingPool = a.coachingPool as typeof _coachingPool;
+      _extensionHistory = a.extensionHistory as typeof _extensionHistory;
+      _waiverHistory = a.waiverHistory as typeof _waiverHistory;
+      _ownerGoals = a.ownerGoals as typeof _ownerGoals;
+      _playerSeasonStats = new Map(a.playerSeasonStats as Array<[number, import('../types/player').PlayerSeasonStats]>);
+      if (a.careerRecords) {
+        restoreCareerRecords(a.careerRecords as Array<[number, CareerRecord]>);
+      }
+      if (a.awardsHistory) {
+        restoreAwardsHistory(a.awardsHistory as {
+          awardHistory: AwardHistoryEntry[];
+          championHistory: ChampionHistoryEntry[];
+          transactionLog: TxnLog[];
+          milestones: SeasonMilestone[];
+        });
+      }
+    } else {
+      _playerSeasonStats = new Map();
+    }
   },
 
   // ── Roster Management ────────────────────────────────────────────────────
