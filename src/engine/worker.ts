@@ -21,6 +21,10 @@ import { calculatePlayerValue } from './trade/valuation';
 import { evaluateTrade, executeTrade, getTradeablePlayers, type TradeProposal, type TradeEvaluation, type TradeRecord } from './trade/tradeEngine';
 import { identifyFreeAgents, signFreeAgent as signFA, runAIFreeAgency, type FreeAgent, type FreeAgencyResult } from './offseason/freeAgency';
 import type { TradeablePlayer, LineupData } from '../types/trade';
+import { generateDraftClass, buildDraftOrder, aiSelectPick, executeDraftPick, type DraftProspect, type DraftState } from './draft/draftEngine';
+import { generateLeagueProspectRankings, generateOrgProspectRankings, type ProspectReport } from './scouting/prospectRankings';
+import { computeTeamFinancials, computePayroll, type TeamFinancials, type FinancialHistory } from './finance/financeEngine';
+import { recordSeasonStats, evaluateHOFCandidates, getAllTimeLeaders, getCareerRecords, getFranchiseRecords, type CareerStat, type AllTimeLeader, type HOFCandidate, type FranchiseRecord, type CareerRecord } from './history/careerStats';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -31,6 +35,10 @@ let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonS
 let _seasonResults: SeasonResult[] = [];
 let _tradeHistory: TradeRecord[] = [];
 let _lineups = new Map<number, LineupData>();
+let _draftState: DraftState | null = null;
+let _financialHistory = new Map<number, FinancialHistory[]>();  // teamId → history
+let _teamCash = new Map<number, number>();       // teamId → accumulated cash
+let _luxuryTaxYears = new Map<number, number>(); // teamId → consecutive years over CBT
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -190,8 +198,47 @@ const api = {
     // Rebuild the player map after development + free agency (ages/attrs/teams changed)
     rebuildMaps();
 
-    // Clear lineups (rosters changed)
+    // Clear lineups and draft (rosters changed, new offseason)
     _lineups.clear();
+    _draftState = null;
+
+    // ── Record career stats ──────────────────────────────────────────────────
+    const awardsList: Array<{ playerId: number; award: string }> = [];
+    if (awards) {
+      if (awards.mvpAL) awardsList.push({ playerId: awards.mvpAL.playerId, award: 'MVP (AL)' });
+      if (awards.mvpNL) awardsList.push({ playerId: awards.mvpNL.playerId, award: 'MVP (NL)' });
+      if (awards.cyYoungAL) awardsList.push({ playerId: awards.cyYoungAL.playerId, award: 'Cy Young (AL)' });
+      if (awards.cyYoungNL) awardsList.push({ playerId: awards.cyYoungNL.playerId, award: 'Cy Young (NL)' });
+      if (awards.royAL) awardsList.push({ playerId: awards.royAL.playerId, award: 'ROY (AL)' });
+      if (awards.royNL) awardsList.push({ playerId: awards.royNL.playerId, award: 'ROY (NL)' });
+    }
+    recordSeasonStats(
+      result.playerSeasons,
+      state.players.map(p => ({ playerId: p.playerId, name: p.name, age: p.age, position: p.position, isPitcher: p.isPitcher })),
+      state.teams.map(t => ({ teamId: t.teamId, name: t.name })),
+      state.season,
+      awardsList,
+    );
+
+    // ── Track financial history ──────────────────────────────────────────────
+    for (const team of state.teams) {
+      const prevCash = _teamCash.get(team.teamId) ?? 0;
+      const luxYears = _luxuryTaxYears.get(team.teamId) ?? 0;
+      const fin = computeTeamFinancials(team, state.players, state.season, prevCash, luxYears);
+      _teamCash.set(team.teamId, fin.cashOnHand);
+      _luxuryTaxYears.set(team.teamId, fin.luxuryTaxYears);
+
+      const hist = _financialHistory.get(team.teamId) ?? [];
+      hist.push({
+        season: state.season,
+        revenue: fin.totalRevenue,
+        expenses: fin.totalExpenses,
+        profit: fin.operatingIncome,
+        payroll: fin.payroll,
+        wins: team.seasonRecord.wins,
+      });
+      _financialHistory.set(team.teamId, hist);
+    }
 
     state.prngState = serializeState(gen);
     _seasonResults.push(result);
@@ -565,6 +612,196 @@ const api = {
     if (lineup.rotation.length < 1 || lineup.rotation.length > 5) return { ok: false, error: 'Rotation must have 1-5 pitchers.' };
     _lineups.set(lineup.teamId, lineup);
     return { ok: true };
+  },
+
+  // ── Draft System ─────────────────────────────────────────────────────────
+  async getDraftState(): Promise<DraftState | null> {
+    return _draftState;
+  },
+
+  async startDraft(): Promise<DraftState> {
+    const state = requireState();
+    let gen = deserializeState(state.prngState);
+
+    // Find user team's scouting quality
+    const userTeam = _teamMap.get(state.userTeamId);
+    const scoutingQuality = userTeam?.scoutingQuality ?? 0.7;
+
+    // Generate draft class
+    let prospects: DraftProspect[];
+    [prospects, gen] = generateDraftClass(gen, scoutingQuality, state.season);
+
+    // Build draft order from standings (inverse)
+    const teams = state.teams.map(t => ({
+      teamId: t.teamId,
+      name: t.name,
+      wins: t.seasonRecord.wins,
+    }));
+    const picks = buildDraftOrder(teams, 5);
+
+    _draftState = {
+      season: state.season,
+      prospects,
+      picks,
+      currentPick: 0,
+      completed: false,
+    };
+
+    state.prngState = serializeState(gen);
+    return _draftState;
+  },
+
+  async makeDraftPick(prospectId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    if (!_draftState) return { ok: false, error: 'No draft in progress.' };
+    if (_draftState.completed) return { ok: false, error: 'Draft is already complete.' };
+
+    const pickEntry = _draftState.picks[_draftState.currentPick];
+    if (pickEntry.teamId !== state.userTeamId) return { ok: false, error: 'Not your pick.' };
+
+    const prospect = _draftState.prospects.find(p => p.prospectId === prospectId);
+    if (!prospect) return { ok: false, error: 'Prospect not found.' };
+
+    // Check if already drafted
+    if (_draftState.picks.some(pk => pk.prospectId === prospectId)) {
+      return { ok: false, error: 'Prospect already drafted.' };
+    }
+
+    // Execute the pick
+    const player = executeDraftPick(prospect, state.userTeamId, state.season);
+    state.players.push(player);
+    _playerMap.set(player.playerId, player);
+
+    pickEntry.prospectId = prospectId;
+    pickEntry.playerName = prospect.name;
+    _draftState.currentPick++;
+
+    if (_draftState.currentPick >= _draftState.picks.length) {
+      _draftState.completed = true;
+    }
+
+    return { ok: true };
+  },
+
+  async simDraftToNextUserPick(): Promise<{ ok: boolean; completed: boolean }> {
+    const state = requireState();
+    if (!_draftState) return { ok: false, completed: false };
+    if (_draftState.completed) return { ok: true, completed: true };
+
+    while (_draftState.currentPick < _draftState.picks.length) {
+      const pickEntry = _draftState.picks[_draftState.currentPick];
+
+      // If it's the user's pick, stop
+      if (pickEntry.teamId === state.userTeamId) break;
+
+      // AI pick
+      const available = _draftState.prospects.filter(p =>
+        !_draftState!.picks.some(pk => pk.prospectId === p.prospectId)
+      );
+
+      const team = _teamMap.get(pickEntry.teamId);
+      const aiPick = aiSelectPick(
+        pickEntry.teamId,
+        available,
+        state.players,
+        team?.strategy ?? 'fringe',
+      );
+
+      if (aiPick) {
+        const player = executeDraftPick(aiPick, pickEntry.teamId, state.season);
+        state.players.push(player);
+        _playerMap.set(player.playerId, player);
+        pickEntry.prospectId = aiPick.prospectId;
+        pickEntry.playerName = aiPick.name;
+      }
+
+      _draftState.currentPick++;
+    }
+
+    if (_draftState.currentPick >= _draftState.picks.length) {
+      _draftState.completed = true;
+    }
+
+    return { ok: true, completed: _draftState.completed };
+  },
+
+  // ── Prospect Rankings ───────────────────────────────────────────────────
+  async getLeagueProspects(): Promise<ProspectReport[]> {
+    const state = requireState();
+    const userTeam = _teamMap.get(state.userTeamId);
+    return generateLeagueProspectRankings(
+      state.players, state.teams,
+      userTeam?.scoutingQuality ?? 0.7,
+      state.season,
+      100,
+    );
+  },
+
+  async getOrgProspects(teamId: number): Promise<ProspectReport[]> {
+    const state = requireState();
+    const team = _teamMap.get(teamId);
+    return generateOrgProspectRankings(
+      state.players, teamId,
+      team?.name ?? '???',
+      team?.scoutingQuality ?? 0.7,
+      state.season,
+      30,
+    );
+  },
+
+  // ── Financial System ────────────────────────────────────────────────────
+  async getTeamFinancials(teamId: number): Promise<TeamFinancials> {
+    const state = requireState();
+    const team = _teamMap.get(teamId);
+    if (!team) throw new Error(`Team ${teamId} not found`);
+
+    const prevCash = _teamCash.get(teamId) ?? 0;
+    const luxYears = _luxuryTaxYears.get(teamId) ?? 0;
+    return computeTeamFinancials(team, state.players, state.season, prevCash, luxYears);
+  },
+
+  async getFinancialHistory(teamId: number): Promise<FinancialHistory[]> {
+    return _financialHistory.get(teamId) ?? [];
+  },
+
+  async getLeagueFinancials(): Promise<Array<{ teamName: string; payroll: number; budget: number; profit: number }>> {
+    const state = requireState();
+    return state.teams.map(team => {
+      const payroll = computePayroll(state.players, team.teamId);
+      const fin = computeTeamFinancials(team, state.players, state.season, 0, 0);
+      return {
+        teamName: team.name,
+        payroll,
+        budget: team.budget,
+        profit: fin.operatingIncome,
+      };
+    });
+  },
+
+  // ── Career Stats ────────────────────────────────────────────────────────
+  async getAllTimeLeaders(stat: CareerStat, limit?: number): Promise<AllTimeLeader[]> {
+    return getAllTimeLeaders(stat, limit);
+  },
+
+  async getCareerStats(playerId: number): Promise<CareerRecord | null> {
+    return getCareerRecords().get(playerId) ?? null;
+  },
+
+  async getHOFCandidates(): Promise<HOFCandidate[]> {
+    const state = requireState();
+    const retired = state.players
+      .filter(p => p.rosterData.rosterStatus === 'RETIRED')
+      .map(p => p.playerId);
+    const info = state.players.map(p => ({
+      playerId: p.playerId,
+      position: p.position,
+      isPitcher: p.isPitcher,
+    }));
+    return evaluateHOFCandidates(retired, info);
+  },
+
+  async getFranchiseRecords(teamId: number): Promise<FranchiseRecord[]> {
+    return getFranchiseRecords(teamId);
   },
 
   // ── Utility ────────────────────────────────────────────────────────────────
