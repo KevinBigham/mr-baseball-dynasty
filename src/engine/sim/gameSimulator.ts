@@ -10,6 +10,7 @@ import { attemptSteals } from './stolenBase';
 import { checkWildPitch } from './wildPitch';
 import { buntProbability, resolveBunt } from './sacrificeBunt';
 import { shouldIntentionalWalk } from './intentionalWalk';
+import { selectPinchHitter } from './pinchHit';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
@@ -210,6 +211,7 @@ function simulateHalfInning(
   mannedRunner: boolean,
   allPlayers: Player[],
   fieldingTeamId: number,
+  bench: Player[],
   playLog?: PlayEvent[],
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
@@ -311,7 +313,21 @@ function simulateHalfInning(
 
     if (markov.outs >= 3) break;
 
-    const batter = lineup[pos % 9]!;
+    let batter = lineup[pos % 9]!;
+
+    // ── Pinch-hit check ──
+    const ph = selectPinchHitter(
+      batter, ctx.inning, markov.runners, markov.outs, bench, pitcher.throws,
+    );
+    if (ph) {
+      // Swap pinch-hitter into the lineup slot permanently
+      lineup[pos % 9] = ph;
+      batter = ph;
+      // Remove from bench
+      const benchIdx = bench.indexOf(ph);
+      if (benchIdx >= 0) bench.splice(benchIdx, 1);
+    }
+
     const onDeckBatter = lineup[(pos + 1) % 9]!;
 
     // ── Intentional walk check ──
@@ -431,6 +447,18 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const homeLineup = buildLineup(input.players, input.homeTeam.teamId, input.lineups?.get(input.homeTeam.teamId));
   const awayLineup = buildLineup(input.players, input.awayTeam.teamId, input.lineups?.get(input.awayTeam.teamId));
 
+  // Build bench (active non-pitcher hitters not in starting lineup)
+  const homeLineupIds = new Set(homeLineup.map(p => p.playerId));
+  const awayLineupIds = new Set(awayLineup.map(p => p.playerId));
+  const homeBench = input.players.filter(
+    p => p.teamId === input.homeTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
+      && !p.isPitcher && !homeLineupIds.has(p.playerId),
+  );
+  const awayBench = input.players.filter(
+    p => p.teamId === input.awayTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
+      && !p.isPitcher && !awayLineupIds.has(p.playerId),
+  );
+
   // Pick starters using rotation index
   let homeSP = pickStarter(input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex);
   let awaySP = pickStarter(input.players, input.awayTeam.teamId, input.awayTeam.rotationIndex);
@@ -511,6 +539,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       topManned,
       input.players,
       input.homeTeam.teamId,
+      awayBench,
       playLog,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
@@ -550,6 +579,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       bottomManned,
       input.players,
       input.awayTeam.teamId,
+      homeBench,
       playLog,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
