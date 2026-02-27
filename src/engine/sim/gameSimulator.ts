@@ -526,6 +526,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const awayLineScore: number[] = [];
   const homeLineScore: number[] = [];
 
+  // Track relievers' entry leads for blown save detection
+  const homeRelieverEntryLeads = new Map<number, number>();
+  const awayRelieverEntryLeads = new Map<number, number>();
+
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
     const topManned = shouldUseMannedRunner({ ...ctx, inning, isTop: true });
@@ -566,6 +570,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.homeTeam.bullpenReliefCounter,
       awayLineup,
       awayLineupPos,
+      homeRelieverEntryLeads,
+      ctx.homeScore - ctx.awayScore,
     );
 
     // ── Skip bottom half if home already leads in 9th+ ──────────────────
@@ -611,6 +617,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.awayTeam.bullpenReliefCounter,
       homeLineup,
       homeLineupPos,
+      awayRelieverEntryLeads,
+      ctx.awayScore - ctx.homeScore,
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
@@ -624,8 +632,12 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     }
   }
 
-  // Assign decisions (W/L/S/H)
-  assignPitcherDecisions(homePitcherStats, awayPitcherStats, ctx.homeScore, ctx.awayScore);
+  // Assign decisions (W/L/S/H/BS)
+  assignPitcherDecisions(
+    homePitcherStats, awayPitcherStats,
+    ctx.homeScore, ctx.awayScore,
+    homeRelieverEntryLeads, awayRelieverEntryLeads,
+  );
 
   // Mark quality starts, complete games, and shutouts
   const markPitcherAchievements = (
@@ -725,6 +737,8 @@ function managePitcher(
   bullpenOffset: number,
   opposingLineup?: Player[],
   lineupPos?: number,
+  relieverEntryLeads?: Map<number, number>,
+  currentLead?: number,
 ): Player {
   const pc = pitchCountRef.value;
 
@@ -757,6 +771,11 @@ function managePitcher(
   pitchCountRef.value = 0;
   timesThroughRef.value = 1;
 
+  // Track lead at entry for blown save detection
+  if (relieverEntryLeads && currentLead !== undefined && saveSituation) {
+    relieverEntryLeads.set(next.playerId, currentLead);
+  }
+
   void gen;
   return next;
 }
@@ -768,11 +787,14 @@ function assignPitcherDecisions(
   awayPitcherStats: Map<number, PitcherGameStats>,
   homeScore: number,
   awayScore: number,
+  homeRelieverEntryLeads: Map<number, number>,
+  awayRelieverEntryLeads: Map<number, number>,
 ): void {
   if (homeScore === awayScore) return; // Tie game — shouldn't happen but be safe
 
   const winnerStats = homeScore > awayScore ? homePitcherStats : awayPitcherStats;
   const loserStats  = homeScore > awayScore ? awayPitcherStats : homePitcherStats;
+  const loserEntryLeads = homeScore > awayScore ? awayRelieverEntryLeads : homeRelieverEntryLeads;
   const margin = Math.abs(homeScore - awayScore);
 
   const winnerArr = Array.from(winnerStats.values());
@@ -798,6 +820,17 @@ function assignPitcherDecisions(
       lastPitcher.decision = 'S';
     } else {
       lastPitcher.decision = 'H'; // Hold if not a save situation
+    }
+  }
+
+  // Blown save: a reliever on the LOSING team who entered in a save situation
+  // (tracked by entryLeads) and allowed enough runs to lose the lead.
+  // BS is assigned when: runs allowed >= entry lead (they surrendered the lead).
+  for (const [pitcherId, entryLead] of loserEntryLeads) {
+    const stats = loserStats.get(pitcherId);
+    if (!stats) continue;
+    if (stats.r >= entryLead) {
+      stats.decision = 'BS';
     }
   }
 }
