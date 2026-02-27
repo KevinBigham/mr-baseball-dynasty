@@ -17,6 +17,7 @@ import { generateSeasonMoments } from '../../engine/moments';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
+import ParkFactorPanel   from './ParkFactorPanel';
 import PressConference   from './PressConference';
 import RivalryPanel      from './RivalryPanel';
 import LegacyTimeline    from './LegacyTimeline';
@@ -373,11 +374,12 @@ export default function Dashboard() {
         <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{error}</div>
       )}
 
-      {/* ── Owner Patience + Team Morale ──────────────────────────────────────── */}
+      {/* ── Owner Patience + Team Morale + Park Factors ──────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <OwnerPatiencePanel />
         <MoralePanel />
       </div>
+      <ParkFactorPanel />
 
       {/* ── Pre-sim state: Storyboard arc + MFSN predictions + opening day ──────── */}
       {!lastResult && (
