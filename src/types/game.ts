@@ -1,7 +1,7 @@
 import type { PlayerGameStats, PitcherGameStats } from './player';
 
 export type BattedBallType = 'GB' | 'FB' | 'LD' | 'PU';
-export type PAOutcome = 'BB' | 'HBP' | 'K' | 'HR' | '1B' | '2B' | '3B' | 'GB_OUT' | 'FB_OUT' | 'LD_OUT' | 'PU_OUT' | 'GDP' | 'SF' | 'SB' | 'CS' | 'E' | 'WP' | 'PB';
+export type PAOutcome = 'BB' | 'HBP' | 'K' | 'HR' | '1B' | '2B' | '3B' | 'GB_OUT' | 'FB_OUT' | 'LD_OUT' | 'PU_OUT' | 'GDP' | 'SF' | 'SB' | 'CS' | 'E' | 'WP' | 'PB' | 'SAC_BUNT';
 
 export interface PAResult {
   outcome: PAOutcome;

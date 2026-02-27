@@ -213,6 +213,17 @@ export function applyOutcome(
       }
       break;
     }
+
+    case 'SAC_BUNT': {
+      // Sacrifice bunt: batter out, ALL runners advance exactly one base
+      newOuts += 1;
+      let r = 0;
+      if (state.runners & 0b100) { additionalRuns++; }      // 3rd scores
+      if (state.runners & 0b010) { r |= 0b100; }            // 2nd → 3rd
+      if (state.runners & 0b001) { r |= 0b010; }            // 1st → 2nd
+      newRunners = r;
+      break;
+    }
   }
 
   return [{

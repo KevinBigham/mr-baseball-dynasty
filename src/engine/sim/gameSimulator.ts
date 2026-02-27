@@ -3,11 +3,12 @@ import type { Player, PlayerGameStats, PitcherGameStats, ThrowSide } from '../..
 import { BLANK_SPLIT } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { BoxScore, GameResult, PAOutcome, PlayEvent } from '../../types/game';
-import { createPRNG } from '../math/prng';
+import { createPRNG, nextFloat } from '../math/prng';
 import { resolvePlateAppearance } from './plateAppearance';
 import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
 import { attemptSteals } from './stolenBase';
 import { checkWildPitch } from './wildPitch';
+import { buntProbability, resolveBunt } from './sacrificeBunt';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
@@ -103,8 +104,8 @@ function accumulateBatterStat(
 ): void {
   const s = stats.get(playerId) ?? blankBatterStats(playerId);
   s.pa++;
-  // AB: not counted for BB, HBP, SF
-  if (outcome !== 'BB' && outcome !== 'HBP' && outcome !== 'SF') s.ab++;
+  // AB: not counted for BB, HBP, SF, SAC_BUNT
+  if (outcome !== 'BB' && outcome !== 'HBP' && outcome !== 'SF' && outcome !== 'SAC_BUNT') s.ab++;
   if (outcome === 'BB')  s.bb++;
   if (outcome === 'K')   s.k++;
   if (outcome === '1B')  { s.h++; }
@@ -152,7 +153,8 @@ function accumulatePitcherStat(
   if (outcome === 'E') s.h++; // Error counts as a hit allowed for pitcher tracking
   // Count outs
   if (outcome === 'K' || outcome === 'GB_OUT' || outcome === 'FB_OUT'
-    || outcome === 'LD_OUT' || outcome === 'PU_OUT' || outcome === 'SF') {
+    || outcome === 'LD_OUT' || outcome === 'PU_OUT' || outcome === 'SF'
+    || outcome === 'SAC_BUNT') {
     s.outs++;
   }
   if (outcome === 'GDP') s.outs += 2;
@@ -170,6 +172,7 @@ function estimatePitches(outcome: PAOutcome): number {
     case '2B': case '3B': return 4;
     case 'GDP': return 3;
     case 'E':  return 3;  // Error on a BIP — same as a quick out (the pitch count is the same)
+    case 'SAC_BUNT': return 2; // Bunts are typically quick 1-2 pitch affairs
     default: return 3;   // Quick outs (GO, FO, PU) average 3 pitches
   }
 }
@@ -308,24 +311,43 @@ function simulateHalfInning(
     if (markov.outs >= 3) break;
 
     const batter = lineup[pos % 9]!;
-    const paInput = {
-      batter,
-      pitcher,
-      runners: markov.runners,
-      outs: markov.outs,
-      pitchCount: pitchCountRef.value,
-      timesThrough: timesThroughRef.value,
-      parkFactor,
-      defenseRating,
-    };
+
+    // ── Sacrifice bunt check ──
+    const buntProb = buntProbability(batter, markov.runners, markov.outs);
+    let buntOutcome: PAOutcome | null = null;
+    if (buntProb > 0) {
+      let buntRoll: number;
+      [buntRoll, gen] = nextFloat(gen);
+      if (buntRoll < buntProb) {
+        [buntOutcome, gen] = resolveBunt(gen, batter, defenseRating);
+        // buntOutcome is null if the bunt failed → fall through to normal PA
+      }
+    }
 
     // Record pre-PA state for play log
     const preOuts = markov.outs;
     const preRunners = markov.runners;
 
-    let paResult: import('../../types/game').PAResult;
-    [paResult, gen] = resolvePlateAppearance(gen, paInput);
-    const outcome = paResult.outcome;
+    let outcome: PAOutcome;
+    if (buntOutcome) {
+      // Bunt resolved: use the bunt outcome directly
+      outcome = buntOutcome;
+    } else {
+      // Normal PA resolution
+      const paInput = {
+        batter,
+        pitcher,
+        runners: markov.runners,
+        outs: markov.outs,
+        pitchCount: pitchCountRef.value,
+        timesThrough: timesThroughRef.value,
+        parkFactor,
+        defenseRating,
+      };
+      let paResult: import('../../types/game').PAResult;
+      [paResult, gen] = resolvePlateAppearance(gen, paInput);
+      outcome = paResult.outcome;
+    }
 
     const pitchesThisPA = estimatePitches(outcome);
     pitchCountRef.value += pitchesThisPA;
@@ -359,7 +381,7 @@ function simulateHalfInning(
         pitcherId: pitcher.playerId,
         outs: preOuts,
         runners: preRunners,
-        result: { ...paResult, runsScored: runsThisPA },
+        result: { outcome, runsScored: runsThisPA, runnersAdvanced: 0 },
       });
     }
 
