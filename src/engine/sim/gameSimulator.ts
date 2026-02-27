@@ -15,20 +15,32 @@ import {
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
-function buildLineup(players: Player[], teamId: number): Player[] {
-  const hitters = players.filter(
+function buildLineup(players: Player[], teamId: number, savedOrder?: number[]): Player[] {
+  const active = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher,
   );
-  // Sort by composite offensive rating (contact + power + eye)
-  hitters.sort((a, b) => {
+  const playerMap = new Map(active.map(p => [p.playerId, p]));
+
+  // If a saved batting order exists, use it (with validation)
+  if (savedOrder && savedOrder.length === 9) {
+    const ordered: Player[] = [];
+    for (const id of savedOrder) {
+      const p = playerMap.get(id);
+      if (p) ordered.push(p);
+    }
+    // If all 9 players were found and active, use the saved order
+    if (ordered.length === 9) return ordered;
+  }
+
+  // Fallback: sort by composite offensive rating
+  active.sort((a, b) => {
     const aVal = (a.hitterAttributes?.contact ?? 0) + (a.hitterAttributes?.power ?? 0) * 0.8
                + (a.hitterAttributes?.eye ?? 0) * 0.6;
     const bVal = (b.hitterAttributes?.contact ?? 0) + (b.hitterAttributes?.power ?? 0) * 0.8
                + (b.hitterAttributes?.eye ?? 0) * 0.6;
     return bVal - aVal;
   });
-  // Return top 9 (simple lineup; batting order optimization is v1.0)
-  return hitters.slice(0, 9);
+  return active.slice(0, 9);
 }
 
 function pickStarter(players: Player[], teamId: number, rotationIndex: number): Player | null {
@@ -352,7 +364,8 @@ export interface SimulateGameInput {
   awayTeam: Team;
   players: Player[];
   seed: number;
-  recordPlayLog?: boolean; // If true, generate play-by-play log
+  recordPlayLog?: boolean;
+  lineups?: Map<number, number[]>; // teamId → saved batting order (9 player IDs)
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -361,9 +374,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const parkFactor = PARK_FACTORS[input.homeTeam.parkFactorId]
     ?? PARK_FACTORS[4]!; // fallback to neutral
 
-  // Build lineups
-  const homeLineup = buildLineup(input.players, input.homeTeam.teamId);
-  const awayLineup = buildLineup(input.players, input.awayTeam.teamId);
+  // Build lineups (use saved order if available)
+  const homeLineup = buildLineup(input.players, input.homeTeam.teamId, input.lineups?.get(input.homeTeam.teamId));
+  const awayLineup = buildLineup(input.players, input.awayTeam.teamId, input.lineups?.get(input.awayTeam.teamId));
 
   // Pick starters using rotation index
   let homeSP = pickStarter(input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex);

@@ -173,12 +173,19 @@ const api = {
     // Reset counters at season start
     resetSeasonCounters(state.players);
 
+    // Build lineups map from saved data
+    const lineupsMap = new Map<number, number[]>();
+    for (const [teamId, lu] of _lineups) {
+      lineupsMap.set(teamId, lu.battingOrder);
+    }
+
     const result = await simulateSeason(
       state.teams,
       state.players,
       state.schedule,
       Number(gen.next()[0]),
       onProgressCallback,
+      lineupsMap,
     );
 
     // Advance the gen
@@ -461,6 +468,12 @@ const api = {
 
     const endIdx = Math.min(_gamesPlayed + count, state.schedule.length);
 
+    // Build lineups map from saved data
+    const lineupsForSim = new Map<number, number[]>();
+    for (const [tid, lu] of _lineups) {
+      lineupsForSim.set(tid, lu.battingOrder);
+    }
+
     const result = await simulateGamesRange({
       teams: state.teams,
       players: state.players,
@@ -468,6 +481,7 @@ const api = {
       baseSeed,
       startGameIndex: _gamesPlayed,
       endGameIndex: endIdx,
+      lineups: lineupsForSim,
       existingStats: _playerSeasonStats,
       existingTeamWins: _simTeamWins,
       existingTeamLosses: _simTeamLosses,
@@ -1000,6 +1014,66 @@ const api = {
     if (lineup.rotation.length < 1 || lineup.rotation.length > 5) return { ok: false, error: 'Rotation must have 1-5 pitchers.' };
     _lineups.set(lineup.teamId, lineup);
     return { ok: true };
+  },
+
+  async optimizeLineup(teamId: number): Promise<LineupData> {
+    const state = requireState();
+    const existing = _lineups.get(teamId) ?? await this.getLineup(teamId);
+
+    const playerMap = new Map(state.players.map(p => [p.playerId, p]));
+    const batters = existing.battingOrder
+      .map(id => playerMap.get(id))
+      .filter((p): p is Player => p != null && !p.isPitcher);
+
+    if (batters.length < 9) return existing;
+
+    // Score each batter for different batting order roles
+    const scored = batters.map(p => {
+      const h = p.hitterAttributes;
+      if (!h) return { player: p, leadoff: 0, contact: 0, best: 0, power: 0, overall: p.overall };
+
+      return {
+        player: p,
+        // Leadoff: OBP (eye + contact) + speed
+        leadoff: (h.eye * 1.2 + h.contact * 0.8 + h.speed * 0.6) / 400,
+        // 2-hole: contact + eye, bat control
+        contact: (h.contact * 1.3 + h.eye * 0.7 + h.speed * 0.3) / 400,
+        // 3-hole: best all-around hitter
+        best: (h.contact * 1.0 + h.power * 1.0 + h.eye * 0.8 + h.speed * 0.2) / 400,
+        // 4-5: power / cleanup
+        power: (h.power * 1.4 + h.contact * 0.5 + h.eye * 0.3) / 400,
+        // Generic overall
+        overall: (h.contact + h.power * 0.8 + h.eye * 0.6) / 400,
+      };
+    });
+
+    const used = new Set<number>();
+    const order: number[] = new Array(9);
+
+    const pickBest = (key: 'leadoff' | 'contact' | 'best' | 'power' | 'overall'): number => {
+      let best: typeof scored[0] | null = null;
+      for (const s of scored) {
+        if (used.has(s.player.playerId)) continue;
+        if (!best || s[key] > best[key]) best = s;
+      }
+      if (!best) return scored[0]!.player.playerId;
+      used.add(best.player.playerId);
+      return best.player.playerId;
+    };
+
+    order[0] = pickBest('leadoff');   // Slot 1: Best OBP + speed
+    order[1] = pickBest('contact');   // Slot 2: Best bat control
+    order[2] = pickBest('best');      // Slot 3: Best overall hitter
+    order[3] = pickBest('power');     // Slot 4: Cleanup — best power
+    order[4] = pickBest('power');     // Slot 5: Second power bat
+    order[5] = pickBest('overall');   // Slots 6-8: By overall
+    order[6] = pickBest('overall');
+    order[7] = pickBest('overall');
+    order[8] = pickBest('overall');   // Slot 9: Weakest remaining
+
+    const optimized: LineupData = { ...existing, battingOrder: order };
+    _lineups.set(teamId, optimized);
+    return optimized;
   },
 
   // ── Draft System ─────────────────────────────────────────────────────────

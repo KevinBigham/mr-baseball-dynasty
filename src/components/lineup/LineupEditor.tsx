@@ -109,7 +109,15 @@ export default function LineupEditor() {
   const availableSPs = roster.active.filter(p => p.position === 'SP' && !lineup.rotation.includes(p.playerId));
   const availableRPs = roster.active.filter(p => (p.position === 'RP' || p.position === 'CL') && p.playerId !== lineup.closer);
 
+  const handleAutoOptimize = async () => {
+    const optimized = await getEngine().optimizeLineup(userTeamId);
+    setLineup(optimized);
+    setMsg({ text: 'Batting order optimized! Click SAVE to apply.', color: '#22d3ee' });
+    setTimeout(() => setMsg(null), 4000);
+  };
+
   const slotLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
+  const slotRoles = ['Leadoff', 'Contact', 'Best', 'Cleanup', 'Power', '', '', '', ''];
   const rotLabels = ['ACE', 'SP2', 'SP3', 'SP4', 'SP5'];
 
   const handleDragStart = (idx: number) => setDragIdx(idx);
@@ -152,7 +160,17 @@ export default function LineupEditor() {
         <div className="col-span-2 bloomberg-border">
           <div className="bloomberg-header flex items-center justify-between">
             <span>{tab === 'batting' ? 'BATTING ORDER' : 'STARTING ROTATION'}</span>
-            <span className="text-gray-500 font-normal text-xs">Drag to reorder</span>
+            <div className="flex items-center gap-3">
+              {tab === 'batting' && (
+                <button
+                  onClick={handleAutoOptimize}
+                  className="bg-cyan-700 hover:bg-cyan-600 text-black font-bold text-xs px-3 py-0.5 uppercase tracking-wider transition-colors"
+                >
+                  AUTO-OPTIMIZE
+                </button>
+              )}
+              <span className="text-gray-500 font-normal text-xs">Drag to reorder</span>
+            </div>
           </div>
           <div className="p-2">
             {tab === 'batting' ? (
@@ -184,7 +202,10 @@ export default function LineupEditor() {
                         className={`text-xs transition-colors ${dragIdx === i ? 'bg-orange-900/30' : 'hover:bg-gray-800/50'}`}
                       >
                         <td className="px-2 py-1.5"><DragHandle /></td>
-                        <td className="px-2 py-1.5 text-gray-500 font-bold">{slotLabels[i]}</td>
+                        <td className="px-2 py-1.5 text-gray-500 font-bold">
+                          {slotLabels[i]}
+                          {slotRoles[i] && <span className="ml-1 text-gray-700 text-[9px] font-normal">{slotRoles[i]}</span>}
+                        </td>
                         <td className="px-2 py-1.5 font-bold text-orange-300">{p?.name ?? '???'}</td>
                         <td className="px-2 py-1.5 text-gray-500">{p?.position ?? '-'}</td>
                         <td className="px-2 py-1.5 text-center"><GradeBadge value={p?.overall ?? 0} /></td>

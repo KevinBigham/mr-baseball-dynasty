@@ -116,6 +116,7 @@ export interface PartialSimInput {
   baseSeed: number;
   startGameIndex: number;  // 0-based index into schedule
   endGameIndex: number;    // exclusive
+  lineups?: Map<number, number[]>;  // teamId → saved batting order
   // Carry-over state from previous partial sim
   existingStats?: Map<number, PlayerSeasonStats>;
   existingTeamWins?: Map<number, number>;
@@ -201,6 +202,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      lineups: input.lineups,
     });
 
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
@@ -254,6 +256,7 @@ export async function simulateSeason(
   schedule: ScheduleEntry[],
   baseSeed: number,
   onProgress?: (pct: number) => void,
+  lineups?: Map<number, number[]>,
 ): Promise<SeasonResult> {
   const season = new Date().getFullYear();
 
@@ -324,7 +327,7 @@ export async function simulateSeason(
       bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
     };
 
-    const input: SimulateGameInput = {
+    const simInput: SimulateGameInput = {
       gameId: entry.gameId,
       season,
       date: entry.date,
@@ -332,9 +335,10 @@ export async function simulateSeason(
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      lineups,
     };
 
-    const result = simulateGame(input);
+    const result = simulateGame(simInput);
 
     // Advance rotation (each game uses next starter in 5-man rotation)
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
