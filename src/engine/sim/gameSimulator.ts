@@ -610,6 +610,16 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   // Assign decisions (W/L/S/H)
   assignPitcherDecisions(homePitcherStats, awayPitcherStats, ctx.homeScore, ctx.awayScore);
 
+  // Mark quality starts: starter (first pitcher) with 6+ IP (18+ outs) and 3 or fewer ER
+  const markQS = (stats: Map<number, PitcherGameStats>, starterId: number) => {
+    const s = stats.get(starterId);
+    if (s && s.outs >= 18 && s.er <= 3) {
+      s.qualityStart = true;
+    }
+  };
+  markQS(homePitcherStats, homeSP.playerId);
+  markQS(awayPitcherStats, awaySP.playerId);
+
   const boxScore: BoxScore = {
     gameId: input.gameId,
     season: input.season,

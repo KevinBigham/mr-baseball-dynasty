@@ -16,7 +16,7 @@ function blankPlayerSeason(playerId: number, teamId: number, season: number): Pl
     g: 0, pa: 0, ab: 0, r: 0, h: 0,
     doubles: 0, triples: 0, hr: 0,
     rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0,
-    w: 0, l: 0, sv: 0, hld: 0, bs: 0,
+    w: 0, l: 0, sv: 0, hld: 0, bs: 0, qs: 0,
     gp: 0, gs: 0, outs: 0,
     ha: 0, ra: 0, er: 0, bba: 0, ka: 0, hra: 0,
     pitchCount: 0,
@@ -117,6 +117,7 @@ function accumulatePitching(
     if (pg.decision === 'S') s.sv++;
     if (pg.decision === 'H') s.hld++;
     if (pg.decision === 'BS') s.bs++;
+    if (pg.qualityStart) s.qs++;
   }
 }
 

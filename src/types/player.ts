@@ -132,6 +132,7 @@ export interface PitcherGameStats {
   h: number; r: number; er: number; bb: number; k: number;
   hr: number; pitchCount: number;
   decision?: 'W' | 'L' | 'S' | 'H' | 'BS';
+  qualityStart?: boolean; // 6+ IP, 3 or fewer ER
 }
 
 // ─── Platoon split stats (vs LHP / vs RHP) ──────────────────────────────────
@@ -155,6 +156,7 @@ export interface PlayerSeasonStats {
   hbp: number;
   // Pitching
   w: number; l: number; sv: number; hld: number; bs: number;
+  qs: number; // quality starts (6+ IP, ≤3 ER)
   gp: number; gs: number; outs: number; // outs pitched
   ha: number; ra: number; er: number; bba: number; ka: number; hra: number;
   pitchCount: number;
