@@ -6,6 +6,7 @@ import { createPRNG } from '../math/prng';
 import { resolvePlateAppearance } from './plateAppearance';
 import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
 import { attemptSteals } from './stolenBase';
+import { checkWildPitch } from './wildPitch';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
@@ -232,6 +233,41 @@ function simulateHalfInning(
             result: {
               outcome: sr.success ? 'SB' as PAOutcome : 'CS' as PAOutcome,
               runsScored: 0,
+              runnersAdvanced: 0,
+            },
+          });
+        }
+      }
+    }
+
+    if (markov.outs >= 3) break;
+
+    // ── Wild pitch / passed ball check (between PAs) ──
+    if (markov.runners !== 0) {
+      let wpResult: import('./wildPitch').WildPitchResult | null;
+      [markov, wpResult, gen] = checkWildPitch(gen, markov, pitcher, catcher, pitchCountRef.value);
+
+      if (wpResult) {
+        // WP/PB runs are unearned for passed balls, earned for wild pitches
+        const wpRunsUnearned = wpResult.type === 'PB' ? wpResult.runsScored : 0;
+        if (wpResult.runsScored > 0) {
+          accumulatePitcherStat(
+            pitcherStats, pitcher.playerId,
+            wpResult.type as PAOutcome, wpResult.runsScored, wpRunsUnearned, 0,
+          );
+        }
+
+        if (playLog) {
+          playLog.push({
+            inning: ctx.inning,
+            isTop: ctx.isTop,
+            batterId: 0, // No batter involved
+            pitcherId: pitcher.playerId,
+            outs: markov.outs,
+            runners: markov.runners,
+            result: {
+              outcome: wpResult.type as PAOutcome,
+              runsScored: wpResult.runsScored,
               runnersAdvanced: 0,
             },
           });
