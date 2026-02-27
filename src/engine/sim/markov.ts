@@ -189,6 +189,16 @@ export function applyOutcome(
             }
           }
         }
+        if (state.runners & 0b001) {
+          // Runner on 1st: advances to 2nd if 2nd isn't occupied (~40%)
+          if (!(newRunners & 0b010)) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.40) {
+              newRunners = (newRunners & ~0b001) | 0b010;
+            }
+          }
+        }
       }
       break;
     }
