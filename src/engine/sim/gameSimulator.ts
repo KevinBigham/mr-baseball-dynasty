@@ -608,8 +608,14 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
-    if (inning >= 9 && ctx.homeScore !== ctx.awayScore) break;
-    if (inning >= MAX_INNINGS) break; // Tie after 25 innings: break (shouldn't happen)
+    if (inning >= 9 && ctx.homeScore !== ctx.awayScore) {
+      ctx = { ...ctx, inning };
+      break;
+    }
+    if (inning >= MAX_INNINGS) {
+      ctx = { ...ctx, inning };
+      break;
+    }
   }
 
   // Assign decisions (W/L/S/H)
@@ -635,6 +641,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   markPitcherAchievements(homePitcherStats, homeSP.playerId, homeUsedPitchers);
   markPitcherAchievements(awayPitcherStats, awaySP.playerId, awayUsedPitchers);
 
+  const finalInnings = ctx.inning || 9;
   const boxScore: BoxScore = {
     gameId: input.gameId,
     season: input.season,
@@ -643,7 +650,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayTeamId: input.awayTeam.teamId,
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
-    innings: 9,
+    innings: finalInnings,
     homeBatting: Array.from(homeBatterStats.values()),
     awayBatting: Array.from(awayBatterStats.values()),
     homePitching: Array.from(homePitcherStats.values()),
@@ -661,7 +668,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayTeamId: input.awayTeam.teamId,
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
-    innings: 9,
+    innings: finalInnings,
     walkOff: isWalkOff || undefined,
     boxScore,
   };
