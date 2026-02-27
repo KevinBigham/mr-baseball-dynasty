@@ -78,8 +78,9 @@ export default function PlayByPlayViewer({
     ? innings.get(selectedInning) ?? []
     : plays;
 
-  // Compute linescore
+  // Use pre-computed lineScore if available, otherwise derive from play log
   const linescore = useMemo(() => {
+    if (boxScore.lineScore) return boxScore.lineScore;
     const away: number[] = [];
     const home: number[] = [];
     for (const inn of inningNumbers) {
@@ -93,7 +94,7 @@ export default function PlayByPlayViewer({
       home.push(homeRuns);
     }
     return { away, home };
-  }, [innings, inningNumbers]);
+  }, [boxScore.lineScore, innings, inningNumbers]);
 
   return (
     <div className="flex flex-col h-full">
