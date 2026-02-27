@@ -43,6 +43,7 @@ export interface GameResult {
   homeScore: number;
   awayScore: number;
   innings: number;
+  walkOff?: boolean;
   boxScore: BoxScore;
 }
 

@@ -520,6 +520,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
 
   const MAX_INNINGS = 25;
   const playLog: PlayEvent[] | undefined = input.recordPlayLog ? [] : undefined;
+  let lastHomeScoreBeforeBottom = 0;
 
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
@@ -563,6 +564,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
 
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
+    lastHomeScoreBeforeBottom = ctx.homeScore;
     const bottomManned = shouldUseMannedRunner({ ...ctx, inning, isTop: false });
     let homeRuns: number;
     [homeRuns, homeLineupPos, gen] = simulateHalfInning(
@@ -610,15 +612,25 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   // Assign decisions (W/L/S/H)
   assignPitcherDecisions(homePitcherStats, awayPitcherStats, ctx.homeScore, ctx.awayScore);
 
-  // Mark quality starts: starter (first pitcher) with 6+ IP (18+ outs) and 3 or fewer ER
-  const markQS = (stats: Map<number, PitcherGameStats>, starterId: number) => {
+  // Mark quality starts, complete games, and shutouts
+  const markPitcherAchievements = (
+    stats: Map<number, PitcherGameStats>,
+    starterId: number,
+    usedPitchers: Set<number>,
+  ) => {
     const s = stats.get(starterId);
-    if (s && s.outs >= 18 && s.er <= 3) {
-      s.qualityStart = true;
+    if (!s) return;
+    // Quality start: 6+ IP, 3 or fewer ER
+    if (s.outs >= 18 && s.er <= 3) s.qualityStart = true;
+    // Complete game: starter was the only pitcher used
+    if (usedPitchers.size === 1) {
+      s.completeGame = true;
+      // Shutout: complete game with 0 runs allowed
+      if (s.r === 0) s.shutout = true;
     }
   };
-  markQS(homePitcherStats, homeSP.playerId);
-  markQS(awayPitcherStats, awaySP.playerId);
+  markPitcherAchievements(homePitcherStats, homeSP.playerId, homeUsedPitchers);
+  markPitcherAchievements(awayPitcherStats, awaySP.playerId, awayUsedPitchers);
 
   const boxScore: BoxScore = {
     gameId: input.gameId,
@@ -636,6 +648,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     playLog,
   };
 
+  // Walk-off: home team wins AND took the lead in the bottom of the final inning
+  const isWalkOff = ctx.homeScore > ctx.awayScore
+    && lastHomeScoreBeforeBottom <= ctx.awayScore;
+
   return {
     gameId: input.gameId,
     homeTeamId: input.homeTeam.teamId,
@@ -643,6 +659,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
     innings: 9,
+    walkOff: isWalkOff || undefined,
     boxScore,
   };
 }

@@ -133,6 +133,8 @@ export interface PitcherGameStats {
   hr: number; pitchCount: number;
   decision?: 'W' | 'L' | 'S' | 'H' | 'BS';
   qualityStart?: boolean; // 6+ IP, 3 or fewer ER
+  completeGame?: boolean; // Pitched the entire game
+  shutout?: boolean;      // Complete game with 0 runs allowed
 }
 
 // ─── Platoon split stats (vs LHP / vs RHP) ──────────────────────────────────
@@ -157,6 +159,8 @@ export interface PlayerSeasonStats {
   // Pitching
   w: number; l: number; sv: number; hld: number; bs: number;
   qs: number; // quality starts (6+ IP, ≤3 ER)
+  cg: number; // complete games
+  sho: number; // shutouts
   gp: number; gs: number; outs: number; // outs pitched
   ha: number; ra: number; er: number; bba: number; ka: number; hra: number;
   pitchCount: number;
