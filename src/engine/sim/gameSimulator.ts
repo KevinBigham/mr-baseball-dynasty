@@ -9,6 +9,7 @@ import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
 import { attemptSteals } from './stolenBase';
 import { checkWildPitch } from './wildPitch';
 import { buntProbability, resolveBunt } from './sacrificeBunt';
+import { shouldIntentionalWalk } from './intentionalWalk';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
@@ -311,16 +312,25 @@ function simulateHalfInning(
     if (markov.outs >= 3) break;
 
     const batter = lineup[pos % 9]!;
+    const onDeckBatter = lineup[(pos + 1) % 9]!;
 
-    // ── Sacrifice bunt check ──
-    const buntProb = buntProbability(batter, markov.runners, markov.outs);
+    // ── Intentional walk check ──
+    let isIBB = false;
+    if (shouldIntentionalWalk(batter, onDeckBatter, markov.runners, markov.outs, ctx.inning)) {
+      isIBB = true;
+    }
+
+    // ── Sacrifice bunt check (skip if IBB) ──
     let buntOutcome: PAOutcome | null = null;
-    if (buntProb > 0) {
-      let buntRoll: number;
-      [buntRoll, gen] = nextFloat(gen);
-      if (buntRoll < buntProb) {
-        [buntOutcome, gen] = resolveBunt(gen, batter, defenseRating);
-        // buntOutcome is null if the bunt failed → fall through to normal PA
+    if (!isIBB) {
+      const buntProb = buntProbability(batter, markov.runners, markov.outs);
+      if (buntProb > 0) {
+        let buntRoll: number;
+        [buntRoll, gen] = nextFloat(gen);
+        if (buntRoll < buntProb) {
+          [buntOutcome, gen] = resolveBunt(gen, batter, defenseRating);
+          // buntOutcome is null if the bunt failed → fall through to normal PA
+        }
       }
     }
 
@@ -329,7 +339,10 @@ function simulateHalfInning(
     const preRunners = markov.runners;
 
     let outcome: PAOutcome;
-    if (buntOutcome) {
+    if (isIBB) {
+      // Intentional walk: automatic BB, no PA resolution needed
+      outcome = 'BB';
+    } else if (buntOutcome) {
       // Bunt resolved: use the bunt outcome directly
       outcome = buntOutcome;
     } else {
@@ -349,7 +362,7 @@ function simulateHalfInning(
       outcome = paResult.outcome;
     }
 
-    const pitchesThisPA = estimatePitches(outcome);
+    const pitchesThisPA = isIBB ? 0 : estimatePitches(outcome);
     pitchCountRef.value += pitchesThisPA;
 
     // Handle error: if error at 2 outs, all subsequent runs become unearned
