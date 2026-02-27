@@ -563,6 +563,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       awayLineupPos,
     );
 
+    // ── Skip bottom half if home already leads in 9th+ ──────────────────
+    if (inning >= 9 && ctx.homeScore > ctx.awayScore) break;
+
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
     lastHomeScoreBeforeBottom = ctx.homeScore;
     const bottomManned = shouldUseMannedRunner({ ...ctx, inning, isTop: false });
