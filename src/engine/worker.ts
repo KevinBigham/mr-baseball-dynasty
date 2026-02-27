@@ -16,6 +16,7 @@ import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
 import { computeAwards, computeDivisionChampions } from './player/awards';
+import { simulatePlayoffs, getPlayoffResults } from './sim/playoffs';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -134,6 +135,39 @@ const api = {
     const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
     const divisionChampions = computeDivisionChampions(state.teams);
 
+    // ── Playoffs ────────────────────────────────────────────────────────────────
+    // Build standings from team records to determine playoff field
+    const standingsRows = state.teams.map(team => ({
+      teamId: team.teamId,
+      name: team.name,
+      abbreviation: team.abbreviation,
+      league: team.league,
+      division: team.division,
+      wins: team.seasonRecord.wins,
+      losses: team.seasonRecord.losses,
+      pct: team.seasonRecord.wins / Math.max(1, team.seasonRecord.wins + team.seasonRecord.losses),
+      gb: 0,
+      runsScored: team.seasonRecord.runsScored,
+      runsAllowed: team.seasonRecord.runsAllowed,
+      pythagWins: 0,
+    }));
+
+    let playoffSeed: number;
+    [playoffSeed, gen] = gen.next();
+    const playoffBracket = simulatePlayoffs(
+      standingsRows, state.teams, state.players,
+      state.season, (playoffSeed >>> 0),
+    );
+
+    // Apply playoff results to team season stats
+    const playoffResultMap = getPlayoffResults(playoffBracket);
+    for (const ts of result.teamSeasons) {
+      const pr = playoffResultMap.get(ts.teamId);
+      if (pr) {
+        ts.playoffRound = pr;
+      }
+    }
+
     // ── Advance service time (172 game-days) ──────────────────────────────────
     for (let d = 0; d < 172; d++) {
       advanceServiceTime(state.players, d);
@@ -157,6 +191,7 @@ const api = {
       awards,
       divisionChampions,
       developmentEvents: offseasonResult.events,
+      playoffBracket,
     };
 
     return fullResult;
@@ -197,12 +232,14 @@ const api = {
 
     const toRP = (p: Player) => playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
 
+    const minorStatuses = ['MINORS_AAA', 'MINORS_AA', 'MINORS_APLUS', 'MINORS_AMINUS', 'MINORS_ROOKIE', 'MINORS_INTL'];
+
     return {
       teamId,
       season: state.season,
       active:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').map(toRP),
       il:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60').map(toRP),
-      minors:  teamPlayers.filter(p => ['MINORS_AAA', 'MINORS_AA', 'MINORS_ROOKIE'].includes(p.rosterData.rosterStatus) && p.rosterData.isOn40Man).map(toRP),
+      minors:  teamPlayers.filter(p => minorStatuses.includes(p.rosterData.rosterStatus)).map(toRP),
       dfa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'DFA').map(toRP),
     };
   },
@@ -316,6 +353,96 @@ const api = {
     _state = state;
     _playerSeasonStats = new Map();
     rebuildMaps();
+  },
+
+  // ── Roster Management ────────────────────────────────────────────────────
+  async promotePlayer(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+
+    const status = player.rosterData.rosterStatus;
+
+    // Can only promote from minor league levels
+    const promotionPath: Record<string, import('../types/player').RosterStatus> = {
+      'MINORS_INTL':   'MINORS_ROOKIE',
+      'MINORS_ROOKIE': 'MINORS_AMINUS',
+      'MINORS_AMINUS': 'MINORS_APLUS',
+      'MINORS_APLUS':  'MINORS_AA',
+      'MINORS_AA':     'MINORS_AAA',
+      'MINORS_AAA':    'MLB_ACTIVE',
+    };
+
+    const nextStatus = promotionPath[status];
+    if (!nextStatus) return { ok: false, error: `Cannot promote from ${status}` };
+
+    // Check 26-man roster limit for MLB promotion
+    if (nextStatus === 'MLB_ACTIVE') {
+      const activeCount = state.players.filter(
+        p => p.teamId === player.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE',
+      ).length;
+      if (activeCount >= 26) return { ok: false, error: 'Active roster full (26 max). Demote or DFA someone first.' };
+
+      // Auto-add to 40-man if not already
+      if (!player.rosterData.isOn40Man) {
+        const fortyManCount = state.players.filter(
+          p => p.teamId === player.teamId && p.rosterData.isOn40Man,
+        ).length;
+        if (fortyManCount >= 40) return { ok: false, error: '40-man roster full. DFA someone first.' };
+        player.rosterData.isOn40Man = true;
+      }
+    }
+
+    player.rosterData.rosterStatus = nextStatus;
+    return { ok: true };
+  },
+
+  async demotePlayer(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+
+    const status = player.rosterData.rosterStatus;
+
+    // Can only demote from MLB or upper minors
+    const demotionPath: Record<string, import('../types/player').RosterStatus> = {
+      'MLB_ACTIVE':    'MINORS_AAA',
+      'MINORS_AAA':    'MINORS_AA',
+      'MINORS_AA':     'MINORS_APLUS',
+      'MINORS_APLUS':  'MINORS_AMINUS',
+      'MINORS_AMINUS': 'MINORS_ROOKIE',
+    };
+
+    const nextStatus = demotionPath[status];
+    if (!nextStatus) return { ok: false, error: `Cannot demote from ${status}` };
+
+    // Check option requirements for MLB demotions
+    if (status === 'MLB_ACTIVE') {
+      if (player.rosterData.optionYearsRemaining <= 0 && player.rosterData.serviceTimeDays >= 516) {
+        return { ok: false, error: 'No options remaining — must DFA or trade to remove from 26-man.' };
+      }
+      if (player.rosterData.optionYearsRemaining > 0) {
+        player.rosterData.optionUsedThisSeason = true;
+        player.rosterData.optionYearsRemaining--;
+      }
+    }
+
+    player.rosterData.rosterStatus = nextStatus;
+    return { ok: true };
+  },
+
+  async dfaPlayer(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+
+    const status = player.rosterData.rosterStatus;
+    if (status === 'DFA' || status === 'FREE_AGENT' || status === 'RETIRED') {
+      return { ok: false, error: `Cannot DFA from ${status}` };
+    }
+
+    player.rosterData.rosterStatus = 'DFA';
+    player.rosterData.isOn40Man = false;
+    return { ok: true };
   },
 
   // ── Utility ────────────────────────────────────────────────────────────────

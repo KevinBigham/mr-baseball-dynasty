@@ -27,6 +27,7 @@ import ReputationCard    from './ReputationCard';
 import StoryboardPanel   from './StoryboardPanel';
 import MomentsPanel      from './MomentsPanel';
 import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
+import PlayoffBracketView from './PlayoffBracket';
 import type { PressContext } from '../../data/pressConference';
 
 const TEAM_OPTIONS = [
@@ -532,6 +533,11 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Playoff Bracket ────────────────────────────────────────────────────── */}
+      {lastResult?.playoffBracket && (
+        <PlayoffBracketView bracket={lastResult.playoffBracket} />
       )}
 
       {/* ── Post-sim Storyboard arc resolution ────────────────────────────────── */}

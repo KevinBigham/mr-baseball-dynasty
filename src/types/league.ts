@@ -3,6 +3,7 @@ import type { Team, TeamSeasonStats } from './team';
 import type { ScheduleEntry, BoxScore } from './game';
 import type { SeasonAwards, DivisionChampion } from '../engine/player/awards';
 import type { DevelopmentEvent } from '../engine/player/development';
+import type { PlayoffBracket } from '../engine/sim/playoffs';
 
 export interface LeagueEnvironment {
   // Calibration factors (1.0 = neutral)
@@ -35,6 +36,7 @@ export interface SeasonResult {
   awards?: SeasonAwards;
   divisionChampions?: DivisionChampion[];
   developmentEvents?: DevelopmentEvent[];
+  playoffBracket?: PlayoffBracket;
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────
