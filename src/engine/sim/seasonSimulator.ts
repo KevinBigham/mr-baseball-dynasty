@@ -5,6 +5,7 @@ import type { ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeasonStats, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
+import type { PitcherRestMap } from './pitcherRest';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -152,6 +153,7 @@ export interface PartialSimInput {
   existingTeamRA?: Map<number, number>;
   rotationIndex?: Map<number, number>;
   bullpenOffset?: Map<number, number>;
+  pitcherRestMap?: PitcherRestMap;
   onProgress?: (pct: number) => void;
 }
 
@@ -163,6 +165,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
   teamRA: Map<number, number>;
   rotationIndex: Map<number, number>;
   bullpenOffset: Map<number, number>;
+  pitcherRestMap: PitcherRestMap;
   gamesCompleted: number;
 }> {
   const { teams, players, schedule, baseSeed } = input;
@@ -192,6 +195,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
   const playerStatsMap = input.existingStats ?? new Map<number, PlayerSeasonStats>();
   const rotationIndex = input.rotationIndex ?? new Map<number, number>();
   const bullpenOffset = input.bullpenOffset ?? new Map<number, number>();
+  const pitcherRestMap: PitcherRestMap = input.pitcherRestMap ?? new Map();
 
   for (const t of teams) {
     if (!rotationIndex.has(t.teamId)) rotationIndex.set(t.teamId, 0);
@@ -230,6 +234,8 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
       players,
       seed: gameSeed,
       lineups: input.lineups,
+      gameIndex: i,
+      pitcherRestMap,
     });
 
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
@@ -273,6 +279,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
     teamRA,
     rotationIndex,
     bullpenOffset,
+    pitcherRestMap,
     gamesCompleted: completed,
   };
 }
@@ -318,6 +325,8 @@ export async function simulateSeason(
   const rotationIndex = new Map<number, number>();
   // Track bullpen cycle offset per team (so different relievers pitch each game)
   const bullpenOffset = new Map<number, number>();
+  // Track pitcher rest between games
+  const pitcherRestMap: PitcherRestMap = new Map();
   for (const t of teams) {
     rotationIndex.set(t.teamId, 0);
     bullpenOffset.set(t.teamId, 0);
@@ -363,6 +372,8 @@ export async function simulateSeason(
       players,
       seed: gameSeed,
       lineups,
+      gameIndex: completed,
+      pitcherRestMap,
     };
 
     const result = simulateGame(simInput);

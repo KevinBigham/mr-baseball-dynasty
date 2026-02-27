@@ -16,6 +16,7 @@ import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
   type GameFSMContext,
 } from './fsm';
+import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -47,13 +48,32 @@ function buildLineup(players: Player[], teamId: number, savedOrder?: number[]): 
   return active.slice(0, 9);
 }
 
-function pickStarter(players: Player[], teamId: number, rotationIndex: number): Player | null {
+function pickStarter(
+  players: Player[],
+  teamId: number,
+  rotationIndex: number,
+  gameIndex?: number,
+  restMap?: PitcherRestMap,
+): Player | null {
   const starters = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
       && p.position === 'SP',
   );
   if (starters.length === 0) return null;
   starters.sort((a, b) => b.overall - a.overall);
+
+  // If rest tracking is available, find the first rested starter in rotation order
+  if (restMap && gameIndex !== undefined) {
+    const len = starters.length;
+    for (let offset = 0; offset < len; offset++) {
+      const candidate = starters[(rotationIndex + offset) % len]!;
+      if (isStarterAvailable(candidate, gameIndex, restMap)) {
+        return candidate;
+      }
+    }
+    // All starters tired — use the one with most rest (original rotation pick)
+  }
+
   return starters[rotationIndex % starters.length] ?? null;
 }
 
@@ -64,6 +84,8 @@ function pickReliever(
   excludeIds: Set<number>,
   wantCloser: boolean,
   preferredHand?: 'L' | 'R',
+  gameIndex?: number,
+  restMap?: PitcherRestMap,
 ): Player | null {
   let relievers = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
@@ -71,6 +93,13 @@ function pickReliever(
       && !excludeIds.has(p.playerId),
   );
   if (relievers.length === 0) return null;
+
+  // Filter by rest availability if tracking is available
+  if (restMap && gameIndex !== undefined) {
+    const rested = relievers.filter(p => isRelieverAvailable(p, gameIndex, restMap));
+    if (rested.length > 0) relievers = rested;
+    // If no one is rested, use the full pool (emergency)
+  }
 
   // If we have a hand preference, try to match it
   if (preferredHand) {
@@ -436,6 +465,8 @@ export interface SimulateGameInput {
   seed: number;
   recordPlayLog?: boolean;
   lineups?: Map<number, number[]>; // teamId → saved batting order (9 player IDs)
+  gameIndex?: number;              // Index in the season schedule (for rest tracking)
+  pitcherRestMap?: PitcherRestMap; // Pitcher rest state (mutated after game)
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -460,16 +491,28 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       && !p.isPitcher && !awayLineupIds.has(p.playerId),
   );
 
-  // Pick starters using rotation index
-  let homeSP = pickStarter(input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex);
-  let awaySP = pickStarter(input.players, input.awayTeam.teamId, input.awayTeam.rotationIndex);
+  // Pick starters using rotation index (with rest awareness)
+  let homeSP = pickStarter(
+    input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex,
+    input.gameIndex, input.pitcherRestMap,
+  );
+  let awaySP = pickStarter(
+    input.players, input.awayTeam.teamId, input.awayTeam.rotationIndex,
+    input.gameIndex, input.pitcherRestMap,
+  );
 
   // Fallback: use a reliever as "spot starter" if no SP
   if (!homeSP) {
-    homeSP = pickReliever(input.players, input.homeTeam.teamId, 0, new Set(), false);
+    homeSP = pickReliever(
+      input.players, input.homeTeam.teamId, 0, new Set(), false,
+      undefined, input.gameIndex, input.pitcherRestMap,
+    );
   }
   if (!awaySP) {
-    awaySP = pickReliever(input.players, input.awayTeam.teamId, 0, new Set(), false);
+    awaySP = pickReliever(
+      input.players, input.awayTeam.teamId, 0, new Set(), false,
+      undefined, input.gameIndex, input.pitcherRestMap,
+    );
   }
 
   if (!homeSP || !awaySP || homeLineup.length < 9 || awayLineup.length < 9) {
@@ -572,6 +615,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       awayLineupPos,
       homeRelieverEntryLeads,
       ctx.homeScore - ctx.awayScore,
+      input.gameIndex,
+      input.pitcherRestMap,
     );
 
     // ── Skip bottom half if home already leads in 9th+ ──────────────────
@@ -619,6 +664,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       homeLineupPos,
       awayRelieverEntryLeads,
       ctx.awayScore - ctx.homeScore,
+      input.gameIndex,
+      input.pitcherRestMap,
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
@@ -676,6 +723,18 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayPitching: Array.from(awayPitcherStats.values()),
     playLog,
   };
+
+  // Record pitcher appearances for rest tracking
+  if (input.pitcherRestMap && input.gameIndex !== undefined) {
+    for (const pg of boxScore.homePitching) {
+      const isStart = pg.playerId === homeSP.playerId;
+      recordAppearance(input.pitcherRestMap, pg.playerId, input.gameIndex, pg.pitchCount, isStart);
+    }
+    for (const pg of boxScore.awayPitching) {
+      const isStart = pg.playerId === awaySP.playerId;
+      recordAppearance(input.pitcherRestMap, pg.playerId, input.gameIndex, pg.pitchCount, isStart);
+    }
+  }
 
   // Walk-off: home team wins AND took the lead in the bottom of the final inning
   const isWalkOff = ctx.homeScore > ctx.awayScore
@@ -739,6 +798,8 @@ function managePitcher(
   lineupPos?: number,
   relieverEntryLeads?: Map<number, number>,
   currentLead?: number,
+  gameIndex?: number,
+  restMap?: PitcherRestMap,
 ): Player {
   const pc = pitchCountRef.value;
 
@@ -761,10 +822,13 @@ function managePitcher(
     ? getPreferredBullpenHand(opposingLineup, lineupPos)
     : undefined;
 
-  // Pull and bring in reliever
+  // Pull and bring in reliever (with rest awareness)
   const wantCloser = saveSituation && inning >= 9;
   const counter = (bullpenOffset + usedIds.size) % 100;
-  const next = pickReliever(players, teamId, counter, usedIds, wantCloser, preferredHand);
+  const next = pickReliever(
+    players, teamId, counter, usedIds, wantCloser, preferredHand,
+    gameIndex, restMap,
+  );
   if (!next) return currentPitcher;
 
   usedIds.add(next.playerId);

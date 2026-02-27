@@ -12,6 +12,7 @@ import { generateLeaguePlayers } from './player/generation';
 import { buildInitialTeams } from '../data/teams';
 import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTemplate';
 import { simulateSeason, simulateGamesRange, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
+import type { PitcherRestMap } from './sim/pitcherRest';
 import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
@@ -66,6 +67,7 @@ let _ownerGoals: OwnerGoalsState | null = null;     // Owner/GM goals state
 let _gamesPlayed = 0;         // How many schedule entries have been simulated this season
 let _simRotationIndex = new Map<number, number>();
 let _simBullpenOffset = new Map<number, number>();
+let _simPitcherRestMap: PitcherRestMap = new Map();
 let _simTeamWins = new Map<number, number>();
 let _simTeamLosses = new Map<number, number>();
 let _simTeamRS = new Map<number, number>();
@@ -489,6 +491,7 @@ const api = {
       existingTeamRA: _simTeamRA,
       rotationIndex: _simRotationIndex,
       bullpenOffset: _simBullpenOffset,
+      pitcherRestMap: _simPitcherRestMap,
       onProgress,
     });
 
@@ -500,6 +503,7 @@ const api = {
     _simTeamRA = result.teamRA;
     _simRotationIndex = result.rotationIndex;
     _simBullpenOffset = result.bullpenOffset;
+    _simPitcherRestMap = result.pitcherRestMap;
     _gamesPlayed = endIdx;
 
     // Update team records so standings reflect partial season
@@ -762,6 +766,7 @@ const api = {
         gamesPlayed: _gamesPlayed,
         simRotationIndex: Array.from(_simRotationIndex.entries()),
         simBullpenOffset: Array.from(_simBullpenOffset.entries()),
+        simPitcherRestMap: Array.from(_simPitcherRestMap.entries()),
         simTeamWins: Array.from(_simTeamWins.entries()),
         simTeamLosses: Array.from(_simTeamLosses.entries()),
         simTeamRS: Array.from(_simTeamRS.entries()),
@@ -808,6 +813,7 @@ const api = {
       _gamesPlayed = a.gamesPlayed ?? 0;
       _simRotationIndex = new Map(a.simRotationIndex ?? []);
       _simBullpenOffset = new Map(a.simBullpenOffset ?? []);
+      _simPitcherRestMap = new Map(a.simPitcherRestMap ?? []);
       _simTeamWins = new Map(a.simTeamWins ?? []);
       _simTeamLosses = new Map(a.simTeamLosses ?? []);
       _simTeamRS = new Map(a.simTeamRS ?? []);
