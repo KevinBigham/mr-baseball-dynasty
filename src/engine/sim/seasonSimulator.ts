@@ -2,7 +2,7 @@ import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
 import type { ScheduleEntry } from '../../types/game';
-import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
+import type { Player, PlayerSeasonStats, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
 
@@ -39,8 +39,7 @@ function getOrCreate(
 
 function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
-  playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
-    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number; sb: number; cs: number }>,
+  playerGameStats: PlayerGameStats[],
   playerTeamMap: Map<number, number>,
   season: number,
 ): void {
@@ -60,6 +59,30 @@ function accumulateBatting(
     s.k     += gs.k;
     s.sb    += gs.sb ?? 0;
     s.cs    += gs.cs ?? 0;
+
+    // Accumulate platoon splits
+    if (gs.vsLHP) {
+      if (!s.vsLHP) s.vsLHP = { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0, doubles: 0, triples: 0 };
+      s.vsLHP.pa += gs.vsLHP.pa;
+      s.vsLHP.ab += gs.vsLHP.ab;
+      s.vsLHP.h += gs.vsLHP.h;
+      s.vsLHP.hr += gs.vsLHP.hr;
+      s.vsLHP.bb += gs.vsLHP.bb;
+      s.vsLHP.k += gs.vsLHP.k;
+      s.vsLHP.doubles += gs.vsLHP.doubles;
+      s.vsLHP.triples += gs.vsLHP.triples;
+    }
+    if (gs.vsRHP) {
+      if (!s.vsRHP) s.vsRHP = { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0, doubles: 0, triples: 0 };
+      s.vsRHP.pa += gs.vsRHP.pa;
+      s.vsRHP.ab += gs.vsRHP.ab;
+      s.vsRHP.h += gs.vsRHP.h;
+      s.vsRHP.hr += gs.vsRHP.hr;
+      s.vsRHP.bb += gs.vsRHP.bb;
+      s.vsRHP.k += gs.vsRHP.k;
+      s.vsRHP.doubles += gs.vsRHP.doubles;
+      s.vsRHP.triples += gs.vsRHP.triples;
+    }
   }
 }
 

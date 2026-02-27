@@ -1,5 +1,6 @@
 import type { RandomGenerator } from 'pure-rand';
-import type { Player, PlayerGameStats, PitcherGameStats } from '../../types/player';
+import type { Player, PlayerGameStats, PitcherGameStats, ThrowSide } from '../../types/player';
+import { BLANK_SPLIT } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { BoxScore, GameResult, PAOutcome, PlayEvent } from '../../types/game';
 import { createPRNG } from '../math/prng';
@@ -98,6 +99,7 @@ function accumulateBatterStat(
   outcome: PAOutcome,
   rbi: number,
   scored: boolean,
+  pitcherHand?: ThrowSide,
 ): void {
   const s = stats.get(playerId) ?? blankBatterStats(playerId);
   s.pa++;
@@ -112,6 +114,22 @@ function accumulateBatterStat(
   // 'E' — reached on error: counts as AB (above) but NOT a hit. No RBI credited.
   if (scored) s.r++;
   if (outcome !== 'E') s.rbi += rbi; // No RBI on errors
+
+  // Track platoon splits (vs LHP / vs RHP)
+  if (pitcherHand) {
+    const splitKey = pitcherHand === 'L' ? 'vsLHP' : 'vsRHP';
+    if (!s[splitKey]) s[splitKey] = { ...BLANK_SPLIT };
+    const split = s[splitKey]!;
+    split.pa++;
+    if (outcome !== 'BB' && outcome !== 'HBP' && outcome !== 'SF') split.ab++;
+    if (outcome === 'BB') split.bb++;
+    if (outcome === 'K') split.k++;
+    if (outcome === '1B') split.h++;
+    if (outcome === '2B') { split.h++; split.doubles++; }
+    if (outcome === '3B') { split.h++; split.triples++; }
+    if (outcome === 'HR') { split.h++; split.hr++; }
+  }
+
   stats.set(playerId, s);
 }
 
@@ -328,8 +346,8 @@ function simulateHalfInning(
     const unearnedThisPA = allRunsUnearned ? runsThisPA
       : (outcome === 'E' ? runsThisPA : 0);
 
-    // Accumulate stats
-    accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false);
+    // Accumulate stats (with platoon split tracking)
+    accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false, pitcher.throws);
     accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, unearnedThisPA, pitchesThisPA);
 
     // Add to play log

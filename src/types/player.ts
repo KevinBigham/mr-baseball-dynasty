@@ -121,6 +121,9 @@ export interface PlayerGameStats {
   pa: number; ab: number; r: number; h: number;
   doubles: number; triples: number; hr: number;
   rbi: number; bb: number; k: number; sb: number; cs: number;
+  // Per-game platoon splits
+  vsLHP?: PlatoonSplitLine;
+  vsRHP?: PlatoonSplitLine;
 }
 
 export interface PitcherGameStats {
@@ -130,6 +133,16 @@ export interface PitcherGameStats {
   hr: number; pitchCount: number;
   decision?: 'W' | 'L' | 'S' | 'H' | 'BS';
 }
+
+// ─── Platoon split stats (vs LHP / vs RHP) ──────────────────────────────────
+export interface PlatoonSplitLine {
+  pa: number; ab: number; h: number; hr: number;
+  bb: number; k: number; doubles: number; triples: number;
+}
+
+export const BLANK_SPLIT: PlatoonSplitLine = {
+  pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0, doubles: 0, triples: 0,
+};
 
 export interface PlayerSeasonStats {
   playerId: number;
@@ -145,4 +158,7 @@ export interface PlayerSeasonStats {
   gp: number; gs: number; outs: number; // outs pitched
   ha: number; ra: number; er: number; bba: number; ka: number; hra: number;
   pitchCount: number;
+  // Platoon splits (optional, populated during simulation)
+  vsLHP?: PlatoonSplitLine;
+  vsRHP?: PlatoonSplitLine;
 }

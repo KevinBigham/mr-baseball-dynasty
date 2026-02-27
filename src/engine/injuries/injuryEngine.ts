@@ -91,8 +91,9 @@ function getInjuryProbability(player: Player): number {
   return BASE_INJURY_RATE_PER_GAME * durabilityFactor * ageFactor * positionFactor;
 }
 
-function rollInjury(player: Player, gameNumber: number, rand: () => number): Injury | null {
-  const prob = getInjuryProbability(player);
+function rollInjury(player: Player, gameNumber: number, rand: () => number, coachReduction = 0): Injury | null {
+  const baseProb = getInjuryProbability(player);
+  const prob = baseProb * (1 - coachReduction); // Coaching staff reduces injury rate
   if (rand() >= prob) return null;
 
   // Select injury type
@@ -146,6 +147,7 @@ export function processSeasonInjuries(
   players: Player[],
   totalGames: number,
   seedFunc: (gameNum: number, playerIdx: number) => number,
+  teamInjuryReduction?: Map<number, number>,  // teamId → reduction factor (0-0.15) from coaching
 ): InjuryReport {
   const activeInjuries: Injury[] = [];
   const seasonInjuries: Injury[] = [];
@@ -192,7 +194,10 @@ export function processSeasonInjuries(
 
       const seed = seedFunc(gameNum, i);
       const rand = makeRand(seed);
-      const injury = rollInjury(player, gameNum, rand);
+
+      // Apply coaching staff injury reduction before rolling
+      const coachReduction = teamInjuryReduction?.get(player.teamId) ?? 0;
+      const injury = rollInjury(player, gameNum, rand, coachReduction);
 
       if (injury) {
         seasonInjuries.push(injury);
