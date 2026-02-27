@@ -11,6 +11,7 @@ import LineupEditor from '../lineup/LineupEditor';
 import DraftRoom from '../draft/DraftRoom';
 import ProspectRankingsView from '../prospects/ProspectRankings';
 import FinanceDashboard from '../finance/FinanceDashboard';
+import InjuryTransactions from '../history/InjuryTransactions';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
@@ -22,6 +23,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'freeagents', label: 'FA MARKET' },
   { id: 'prospects',  label: 'PROSPECTS' },
   { id: 'finance',    label: 'FINANCE' },
+  { id: 'history',    label: 'HISTORY' },
   { id: 'stats',      label: 'LEADERS' },
   { id: 'profile',    label: 'PLAYER' },
 ];
@@ -41,6 +43,7 @@ export default function Shell() {
       case 'draft':      return <DraftRoom />;
       case 'prospects':  return <ProspectRankingsView />;
       case 'finance':    return <FinanceDashboard />;
+      case 'history':    return <InjuryTransactions />;
       case 'stats':      return <Leaderboards />;
       case 'profile':    return <PlayerProfile />;
       default:           return <Dashboard />;

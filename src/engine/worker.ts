@@ -25,6 +25,12 @@ import { generateDraftClass, buildDraftOrder, aiSelectPick, executeDraftPick, ty
 import { generateLeagueProspectRankings, generateOrgProspectRankings, type ProspectReport } from './scouting/prospectRankings';
 import { computeTeamFinancials, computePayroll, type TeamFinancials, type FinancialHistory } from './finance/financeEngine';
 import { recordSeasonStats, evaluateHOFCandidates, getAllTimeLeaders, getCareerRecords, getFranchiseRecords, type CareerStat, type AllTimeLeader, type HOFCandidate, type FranchiseRecord, type CareerRecord } from './history/careerStats';
+import { processSeasonInjuries, type Injury } from './injuries/injuryEngine';
+import { runRule5Draft, identifyRule5Eligible, protectPlayer, type Rule5Selection, type Rule5Eligible } from './offseason/rule5Draft';
+import { processArbitration, type ArbitrationCase } from './offseason/arbitration';
+import { simulateTradeDeadline, type DeadlineDeal } from './trade/tradeDeadline';
+import { generateIntlClass, runAIIntlSigning, type IntlProspect } from './offseason/intlSigning';
+import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -39,6 +45,11 @@ let _draftState: DraftState | null = null;
 let _financialHistory = new Map<number, FinancialHistory[]>();  // teamId → history
 let _teamCash = new Map<number, number>();       // teamId → accumulated cash
 let _luxuryTaxYears = new Map<number, number>(); // teamId → consecutive years over CBT
+let _seasonInjuries: Injury[] = [];               // Current season's injuries
+let _arbHistory: ArbitrationCase[] = [];           // All arbitration cases
+let _rule5History: Rule5Selection[] = [];          // All Rule 5 selections
+let _deadlineDeals: DeadlineDeal[] = [];           // All trade deadline deals
+let _intlProspects: IntlProspect[] = [];           // Current intl signing class
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -145,6 +156,22 @@ const api = {
       _playerSeasonStats.set(ps.playerId, ps);
     }
 
+    // ── Mid-season injuries ─────────────────────────────────────────────────────
+    let injSeed: number;
+    [injSeed, gen] = gen.next();
+    const injuryReport = processSeasonInjuries(
+      state.players, 162,
+      (gameNum, playerIdx) => ((injSeed >>> 0) * 31 + gameNum * 7919 + playerIdx * 104729) >>> 0,
+    );
+    _seasonInjuries = injuryReport.seasonInjuries;
+
+    // ── Mid-season trade deadline (after ~100 games) ────────────────────────────
+    const deadlineResult = simulateTradeDeadline(state.players, state.teams, state.userTeamId);
+    _deadlineDeals.push(...deadlineResult.deals);
+    for (const deal of deadlineResult.deals) {
+      recordTransaction(state.season, 'Trade Deadline', 'Trade', deal.headline, [deal.buyerTeamId, deal.sellerTeamId]);
+    }
+
     // ── Awards (computed before aging — players are at their in-season state) ──
     const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
     const divisionChampions = computeDivisionChampions(state.teams);
@@ -192,8 +219,72 @@ const api = {
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 
+    // ── Record awards history ────────────────────────────────────────────────────
+    recordSeasonAwards(
+      state.season, awards,
+      state.teams.map(t => ({ teamId: t.teamId, name: t.name })),
+      _playerSeasonStats as Map<number, { pa: number; ab: number; h: number; hr: number; rbi: number; outs: number; er: number; w: number; ka: number; sv: number }>,
+    );
+
+    // Record champion
+    if (playoffBracket?.champion) {
+      const champ = playoffBracket.champion;
+      const champTeam = state.teams.find(t => t.teamId === champ.teamId);
+      if (champTeam) {
+        recordChampion(
+          state.season, champTeam.teamId, champTeam.name,
+          `${champTeam.seasonRecord.wins}-${champTeam.seasonRecord.losses}`,
+        );
+      }
+    }
+
+    // ── Check career milestones ────────────────────────────────────────────────
+    const careerMap = new Map<number, { name: string; h: number; hr: number; ka: number; w: number; sv: number }>();
+    for (const [pid, s] of _playerSeasonStats) {
+      const player = _playerMap.get(pid);
+      if (!player) continue;
+      careerMap.set(pid, { name: player.name, h: s.h, hr: s.hr, ka: s.ka, w: s.w, sv: s.sv });
+    }
+    checkMilestones(state.season, careerMap);
+
+    // ── Arbitration (pre-FA salary hearings) ─────────────────────────────────────
+    const arbResult = processArbitration(state.players);
+    _arbHistory.push(...arbResult.cases);
+    for (const c of arbResult.cases) {
+      const outcome = c.isSettled ? 'settled' : (c.playerWon ? 'player won hearing' : 'team won hearing');
+      recordTransaction(state.season, 'Offseason', 'Arbitration',
+        `${c.name} (${c.position}) — $${(c.projectedSalary / 1_000_000).toFixed(1)}M (${outcome})`,
+        [c.teamId]);
+    }
+
+    // ── Rule 5 Draft ─────────────────────────────────────────────────────────────
+    const rule5Result = runRule5Draft(state.players, state.teams, state.userTeamId, state.season);
+    _rule5History.push(...rule5Result.selections);
+    for (const sel of rule5Result.selections) {
+      recordTransaction(state.season, 'Offseason', 'Rule 5',
+        `${sel.toTeamName} select ${sel.playerName} (${sel.position}) from ${sel.fromTeamName}`,
+        [sel.toTeamId, sel.fromTeamId]);
+    }
+
+    // ── International Signing Period ─────────────────────────────────────────────
+    const userTeam = _teamMap.get(state.userTeamId);
+    let intlProspects: IntlProspect[];
+    [intlProspects, gen] = generateIntlClass(gen, userTeam?.scoutingQuality ?? 0.7, state.season);
+    const intlResult = runAIIntlSigning(intlProspects, state.players, state.teams, state.userTeamId);
+    _intlProspects = intlProspects;
+    for (const sig of intlResult.signings) {
+      recordTransaction(state.season, 'J2 Period', 'Intl Signing',
+        `${sig.teamName} sign ${sig.playerName} ($${(sig.bonus / 1_000_000).toFixed(1)}M bonus)`,
+        [sig.teamId]);
+    }
+
     // ── AI free agency (AI teams sign available free agents) ───────────────────
     const faResult = runAIFreeAgency(state.players, state.teams, state.userTeamId);
+    for (const sig of faResult.signings) {
+      recordTransaction(state.season, 'Offseason', 'Signing',
+        `${sig.teamName} sign ${sig.playerName} (${sig.years}yr/$${(sig.salary / 1_000_000).toFixed(1)}M)`,
+        [sig.teamId]);
+    }
 
     // Rebuild the player map after development + free agency (ages/attrs/teams changed)
     rebuildMaps();
@@ -802,6 +893,60 @@ const api = {
 
   async getFranchiseRecords(teamId: number): Promise<FranchiseRecord[]> {
     return getFranchiseRecords(teamId);
+  },
+
+  // ── Injury System ──────────────────────────────────────────────────────
+  async getInjuryReport(): Promise<Injury[]> {
+    return _seasonInjuries;
+  },
+
+  // ── Arbitration ───────────────────────────────────────────────────────
+  async getArbitrationHistory(): Promise<ArbitrationCase[]> {
+    return _arbHistory;
+  },
+
+  // ── Rule 5 Draft ──────────────────────────────────────────────────────
+  async getRule5History(): Promise<Rule5Selection[]> {
+    return _rule5History;
+  },
+
+  async getRule5Eligible(): Promise<Rule5Eligible[]> {
+    const state = requireState();
+    return identifyRule5Eligible(state.players, state.teams, state.season);
+  },
+
+  async protectFromRule5(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    return protectPlayer(player, state.players);
+  },
+
+  // ── Trade Deadline ────────────────────────────────────────────────────
+  async getDeadlineDeals(): Promise<DeadlineDeal[]> {
+    return _deadlineDeals;
+  },
+
+  // ── International Signing ─────────────────────────────────────────────
+  async getIntlProspects(): Promise<IntlProspect[]> {
+    return _intlProspects;
+  },
+
+  // ── Awards History ────────────────────────────────────────────────────
+  async getAwardHistory(): Promise<AwardHistoryEntry[]> {
+    return getAwardHistory();
+  },
+
+  async getChampionHistory(): Promise<ChampionHistoryEntry[]> {
+    return getChampionHistory();
+  },
+
+  async getTransactionLog(): Promise<TxnLog[]> {
+    return getTransactionLog();
+  },
+
+  async getMilestones(): Promise<SeasonMilestone[]> {
+    return getMilestones();
   },
 
   // ── Utility ────────────────────────────────────────────────────────────────
