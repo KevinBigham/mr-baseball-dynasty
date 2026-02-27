@@ -5,6 +5,7 @@ import { nextFloat } from '../math/prng';
 import { log5MultiOutcome, weightedRates, PITCHER_WEIGHTS, squashModifier, sampleOutcome } from '../math/log5';
 import { LEAGUE_RATES } from '../../data/positionalPriors';
 import type { ParkFactor } from '../../data/parkFactors';
+import { computeShiftDecision } from './defensiveShift';
 
 // ─── Inputs to a single plate appearance ──────────────────────────────────────
 export interface PAInput {
@@ -210,13 +211,18 @@ function stage3(
   parkFactor: ParkFactor,
   runners: number,
   outs: number,
+  batter: Player,
 ): [PAOutcome, RandomGenerator] {
   // Defense modifier: average (400) = neutral; better defense lowers BABIP
   const defMod = (defenseRating - 400) / 550 * 0.03;
   const parkBabipMod = parkFactor.babipFactor - 1.0;
 
+  // Defensive shift modifier (affects GB BABIP only)
+  const shift = computeShiftDecision(batter, defenseRating);
+  const shiftMod = battedBall === 'GB' ? shift.babipModifier : 0;
+
   const effectiveBabip = Math.max(0.15, Math.min(0.45,
-    hRates.babip - defMod + parkBabipMod,
+    hRates.babip - defMod + parkBabipMod + shiftMod,
   ));
 
   let roll: number;
@@ -346,6 +352,7 @@ export function resolvePlateAppearance(
     input.parkFactor,
     input.runners,
     input.outs,
+    input.batter,
   );
 
   return [{ outcome: finalOutcome, runsScored: 0, runnersAdvanced: 0 }, gen];
