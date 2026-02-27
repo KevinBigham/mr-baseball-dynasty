@@ -87,7 +87,7 @@ function pickReliever(
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
 function blankBatterStats(playerId: number): PlayerGameStats {
-  return { playerId, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0, cs: 0 };
+  return { playerId, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, hbp: 0, sb: 0, cs: 0 };
 }
 
 function blankPitcherStats(playerId: number): PitcherGameStats {
@@ -109,6 +109,7 @@ function accumulateBatterStat(
   // AB: not counted for BB, HBP, SF, SAC_BUNT
   if (outcome !== 'BB' && outcome !== 'HBP' && outcome !== 'SF' && outcome !== 'SAC_BUNT') s.ab++;
   if (outcome === 'BB')  s.bb++;
+  if (outcome === 'HBP') s.hbp++;
   if (outcome === 'K')   s.k++;
   if (outcome === '1B')  { s.h++; }
   if (outcome === '2B')  { s.h++; s.doubles++; }

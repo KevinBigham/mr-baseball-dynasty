@@ -57,6 +57,7 @@ function accumulateBatting(
     s.rbi   += gs.rbi;
     s.bb    += gs.bb;
     s.k     += gs.k;
+    s.hbp   += gs.hbp ?? 0;
     s.sb    += gs.sb ?? 0;
     s.cs    += gs.cs ?? 0;
 

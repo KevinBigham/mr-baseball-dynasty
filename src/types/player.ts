@@ -120,7 +120,7 @@ export interface PlayerGameStats {
   playerId: number;
   pa: number; ab: number; r: number; h: number;
   doubles: number; triples: number; hr: number;
-  rbi: number; bb: number; k: number; sb: number; cs: number;
+  rbi: number; bb: number; k: number; hbp: number; sb: number; cs: number;
   // Per-game platoon splits
   vsLHP?: PlatoonSplitLine;
   vsRHP?: PlatoonSplitLine;
