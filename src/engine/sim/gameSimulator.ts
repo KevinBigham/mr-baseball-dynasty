@@ -1,10 +1,11 @@
 import type { RandomGenerator } from 'pure-rand';
 import type { Player, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team } from '../../types/team';
-import type { BoxScore, GameResult, PAOutcome } from '../../types/game';
+import type { BoxScore, GameResult, PAOutcome, PlayEvent } from '../../types/game';
 import { createPRNG } from '../math/prng';
 import { resolvePlateAppearance } from './plateAppearance';
 import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
+import { attemptSteals } from './stolenBase';
 import { PARK_FACTORS } from '../../data/parkFactors';
 import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
@@ -130,9 +131,24 @@ function estimatePitches(outcome: PAOutcome): number {
 
 // ─── Half-inning simulation ───────────────────────────────────────────────────
 
+// Get runners on base as Player objects for steal logic
+function getRunnersOnBase(
+  runners: number,
+  lineup: Player[],
+  lineupPos: number,
+): [Player | null, Player | null, Player | null] {
+  // We track runners by using the last batters who reached base
+  // This is a simplification — we return the lineup slot holders as proxies
+  return [
+    (runners & 0b001) ? lineup[(lineupPos - 1 + 9) % 9] ?? null : null,  // 1st
+    (runners & 0b010) ? lineup[(lineupPos - 2 + 9) % 9] ?? null : null,  // 2nd
+    (runners & 0b100) ? lineup[(lineupPos - 3 + 9) % 9] ?? null : null,  // 3rd
+  ];
+}
+
 function simulateHalfInning(
   gen: RandomGenerator,
-  _ctx: GameFSMContext,
+  ctx: GameFSMContext,
   lineup: Player[],
   lineupPos: number,
   pitcher: Player,
@@ -143,17 +159,69 @@ function simulateHalfInning(
   parkFactor: (typeof PARK_FACTORS)[number],
   defenseRating: number,
   mannedRunner: boolean,
+  allPlayers: Player[],
+  fieldingTeamId: number,
+  playLog?: PlayEvent[],
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
   if (mannedRunner) {
-    // Start with runner on 2nd (Manfred runner)
     markov = { runners: 0b010, outs: 0, runsScored: 0 };
   }
 
+  // Find catcher for the fielding team (for stolen base defense)
+  const catcher = allPlayers.find(
+    p => p.teamId === fieldingTeamId && p.position === 'C'
+      && p.rosterData.rosterStatus === 'MLB_ACTIVE',
+  ) ?? null;
+
   let pos = lineupPos;
-  let runsBefore = 0;
 
   while (markov.outs < 3) {
+    // ── Stolen base attempts (before next PA) ──
+    if (markov.runners !== 0) {
+      const runnersArr = getRunnersOnBase(markov.runners, lineup, pos);
+      const runnersForSteal: Player[] = [
+        runnersArr[0] ?? lineup[0]!,
+        runnersArr[1] ?? lineup[0]!,
+        runnersArr[2] ?? lineup[0]!,
+      ];
+
+      let stealResults: import('./stolenBase').StealAttemptResult[];
+      [markov, stealResults, gen] = attemptSteals(
+        gen, markov, runnersForSteal, pitcher, catcher, markov.outs,
+      );
+
+      // Record SB/CS in batter stats
+      for (const sr of stealResults) {
+        const stat = batterStats.get(sr.runnerId) ?? blankBatterStats(sr.runnerId);
+        if (sr.success) {
+          stat.sb++;
+        } else {
+          stat.cs++;
+        }
+        batterStats.set(sr.runnerId, stat);
+
+        // Add steal event to play log
+        if (playLog) {
+          playLog.push({
+            inning: ctx.inning,
+            isTop: ctx.isTop,
+            batterId: sr.runnerId,
+            pitcherId: pitcher.playerId,
+            outs: markov.outs - (sr.success ? 0 : 1), // outs before this play
+            runners: markov.runners,
+            result: {
+              outcome: sr.success ? 'SB' as PAOutcome : 'CS' as PAOutcome,
+              runsScored: 0,
+              runnersAdvanced: 0,
+            },
+          });
+        }
+      }
+    }
+
+    if (markov.outs >= 3) break;
+
     const batter = lineup[pos % 9]!;
     const paInput = {
       batter,
@@ -165,6 +233,10 @@ function simulateHalfInning(
       parkFactor,
       defenseRating,
     };
+
+    // Record pre-PA state for play log
+    const preOuts = markov.outs;
+    const preRunners = markov.runners;
 
     let paResult: import('../../types/game').PAResult;
     [paResult, gen] = resolvePlateAppearance(gen, paInput);
@@ -182,13 +254,26 @@ function simulateHalfInning(
     accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false);
     accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, pitchesThisPA);
 
+    // Add to play log
+    if (playLog) {
+      playLog.push({
+        inning: ctx.inning,
+        isTop: ctx.isTop,
+        batterId: batter.playerId,
+        pitcherId: pitcher.playerId,
+        outs: preOuts,
+        runners: preRunners,
+        result: { ...paResult, runsScored: runsThisPA },
+      });
+    }
+
     pos++;
 
     // Track times through order
     if (pos % 9 === 0) timesThroughRef.value++;
   }
 
-  return [markov.runsScored - runsBefore, pos % 9, gen];
+  return [markov.runsScored, pos % 9, gen];
 }
 
 // ─── Full game simulation ─────────────────────────────────────────────────────
@@ -201,6 +286,7 @@ export interface SimulateGameInput {
   awayTeam: Team;
   players: Player[];
   seed: number;
+  recordPlayLog?: boolean; // If true, generate play-by-play log
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -272,6 +358,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9;
 
   const MAX_INNINGS = 25;
+  const playLog: PlayEvent[] | undefined = input.recordPlayLog ? [] : undefined;
 
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
@@ -290,6 +377,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       parkFactor,
       homeDefRating,
       topManned,
+      input.players,
+      input.homeTeam.teamId,
+      playLog,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
 
@@ -323,6 +413,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       parkFactor,
       awayDefRating,
       bottomManned,
+      input.players,
+      input.awayTeam.teamId,
+      playLog,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
 
@@ -356,11 +449,12 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayTeamId: input.awayTeam.teamId,
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
-    innings: 9, // tracked externally
+    innings: 9,
     homeBatting: Array.from(homeBatterStats.values()),
     awayBatting: Array.from(awayBatterStats.values()),
     homePitching: Array.from(homePitcherStats.values()),
     awayPitching: Array.from(awayPitcherStats.values()),
+    playLog,
   };
 
   return {

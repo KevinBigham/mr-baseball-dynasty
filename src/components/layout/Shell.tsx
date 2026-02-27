@@ -14,6 +14,7 @@ import FinanceDashboard from '../finance/FinanceDashboard';
 import InjuryTransactions from '../history/InjuryTransactions';
 import AdvancedStats from '../analytics/AdvancedStats';
 import CoachingStaffView from '../coaching/CoachingStaffView';
+import PlayerComparison from '../stats/PlayerComparison';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',    label: 'HOME' },
@@ -29,6 +30,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'frontoffice',  label: 'FRONT OFFICE' },
   { id: 'history',      label: 'HISTORY' },
   { id: 'stats',        label: 'LEADERS' },
+  { id: 'compare',      label: 'COMPARE' },
   { id: 'profile',      label: 'PLAYER' },
 ];
 
@@ -51,6 +53,7 @@ export default function Shell() {
       case 'frontoffice':  return <CoachingStaffView />;
       case 'history':      return <InjuryTransactions />;
       case 'stats':        return <Leaderboards />;
+      case 'compare':    return <PlayerComparison allPlayers={[]} />;
       case 'profile':    return <PlayerProfile />;
       default:           return <Dashboard />;
     }

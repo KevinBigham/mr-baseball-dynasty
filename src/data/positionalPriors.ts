@@ -63,7 +63,7 @@ export const LEAGUE_RATES = {
   bbRate: 0.087,      // Hitter BB%
   hbpRate: 0.011,
   hrRate: 0.034,      // HR per PA
-  babip: 0.292,
+  babip: 0.290,
   gbPercent: 0.45,    // Of balls in play
   fbPercent: 0.35,
   ldPercent: 0.20,
