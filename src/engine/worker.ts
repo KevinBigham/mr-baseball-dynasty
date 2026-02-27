@@ -31,6 +31,12 @@ import { processArbitration, type ArbitrationCase } from './offseason/arbitratio
 import { simulateTradeDeadline, type DeadlineDeal } from './trade/tradeDeadline';
 import { generateIntlClass, runAIIntlSigning, type IntlProspect } from './offseason/intlSigning';
 import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
+import { computeAllAdvancedStats, type AdvancedHitterStats, type AdvancedPitcherStats, type LeagueEnvironment } from './analytics/sabermetrics';
+import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, computeCoachingEffects, advanceCoachContracts, type Coach, type CoachingStaffData } from './coaching/coachingStaff';
+import { getExtensionCandidates, evaluateExtension, runAIExtensions, type ExtensionOffer, type ExtensionResult, type ExtensionCandidate } from './contracts/extensions';
+import { processWaivers, getWaiverPlayers, claimWaiverPlayer, type WaiverPlayer, type WaiverClaim } from './waivers/waiverWire';
+import { computeTeamChemistry, type TeamChemistryData } from './chemistry/teamChemistry';
+import { initializeOwnerGoals, evaluateSeason as evaluateGMSeason, generateSeasonGoals, type OwnerGoalsState } from './owner/ownerGoals';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -50,6 +56,11 @@ let _arbHistory: ArbitrationCase[] = [];           // All arbitration cases
 let _rule5History: Rule5Selection[] = [];          // All Rule 5 selections
 let _deadlineDeals: DeadlineDeal[] = [];           // All trade deadline deals
 let _intlProspects: IntlProspect[] = [];           // Current intl signing class
+let _coachingStaff = new Map<number, Coach[]>();    // teamId → coaches
+let _coachingPool: Coach[] = [];                    // Available coaches for hiring
+let _extensionHistory: ExtensionResult[] = [];      // All extension results
+let _waiverHistory: WaiverClaim[] = [];             // All waiver claims
+let _ownerGoals: OwnerGoalsState | null = null;     // Owner/GM goals state
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -120,6 +131,27 @@ const api = {
     _playerSeasonStats = new Map();
     _seasonResults = [];
     rebuildMaps();
+
+    // Initialize coaching staffs for all teams
+    let coachGen = nextGen;
+    for (const team of teams) {
+      let coachSeed: number;
+      [coachSeed, coachGen] = coachGen.next();
+      let s = coachSeed >>> 0;
+      const rand = () => { s = Math.imul(s + 0x9e3779b9, s) >>> 0; return s / 0x100000000; };
+      _coachingStaff.set(team.teamId, generateInitialStaff(rand));
+    }
+    // Generate hiring pool
+    let poolSeed: number;
+    [poolSeed, coachGen] = coachGen.next();
+    let ps = poolSeed >>> 0;
+    _coachingPool = generateCoachingPool(25, () => { ps = Math.imul(ps + 0x9e3779b9, ps) >>> 0; return ps / 0x100000000; });
+
+    // Initialize owner/GM goals
+    let ownerSeed: number;
+    [ownerSeed, coachGen] = coachGen.next();
+    let os = ownerSeed >>> 0;
+    _ownerGoals = initializeOwnerGoals('balanced', 'competitive', () => { os = Math.imul(os + 0x9e3779b9, os) >>> 0; return os / 0x100000000; });
 
     return { ok: true, season: _state.season, teamCount: teams.length };
   },
@@ -284,6 +316,66 @@ const api = {
       recordTransaction(state.season, 'Offseason', 'Signing',
         `${sig.teamName} sign ${sig.playerName} (${sig.years}yr/$${(sig.salary / 1_000_000).toFixed(1)}M)`,
         [sig.teamId]);
+    }
+
+    // ── Process waivers (DFA'd players claimed or cleared) ────────────────────
+    const waiverResult = processWaivers(state.players, state.teams, state.userTeamId);
+    _waiverHistory.push(...waiverResult.claims);
+    for (const claim of waiverResult.claims) {
+      recordTransaction(state.season, 'Offseason', 'DFA',
+        `${claim.claimTeamName} claim ${claim.playerName} (${claim.position}) off waivers from ${claim.formerTeamName}`,
+        [claim.claimTeamId, claim.formerTeamId]);
+    }
+
+    // ── AI contract extensions ─────────────────────────────────────────────────
+    const extTeams = state.teams.map(t => ({ teamId: t.teamId, name: t.name, budget: t.budget, strategy: t.strategy }));
+    const extResults = runAIExtensions(state.players, extTeams, state.userTeamId);
+    _extensionHistory.push(...extResults);
+    for (const ext of extResults) {
+      recordTransaction(state.season, 'Offseason', 'Signing',
+        `${ext.playerName} signs ${ext.years}yr/$${(ext.totalValue / 1_000_000).toFixed(1)}M extension`,
+        []);
+    }
+
+    // ── Advance coaching contracts ─────────────────────────────────────────────
+    for (const [teamId, coaches] of _coachingStaff) {
+      const { remaining } = advanceCoachContracts(coaches);
+      _coachingStaff.set(teamId, remaining);
+    }
+
+    // ── Evaluate owner/GM goals ────────────────────────────────────────────────
+    if (_ownerGoals) {
+      const userTeamRecord = state.teams.find(t => t.teamId === state.userTeamId);
+      const madePlayoffs = result.teamSeasons.some(ts =>
+        ts.teamId === state.userTeamId && ts.playoffRound !== undefined
+      );
+      const wonChamp = playoffBracket?.champion?.teamId === state.userTeamId;
+      const payroll = computePayroll(state.players, state.userTeamId);
+      const prospectsPromoted = state.players.filter(p =>
+        p.teamId === state.userTeamId &&
+        p.rosterData.rosterStatus === 'MLB_ACTIVE' &&
+        p.rosterData.serviceTimeDays <= 172
+      ).length;
+
+      const gmEval = evaluateGMSeason(
+        _ownerGoals, state.season,
+        userTeamRecord?.seasonRecord.wins ?? 0,
+        userTeamRecord?.seasonRecord.losses ?? 0,
+        madePlayoffs, wonChamp, payroll,
+        userTeamRecord?.budget ?? 100_000_000,
+        prospectsPromoted,
+      );
+      _ownerGoals.evaluations.push(gmEval);
+      _ownerGoals.jobSecurity = gmEval.jobSecurity;
+      _ownerGoals.yearsAsGM++;
+      if (gmEval.mandateChange) {
+        _ownerGoals.mandate = gmEval.mandateChange;
+      }
+      // Generate next season's goals
+      _ownerGoals.seasonGoals = generateSeasonGoals(
+        _ownerGoals.mandate, _ownerGoals.owner,
+        userTeamRecord?.seasonRecord.wins ?? 81,
+      );
     }
 
     // Rebuild the player map after development + free agency (ages/attrs/teams changed)
@@ -947,6 +1039,114 @@ const api = {
 
   async getMilestones(): Promise<SeasonMilestone[]> {
     return getMilestones();
+  },
+
+  // ── Advanced Analytics ──────────────────────────────────────────────────
+  async getAdvancedStats(): Promise<{ hitters: AdvancedHitterStats[]; pitchers: AdvancedPitcherStats[]; env: LeagueEnvironment }> {
+    const state = requireState();
+    const isPitcherMap = new Map(state.players.map(p => [p.playerId, p.isPitcher]));
+    return computeAllAdvancedStats(_playerSeasonStats, isPitcherMap);
+  },
+
+  // ── Coaching Staff ────────────────────────────────────────────────────
+  async getCoachingStaff(teamId: number): Promise<CoachingStaffData> {
+    const coaches = _coachingStaff.get(teamId) ?? [];
+    return getCoachingStaffData(teamId, coaches);
+  },
+
+  async getCoachingPool(): Promise<Coach[]> {
+    return _coachingPool;
+  },
+
+  async hireCoach(coachId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const coach = _coachingPool.find(c => c.coachId === coachId);
+    if (!coach) return { ok: false, error: 'Coach not available.' };
+
+    const current = _coachingStaff.get(state.userTeamId) ?? [];
+    // Check if already have someone in this role
+    const existingInRole = current.find(c => c.role === coach.role);
+    if (existingInRole) return { ok: false, error: `Already have a ${coach.role}. Fire them first.` };
+
+    current.push(coach);
+    _coachingStaff.set(state.userTeamId, current);
+    _coachingPool = _coachingPool.filter(c => c.coachId !== coachId);
+    return { ok: true };
+  },
+
+  async fireCoach(coachId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const current = _coachingStaff.get(state.userTeamId) ?? [];
+    const idx = current.findIndex(c => c.coachId === coachId);
+    if (idx < 0) return { ok: false, error: 'Coach not found on staff.' };
+
+    const [fired] = current.splice(idx, 1);
+    _coachingStaff.set(state.userTeamId, current);
+    _coachingPool.push(fired);
+    return { ok: true };
+  },
+
+  // ── Contract Extensions ───────────────────────────────────────────────
+  async getExtensionCandidates(): Promise<ExtensionCandidate[]> {
+    const state = requireState();
+    return getExtensionCandidates(state.players, state.userTeamId);
+  },
+
+  async offerExtension(offer: ExtensionOffer): Promise<ExtensionResult> {
+    const state = requireState();
+    const player = _playerMap.get(offer.playerId);
+    if (!player) return { accepted: false, playerId: offer.playerId, playerName: '???', years: offer.years, aav: offer.aav, totalValue: offer.totalValue, reason: 'Player not found.' };
+    const result = evaluateExtension(offer, player);
+    _extensionHistory.push(result);
+    if (result.accepted) {
+      recordTransaction(state.season, 'Offseason', 'Signing',
+        `${result.playerName} signs ${result.years}yr/$${(result.totalValue / 1_000_000).toFixed(1)}M extension`,
+        [state.userTeamId]);
+    }
+    return result;
+  },
+
+  async getExtensionHistory(): Promise<ExtensionResult[]> {
+    return _extensionHistory;
+  },
+
+  // ── Waiver Wire ───────────────────────────────────────────────────────
+  async getWaiverPlayers(): Promise<WaiverPlayer[]> {
+    const state = requireState();
+    return getWaiverPlayers(state.players, state.teams);
+  },
+
+  async claimWaiverPlayer(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = claimWaiverPlayer(player, state.userTeamId, state.players);
+    if (result.ok) {
+      rebuildMaps();
+    }
+    return result;
+  },
+
+  async getWaiverHistory(): Promise<WaiverClaim[]> {
+    return _waiverHistory;
+  },
+
+  // ── Team Chemistry ────────────────────────────────────────────────────
+  async getTeamChemistry(teamId: number): Promise<TeamChemistryData> {
+    const state = requireState();
+    const team = _teamMap.get(teamId);
+    const coaches = _coachingStaff.get(teamId) ?? [];
+    const effects = computeCoachingEffects(coaches);
+    return computeTeamChemistry(
+      state.players, teamId, state.season,
+      team?.seasonRecord.wins ?? 0, team?.seasonRecord.losses ?? 0,
+      effects.chemistryBoost,
+    );
+  },
+
+  // ── Owner/GM Goals ────────────────────────────────────────────────────
+  async getOwnerGoals(): Promise<OwnerGoalsState | null> {
+    return _ownerGoals;
   },
 
   // ── Utility ────────────────────────────────────────────────────────────────
