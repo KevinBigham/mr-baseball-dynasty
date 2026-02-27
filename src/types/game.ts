@@ -29,6 +29,7 @@ export interface BoxScore {
   homeScore: number;
   awayScore: number;
   innings: number;
+  lineScore?: { away: number[]; home: number[] }; // Runs per inning
   homeBatting: PlayerGameStats[];
   awayBatting: PlayerGameStats[];
   homePitching: PitcherGameStats[];

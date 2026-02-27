@@ -522,6 +522,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const playLog: PlayEvent[] | undefined = input.recordPlayLog ? [] : undefined;
   let lastHomeScoreBeforeBottom = 0;
 
+  // Line score: runs per inning for each team
+  const awayLineScore: number[] = [];
+  const homeLineScore: number[] = [];
+
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
     const topManned = shouldUseMannedRunner({ ...ctx, inning, isTop: true });
@@ -545,6 +549,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       playLog,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
+    awayLineScore.push(awayRuns);
 
     // Pitcher management: pull home starter? (home team pitches in top half)
     const homeSave = isSaveSituation(inning, ctx.homeScore, ctx.awayScore);
@@ -589,6 +594,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       playLog,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
+    homeLineScore.push(homeRuns);
 
     // Pitcher management: pull away starter? (away team pitches in bottom half)
     const awaySave = isSaveSituation(inning, ctx.awayScore, ctx.homeScore);
@@ -651,6 +657,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
     innings: finalInnings,
+    lineScore: { away: awayLineScore, home: homeLineScore },
     homeBatting: Array.from(homeBatterStats.values()),
     awayBatting: Array.from(awayBatterStats.values()),
     homePitching: Array.from(homePitcherStats.values()),
