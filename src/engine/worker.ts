@@ -11,7 +11,7 @@ import { createPRNG, serializeState, deserializeState } from './math/prng';
 import { generateLeaguePlayers } from './player/generation';
 import { buildInitialTeams } from '../data/teams';
 import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTemplate';
-import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
+import { simulateSeason, simulateGamesRange, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
@@ -61,6 +61,15 @@ let _coachingPool: Coach[] = [];                    // Available coaches for hir
 let _extensionHistory: ExtensionResult[] = [];      // All extension results
 let _waiverHistory: WaiverClaim[] = [];             // All waiver claims
 let _ownerGoals: OwnerGoalsState | null = null;     // Owner/GM goals state
+
+// ─── Granular sim tracking ──────────────────────────────────────────────────
+let _gamesPlayed = 0;         // How many schedule entries have been simulated this season
+let _simRotationIndex = new Map<number, number>();
+let _simBullpenOffset = new Map<number, number>();
+let _simTeamWins = new Map<number, number>();
+let _simTeamLosses = new Map<number, number>();
+let _simTeamRS = new Map<number, number>();
+let _simTeamRA = new Map<number, number>();
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -440,6 +449,102 @@ const api = {
     return fullResult;
   },
 
+  // ── Granular Sim Controls ────────────────────────────────────────────────
+  // Sim a specific number of games from current position
+  async simGames(
+    count: number,
+    onProgress?: (pct: number) => void,
+  ): Promise<{ gamesPlayed: number; totalScheduled: number }> {
+    const state = requireState();
+    const gen = deserializeState(state.prngState);
+    const baseSeed = Number(gen.next()[0]);
+
+    const endIdx = Math.min(_gamesPlayed + count, state.schedule.length);
+
+    const result = await simulateGamesRange({
+      teams: state.teams,
+      players: state.players,
+      schedule: state.schedule,
+      baseSeed,
+      startGameIndex: _gamesPlayed,
+      endGameIndex: endIdx,
+      existingStats: _playerSeasonStats,
+      existingTeamWins: _simTeamWins,
+      existingTeamLosses: _simTeamLosses,
+      existingTeamRS: _simTeamRS,
+      existingTeamRA: _simTeamRA,
+      rotationIndex: _simRotationIndex,
+      bullpenOffset: _simBullpenOffset,
+      onProgress,
+    });
+
+    // Update carry-over state
+    _playerSeasonStats = result.playerStatsMap;
+    _simTeamWins = result.teamWins;
+    _simTeamLosses = result.teamLosses;
+    _simTeamRS = result.teamRS;
+    _simTeamRA = result.teamRA;
+    _simRotationIndex = result.rotationIndex;
+    _simBullpenOffset = result.bullpenOffset;
+    _gamesPlayed = endIdx;
+
+    // Update team records so standings reflect partial season
+    for (const team of state.teams) {
+      team.seasonRecord = {
+        wins: result.teamWins.get(team.teamId) ?? 0,
+        losses: result.teamLosses.get(team.teamId) ?? 0,
+        runsScored: result.teamRS.get(team.teamId) ?? 0,
+        runsAllowed: result.teamRA.get(team.teamId) ?? 0,
+      };
+    }
+
+    return { gamesPlayed: _gamesPlayed, totalScheduled: state.schedule.length };
+  },
+
+  // Sim one week (~11 games per team, ~45 total league games)
+  async simWeek(onProgress?: (pct: number) => void) {
+    return this.simGames(45, onProgress);
+  },
+
+  // Sim one month (~27 games per team, ~200 total league games)
+  async simMonth(onProgress?: (pct: number) => void) {
+    return this.simGames(200, onProgress);
+  },
+
+  // Sim to the All-Star break (~half season, ~1215 games)
+  async simToAllStarBreak(onProgress?: (pct: number) => void) {
+    const state = requireState();
+    const allStarGame = Math.floor(state.schedule.length / 2);
+    const remaining = Math.max(0, allStarGame - _gamesPlayed);
+    return this.simGames(remaining, onProgress);
+  },
+
+  // Sim to the trade deadline (~100 games per team, ~1620 total)
+  async simToTradeDeadline(onProgress?: (pct: number) => void) {
+    const state = requireState();
+    const deadline = Math.floor(state.schedule.length * 0.62); // ~100/162 of season
+    const remaining = Math.max(0, deadline - _gamesPlayed);
+    return this.simGames(remaining, onProgress);
+  },
+
+  // Sim remaining games to end of season
+  async simRest(onProgress?: (pct: number) => void) {
+    const state = requireState();
+    const remaining = Math.max(0, state.schedule.length - _gamesPlayed);
+    return this.simGames(remaining, onProgress);
+  },
+
+  // Get current sim progress
+  async getSimProgress(): Promise<{ gamesPlayed: number; totalScheduled: number; pct: number }> {
+    const state = requireState();
+    const total = state.schedule.length;
+    return {
+      gamesPlayed: _gamesPlayed,
+      totalScheduled: total,
+      pct: total > 0 ? _gamesPlayed / total : 0,
+    };
+  },
+
   // ── Standings ──────────────────────────────────────────────────────────────
   async getStandings(): Promise<StandingsData> {
     const state = requireState();
@@ -640,6 +745,13 @@ const api = {
           transactionLog: getTransactionLog(),
           milestones: getMilestones(),
         },
+        gamesPlayed: _gamesPlayed,
+        simRotationIndex: Array.from(_simRotationIndex.entries()),
+        simBullpenOffset: Array.from(_simBullpenOffset.entries()),
+        simTeamWins: Array.from(_simTeamWins.entries()),
+        simTeamLosses: Array.from(_simTeamLosses.entries()),
+        simTeamRS: Array.from(_simTeamRS.entries()),
+        simTeamRA: Array.from(_simTeamRA.entries()),
       },
     };
   },
@@ -679,6 +791,13 @@ const api = {
           milestones: SeasonMilestone[];
         });
       }
+      _gamesPlayed = a.gamesPlayed ?? 0;
+      _simRotationIndex = new Map(a.simRotationIndex ?? []);
+      _simBullpenOffset = new Map(a.simBullpenOffset ?? []);
+      _simTeamWins = new Map(a.simTeamWins ?? []);
+      _simTeamLosses = new Map(a.simTeamLosses ?? []);
+      _simTeamRS = new Map(a.simTeamRS ?? []);
+      _simTeamRA = new Map(a.simTeamRA ?? []);
     } else {
       _playerSeasonStats = new Map();
     }

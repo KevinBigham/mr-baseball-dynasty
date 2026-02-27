@@ -38,6 +38,13 @@ export interface WorkerAuxState {
     transactionLog: unknown[];
     milestones: unknown[];
   };
+  gamesPlayed: number;
+  simRotationIndex: Array<[number, number]>;
+  simBullpenOffset: Array<[number, number]>;
+  simTeamWins: Array<[number, number]>;
+  simTeamLosses: Array<[number, number]>;
+  simTeamRS: Array<[number, number]>;
+  simTeamRA: Array<[number, number]>;
 }
 
 export interface LeagueState {

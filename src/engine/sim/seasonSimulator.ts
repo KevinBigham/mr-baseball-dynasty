@@ -40,7 +40,7 @@ function getOrCreate(
 function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
   playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
-    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number }>,
+    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number; sb: number; cs: number }>,
   playerTeamMap: Map<number, number>,
   season: number,
 ): void {
@@ -58,6 +58,8 @@ function accumulateBatting(
     s.rbi   += gs.rbi;
     s.bb    += gs.bb;
     s.k     += gs.k;
+    s.sb    += gs.sb ?? 0;
+    s.cs    += gs.cs ?? 0;
   }
 }
 
@@ -105,6 +107,147 @@ function stddev(values: number[]): number {
 
 // ─── Main season simulator ────────────────────────────────────────────────────
 
+// ─── Granular sim: simulate a slice of the schedule ─────────────────────────
+
+export interface PartialSimInput {
+  teams: Team[];
+  players: Player[];
+  schedule: ScheduleEntry[];
+  baseSeed: number;
+  startGameIndex: number;  // 0-based index into schedule
+  endGameIndex: number;    // exclusive
+  // Carry-over state from previous partial sim
+  existingStats?: Map<number, PlayerSeasonStats>;
+  existingTeamWins?: Map<number, number>;
+  existingTeamLosses?: Map<number, number>;
+  existingTeamRS?: Map<number, number>;
+  existingTeamRA?: Map<number, number>;
+  rotationIndex?: Map<number, number>;
+  bullpenOffset?: Map<number, number>;
+  onProgress?: (pct: number) => void;
+}
+
+export async function simulateGamesRange(input: PartialSimInput): Promise<{
+  playerStatsMap: Map<number, PlayerSeasonStats>;
+  teamWins: Map<number, number>;
+  teamLosses: Map<number, number>;
+  teamRS: Map<number, number>;
+  teamRA: Map<number, number>;
+  rotationIndex: Map<number, number>;
+  bullpenOffset: Map<number, number>;
+  gamesCompleted: number;
+}> {
+  const { teams, players, schedule, baseSeed } = input;
+  const season = new Date().getFullYear();
+
+  const playerTeamMap = new Map<number, number>();
+  const playerPositionMap = new Map<number, string>();
+  for (const p of players) {
+    playerTeamMap.set(p.playerId, p.teamId);
+    playerPositionMap.set(p.playerId, p.position);
+  }
+
+  const teamMap = new Map<number, Team>();
+  for (const t of teams) teamMap.set(t.teamId, t);
+
+  const teamWins = input.existingTeamWins ?? new Map<number, number>();
+  const teamLosses = input.existingTeamLosses ?? new Map<number, number>();
+  const teamRS = input.existingTeamRS ?? new Map<number, number>();
+  const teamRA = input.existingTeamRA ?? new Map<number, number>();
+  for (const t of teams) {
+    if (!teamWins.has(t.teamId)) teamWins.set(t.teamId, 0);
+    if (!teamLosses.has(t.teamId)) teamLosses.set(t.teamId, 0);
+    if (!teamRS.has(t.teamId)) teamRS.set(t.teamId, 0);
+    if (!teamRA.has(t.teamId)) teamRA.set(t.teamId, 0);
+  }
+
+  const playerStatsMap = input.existingStats ?? new Map<number, PlayerSeasonStats>();
+  const rotationIndex = input.rotationIndex ?? new Map<number, number>();
+  const bullpenOffset = input.bullpenOffset ?? new Map<number, number>();
+
+  for (const t of teams) {
+    if (!rotationIndex.has(t.teamId)) rotationIndex.set(t.teamId, 0);
+    if (!bullpenOffset.has(t.teamId)) bullpenOffset.set(t.teamId, 0);
+  }
+
+  const sliceLength = input.endGameIndex - input.startGameIndex;
+  let completed = 0;
+
+  for (let i = input.startGameIndex; i < Math.min(input.endGameIndex, schedule.length); i++) {
+    const entry = schedule[i]!;
+    const homeTeam = teamMap.get(entry.homeTeamId);
+    const awayTeam = teamMap.get(entry.awayTeamId);
+
+    if (!homeTeam || !awayTeam) { completed++; continue; }
+
+    const gameSeed = (baseSeed ^ (entry.gameId * 2654435761)) >>> 0;
+
+    const homeWithRotation: Team = {
+      ...homeTeam,
+      rotationIndex: rotationIndex.get(entry.homeTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.homeTeamId) ?? 0,
+    };
+    const awayWithRotation: Team = {
+      ...awayTeam,
+      rotationIndex: rotationIndex.get(entry.awayTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
+    };
+
+    const result = simulateGame({
+      gameId: entry.gameId,
+      season,
+      date: entry.date,
+      homeTeam: homeWithRotation,
+      awayTeam: awayWithRotation,
+      players,
+      seed: gameSeed,
+    });
+
+    rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
+    rotationIndex.set(entry.awayTeamId, (rotationIndex.get(entry.awayTeamId) ?? 0) + 1);
+    bullpenOffset.set(entry.homeTeamId, (bullpenOffset.get(entry.homeTeamId) ?? 0) + 3);
+    bullpenOffset.set(entry.awayTeamId, (bullpenOffset.get(entry.awayTeamId) ?? 0) + 3);
+
+    if (result.homeScore > result.awayScore) {
+      teamWins.set(entry.homeTeamId, (teamWins.get(entry.homeTeamId) ?? 0) + 1);
+      teamLosses.set(entry.awayTeamId, (teamLosses.get(entry.awayTeamId) ?? 0) + 1);
+    } else {
+      teamWins.set(entry.awayTeamId, (teamWins.get(entry.awayTeamId) ?? 0) + 1);
+      teamLosses.set(entry.homeTeamId, (teamLosses.get(entry.homeTeamId) ?? 0) + 1);
+    }
+    teamRS.set(entry.homeTeamId, (teamRS.get(entry.homeTeamId) ?? 0) + result.homeScore);
+    teamRS.set(entry.awayTeamId, (teamRS.get(entry.awayTeamId) ?? 0) + result.awayScore);
+    teamRA.set(entry.homeTeamId, (teamRA.get(entry.homeTeamId) ?? 0) + result.awayScore);
+    teamRA.set(entry.awayTeamId, (teamRA.get(entry.awayTeamId) ?? 0) + result.homeScore);
+
+    const box = result.boxScore;
+    accumulateBatting(playerStatsMap, box.homeBatting, playerTeamMap, season);
+    accumulateBatting(playerStatsMap, box.awayBatting, playerTeamMap, season);
+    accumulatePitching(playerStatsMap, box.homePitching, playerTeamMap, playerPositionMap, season);
+    accumulatePitching(playerStatsMap, box.awayPitching, playerTeamMap, playerPositionMap, season);
+
+    completed++;
+
+    if (completed % 50 === 0 && input.onProgress) {
+      input.onProgress(completed / sliceLength);
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    }
+  }
+
+  if (input.onProgress) input.onProgress(1.0);
+
+  return {
+    playerStatsMap,
+    teamWins,
+    teamLosses,
+    teamRS,
+    teamRA,
+    rotationIndex,
+    bullpenOffset,
+    gamesCompleted: completed,
+  };
+}
+
 export async function simulateSeason(
   teams: Team[],
   players: Player[],
@@ -112,7 +255,7 @@ export async function simulateSeason(
   baseSeed: number,
   onProgress?: (pct: number) => void,
 ): Promise<SeasonResult> {
-  const season = new Date().getFullYear(); // Caller should pass season number; use current year as fallback
+  const season = new Date().getFullYear();
 
   // Build lookup maps for player metadata
   const playerTeamMap = new Map<number, number>();

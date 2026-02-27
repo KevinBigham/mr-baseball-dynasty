@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createPRNG } from '../../src/engine/math/prng';
-import { attemptSteals, type StealAttemptResult } from '../../src/engine/sim/stolenBase';
+import { attemptSteals } from '../../src/engine/sim/stolenBase';
 import type { MarkovState } from '../../src/engine/sim/markov';
 import type { Player } from '../../src/types/player';
 
