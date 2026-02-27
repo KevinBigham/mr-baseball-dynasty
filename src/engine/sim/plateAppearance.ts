@@ -84,9 +84,9 @@ function pitcherToRates(p: PitcherAttributes): {
   const commandFactor = p.command / 400;
 
   return {
-    // exponent=0.9: moderates K tail — elite stuff (stuffFactor~1.12→kRate=0.250) allows
-    // 200+K seasons without over-producing 200K pitchers; capped at 0.38 for realism
-    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 0.9))),
+    // exponent=1.3: elite stuff generates 200+K seasons (gate ≥ 15); avg pitchers unchanged
+    // since 1.0^1.3=1.0; at stuffFactor=1.30→kRate≈0.316, producing realistic K distributions
+    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 1.3))),
     bbRate:    Math.max(0.03, LEAGUE_RATES.pitcherBBRate * (2 - commandFactor)),
     hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor)),
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),
