@@ -17,6 +17,10 @@ import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
 import { computeAwards, computeDivisionChampions } from './player/awards';
 import { simulatePlayoffs, getPlayoffResults } from './sim/playoffs';
+import { calculatePlayerValue } from './trade/valuation';
+import { evaluateTrade, executeTrade, getTradeablePlayers, type TradeProposal, type TradeEvaluation, type TradeRecord } from './trade/tradeEngine';
+import { identifyFreeAgents, signFreeAgent as signFA, runAIFreeAgency, type FreeAgent, type FreeAgencyResult } from './offseason/freeAgency';
+import type { TradeablePlayer, LineupData } from '../types/trade';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -25,6 +29,8 @@ let _playerMap = new Map<number, Player>();
 let _teamMap = new Map<number, Team>();
 let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonStats>();
 let _seasonResults: SeasonResult[] = [];
+let _tradeHistory: TradeRecord[] = [];
+let _lineups = new Map<number, LineupData>();
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -178,8 +184,14 @@ const api = {
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 
-    // Rebuild the player map after development (ages/attrs changed)
+    // ── AI free agency (AI teams sign available free agents) ───────────────────
+    const faResult = runAIFreeAgency(state.players, state.teams, state.userTeamId);
+
+    // Rebuild the player map after development + free agency (ages/attrs/teams changed)
     rebuildMaps();
+
+    // Clear lineups (rosters changed)
+    _lineups.clear();
 
     state.prngState = serializeState(gen);
     _seasonResults.push(result);
@@ -192,6 +204,7 @@ const api = {
       divisionChampions,
       developmentEvents: offseasonResult.events,
       playoffBracket,
+      freeAgencySignings: faResult.signings.length,
     };
 
     return fullResult;
@@ -442,6 +455,115 @@ const api = {
 
     player.rosterData.rosterStatus = 'DFA';
     player.rosterData.isOn40Man = false;
+    return { ok: true };
+  },
+
+  // ── Trade System ─────────────────────────────────────────────────────────
+  async getTradeablePlayers(teamId: number): Promise<TradeablePlayer[]> {
+    const state = requireState();
+    const tradeable = getTradeablePlayers(state.players, teamId);
+    return tradeable.map(p => ({
+      playerId:    p.playerId,
+      name:        p.name,
+      position:    p.position,
+      age:         p.age,
+      overall:     p.overall,
+      potential:   p.potential,
+      tradeValue:  calculatePlayerValue(p),
+      salary:      p.rosterData.salary,
+      contractYrs: p.rosterData.contractYearsRemaining,
+      rosterStatus: p.rosterData.rosterStatus,
+      isPitcher:   p.isPitcher,
+    })).sort((a, b) => b.tradeValue - a.tradeValue);
+  },
+
+  async evaluateTrade(proposal: TradeProposal): Promise<TradeEvaluation> {
+    const state = requireState();
+    return evaluateTrade(proposal, state.teams, state.players);
+  },
+
+  async executeTrade(proposal: TradeProposal): Promise<TradeRecord> {
+    const state = requireState();
+    const record = executeTrade(proposal, state.players, state.season);
+    _tradeHistory.push(record);
+    rebuildMaps();
+    return record;
+  },
+
+  async getTradeHistory(): Promise<TradeRecord[]> {
+    return _tradeHistory;
+  },
+
+  // ── Free Agency ─────────────────────────────────────────────────────────
+  async getFreeAgents(): Promise<FreeAgent[]> {
+    const state = requireState();
+    return identifyFreeAgents(state.players);
+  },
+
+  async signFreeAgent(playerId: number, salary: number, years: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+
+    // Verify they're actually a free agent
+    if (player.rosterData.rosterStatus !== 'FREE_AGENT' &&
+        !(player.rosterData.contractYearsRemaining <= 0 && player.rosterData.serviceTimeDays >= 172 * 6)) {
+      return { ok: false, error: 'Player is not a free agent.' };
+    }
+
+    // Check 40-man limit
+    const fortyManCount = state.players.filter(
+      p => p.teamId === state.userTeamId && p.rosterData.isOn40Man,
+    ).length;
+    if (fortyManCount >= 40) return { ok: false, error: '40-man roster full. DFA someone first.' };
+
+    signFA(player, state.userTeamId, salary, years);
+    rebuildMaps();
+    return { ok: true };
+  },
+
+  async runAIFreeAgency(): Promise<FreeAgencyResult> {
+    const state = requireState();
+    const result = runAIFreeAgency(state.players, state.teams, state.userTeamId);
+    rebuildMaps();
+    return result;
+  },
+
+  // ── Lineup Management ───────────────────────────────────────────────────
+  async getLineup(teamId: number): Promise<LineupData> {
+    const state = requireState();
+    const existing = _lineups.get(teamId);
+    if (existing) return existing;
+
+    // Auto-generate default lineup
+    const teamPlayers = state.players.filter(p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE');
+    const hitters = teamPlayers.filter(p => !p.isPitcher)
+      .sort((a, b) => {
+        const aVal = (a.hitterAttributes?.contact ?? 0) + (a.hitterAttributes?.power ?? 0) * 0.8 + (a.hitterAttributes?.eye ?? 0) * 0.6;
+        const bVal = (b.hitterAttributes?.contact ?? 0) + (b.hitterAttributes?.power ?? 0) * 0.8 + (b.hitterAttributes?.eye ?? 0) * 0.6;
+        return bVal - aVal;
+      });
+    const starters = teamPlayers.filter(p => p.position === 'SP')
+      .sort((a, b) => b.overall - a.overall);
+    const closers = teamPlayers.filter(p => p.position === 'CL')
+      .sort((a, b) => b.overall - a.overall);
+
+    const lineup: LineupData = {
+      teamId,
+      battingOrder: hitters.slice(0, 9).map(p => p.playerId),
+      rotation: starters.slice(0, 5).map(p => p.playerId),
+      closer: closers[0]?.playerId ?? null,
+    };
+
+    _lineups.set(teamId, lineup);
+    return lineup;
+  },
+
+  async setLineup(lineup: LineupData): Promise<{ ok: boolean; error?: string }> {
+    requireState();
+    if (lineup.battingOrder.length !== 9) return { ok: false, error: 'Batting order must have exactly 9 players.' };
+    if (lineup.rotation.length < 1 || lineup.rotation.length > 5) return { ok: false, error: 'Rotation must have 1-5 pitchers.' };
+    _lineups.set(lineup.teamId, lineup);
     return { ok: true };
   },
 

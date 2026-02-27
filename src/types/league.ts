@@ -37,6 +37,7 @@ export interface SeasonResult {
   divisionChampions?: DivisionChampion[];
   developmentEvents?: DevelopmentEvent[];
   playoffBracket?: PlayoffBracket;
+  freeAgencySignings?: number;
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────

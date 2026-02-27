@@ -5,11 +5,17 @@ import StandingsView from '../dashboard/StandingsTable';
 import RosterView from '../roster/RosterView';
 import Leaderboards from '../stats/Leaderboards';
 import PlayerProfile from '../stats/PlayerProfile';
+import TradeCenter from '../trade/TradeCenter';
+import FreeAgentMarket from '../offseason/FreeAgentMarket';
+import LineupEditor from '../lineup/LineupEditor';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
   { id: 'standings',  label: 'STANDINGS' },
   { id: 'roster',     label: 'ROSTER' },
+  { id: 'lineup',     label: 'LINEUP' },
+  { id: 'trades',     label: 'TRADES' },
+  { id: 'freeagents', label: 'FREE AGENTS' },
   { id: 'stats',      label: 'LEADERBOARDS' },
   { id: 'profile',    label: 'PLAYER' },
 ];
@@ -23,6 +29,9 @@ export default function Shell() {
       case 'dashboard':  return <Dashboard />;
       case 'standings':  return <StandingsView />;
       case 'roster':     return <RosterView />;
+      case 'trades':     return <TradeCenter />;
+      case 'freeagents': return <FreeAgentMarket />;
+      case 'lineup':     return <LineupEditor />;
       case 'stats':      return <Leaderboards />;
       case 'profile':    return <PlayerProfile />;
       default:           return <Dashboard />;
