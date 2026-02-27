@@ -164,7 +164,32 @@ export function applyOutcome(
 
     case 'GB_OUT': {
       newOuts += 1;
-      // No runner advancement on groundout
+      // Runner advancement on groundout:
+      // - Runner on 3rd can score on GB with < 2 outs (~45% of the time)
+      // - Runner on 2nd advances to 3rd on GB (~60% of the time)
+      if (newOuts < 3) {
+        if (state.runners & 0b100) {
+          // Runner on 3rd: may score on productive groundout (< 2 outs only)
+          if (state.outs < 2) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.35) {
+              additionalRuns++;
+              newRunners = newRunners & ~0b100;
+            }
+          }
+        }
+        if (state.runners & 0b010) {
+          // Runner on 2nd: advances to 3rd if 3rd isn't occupied
+          if (!(newRunners & 0b100)) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.50) {
+              newRunners = (newRunners & ~0b010) | 0b100;
+            }
+          }
+        }
+      }
       break;
     }
 
