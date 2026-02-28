@@ -28,6 +28,7 @@ import {
   type MomentumState,
 } from './momentum';
 import { leverageIndex } from './winProbability';
+import { getFramingModifier } from './catcherFraming';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -285,11 +286,14 @@ function simulateHalfInning(
     markov = { runners: 0b010, outs: 0, runsScored: 0 };
   }
 
-  // Find catcher for the fielding team (for stolen base defense)
+  // Find catcher for the fielding team (for stolen base defense + framing)
   const catcher = allPlayers.find(
     p => p.teamId === fieldingTeamId && p.position === 'C'
       && p.rosterData.rosterStatus === 'MLB_ACTIVE',
   ) ?? null;
+
+  // Catcher framing: affects K/BB rates for the pitching team
+  const framing = getFramingModifier(catcher);
 
   let pos = lineupPos;
 
@@ -496,8 +500,8 @@ function simulateHalfInning(
         defenseRating,
         protectionBBMod,
         infieldIn,
-        countKMod: countMod.kRateMod,
-        countBBMod: countMod.bbRateMod,
+        countKMod: countMod.kRateMod * framing.kMod,
+        countBBMod: countMod.bbRateMod * framing.bbMod,
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
