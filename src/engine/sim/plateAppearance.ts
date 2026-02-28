@@ -187,6 +187,7 @@ function stage2(
   gen: RandomGenerator,
   hRates: ReturnType<typeof hitterToRates>,
   pRates: ReturnType<typeof pitcherToRates>,
+  gbFactor: number,
 ): [string, RandomGenerator] {
   // GB/FB interaction: if pitcher is GB-heavy and batter is FB-heavy, more groundouts
   const pitcherGB = pRates.gbPercent;
@@ -198,8 +199,11 @@ function stage2(
   const blendedGB = (pitcherGB * 0.55 + hRates.gbPercent * 0.45);
   const baseLD = 0.20;
 
-  let gbProb = blendedGB;
+  // Apply park GB factor (>1 = more GBs, <1 = more FBs)
+  let gbProb = blendedGB * gbFactor;
   let fbProb = 1 - blendedGB - baseLD - 0.08; // 0.08 = PU rate
+  // Compensate: if park increases GBs, reduce FBs proportionally
+  fbProb *= (2 - gbFactor);
 
   // Apply interaction modifier
   if (pitcherGB > 0.50 && batterFB > 0.40) {
@@ -388,7 +392,7 @@ export function resolvePlateAppearance(
 
   // Stage 2: Batted ball type
   let battedBall: string;
-  [battedBall, gen] = stage2(gen, hRates, pRates);
+  [battedBall, gen] = stage2(gen, hRates, pRates, input.parkFactor.gbFactor ?? 1.0);
 
   // Stage 3: Hit/out resolution
   let finalOutcome: PAOutcome;
