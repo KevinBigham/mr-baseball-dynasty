@@ -95,6 +95,9 @@ import RivalryView from '../team/RivalryView';
 import MinorLeagueView from '../minors/MinorLeagueView';
 import ChemistryMatrixView from '../clubhouse/ChemistryMatrixView';
 import ArbitrationView from '../contracts/ArbitrationView';
+import TradeRumorBoard from '../trade/TradeRumorBoard';
+import RetirementWatchView from '../player/RetirementWatchView';
+import ProspectGraduationView from '../prospects/ProspectGraduationView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -161,6 +164,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'incentives', label: 'INCENTIVES' },
       { id: 'arbitration', label: 'ARBITRATION' },
       { id: 'offseasonevents', label: 'OFFSEASON EVENTS' },
+      { id: 'traderumors', label: 'TRADE RUMORS' },
     ],
   },
   {
@@ -207,6 +211,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'minors', label: 'MINOR LEAGUES' },
       { id: 'stadium', label: 'STADIUM UPGRADES' },
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
+      { id: 'prospectgrad', label: 'PROSPECT GRAD' },
     ],
   },
   {
@@ -224,6 +229,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'ringofhonor', label: 'RING OF HONOR' },
       { id: 'legacy', label: 'LEGACY SCORE' },
       { id: 'alltimerecords', label: 'ALL-TIME RECORDS' },
+      { id: 'retirement', label: 'RETIREMENT WATCH' },
     ],
   },
 ];
@@ -476,6 +482,9 @@ export default function Shell() {
       case 'minors':    return <MinorLeagueView />;
       case 'chemmatrix': return <ChemistryMatrixView />;
       case 'arbitration': return <ArbitrationView />;
+      case 'traderumors': return <TradeRumorBoard />;
+      case 'retirement': return <RetirementWatchView />;
+      case 'prospectgrad': return <ProspectGraduationView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
