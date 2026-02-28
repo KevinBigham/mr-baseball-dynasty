@@ -47,6 +47,7 @@ import { getPatiencePitchBonus } from './batterPatience';
 import { getWorkEthicPitchReduction } from './workEthicEndurance';
 import { getLeadRunnerEffectiveSpeed } from './baserunningAdvancement';
 import { selectPinchRunner } from './pinchRunner';
+import { getOutfieldArmBonus } from './outfieldArms';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -781,7 +782,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const homeDefRating = homeDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
     + chemistryDefenseAdjustment(homeChemMod)
-    + getHomeFieldAdvantage().defenseBonus; // Home team defense boost
+    + getHomeFieldAdvantage().defenseBonus // Home team defense boost
+    + getOutfieldArmBonus(input.players, input.homeTeam.teamId);
   const homeAvgDefIQ = homeDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.defensiveIQ ?? 400), 0) / Math.max(1, homeDefPlayers.length);
 
@@ -790,7 +792,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     .slice(0, 9);
   const awayDefRating = awayDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
-    + chemistryDefenseAdjustment(awayChemMod);
+    + chemistryDefenseAdjustment(awayChemMod)
+    + getOutfieldArmBonus(input.players, input.awayTeam.teamId);
   const awayAvgDefIQ = awayDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.defensiveIQ ?? 400), 0) / Math.max(1, awayDefPlayers.length);
 
