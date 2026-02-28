@@ -14,6 +14,23 @@ function teamName(teamId: number): string {
   return teamById.get(teamId)?.name ?? `Team ${teamId}`;
 }
 
+/** Generate a short game blurb from summary data */
+function gameBlurb(g: GameSummary, userTeamId: number): string | null {
+  const isHome = g.homeTeamId === userTeamId;
+  const userScore = isHome ? g.homeScore : g.awayScore;
+  const oppScore  = isHome ? g.awayScore : g.homeScore;
+  const margin = Math.abs(userScore - oppScore);
+  const won = userScore > oppScore;
+
+  if (g.walkOff) return won ? 'Walk-off win!' : 'Lost on a walk-off';
+  if (oppScore === 0 && won) return 'Shutout victory';
+  if (userScore === 0 && !won) return 'Shut out';
+  if (margin >= 7) return won ? 'Blowout win' : 'Blowout loss';
+  if (g.innings > 9) return `${g.innings}-inning ${won ? 'win' : 'loss'}`;
+  if (margin === 1) return won ? 'Edged it out' : 'Tough one-run loss';
+  return null;
+}
+
 export default function RecentGamesPanel() {
   const { userTeamId } = useGameStore();
   const [games, setGames] = useState<GameSummary[]>([]);
@@ -77,6 +94,16 @@ export default function RecentGamesPanel() {
               {g.walkOff && (
                 <span className="text-orange-400 text-[10px] ml-1">WO</span>
               )}
+
+              {/* Game blurb */}
+              {(() => {
+                const blurb = gameBlurb(g, userTeamId);
+                return blurb ? (
+                  <span className="text-gray-600 text-[10px] ml-1 hidden md:inline italic">
+                    {blurb}
+                  </span>
+                ) : null;
+              })()}
             </div>
           );
         })}
