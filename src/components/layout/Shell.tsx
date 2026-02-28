@@ -182,6 +182,9 @@ import ClutchPitchingView from '../pitching/ClutchPitchingView';
 import MiLBAffiliatesView from '../minors/MiLBAffiliatesView';
 import BuyoutCalculatorView from '../contracts/BuyoutCalculatorView';
 import PitcherWorkloadView from '../pitching/PitcherWorkloadView';
+import RunExpectancyView from '../analytics/RunExpectancyView';
+import FrontOfficeView from '../management/FrontOfficeView';
+import PIVIndexView from '../pitching/PIVIndexView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -261,6 +264,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchrelease', label: 'RELEASE POINT' },
       { id: 'clutchpitching', label: 'CLUTCH PITCHING' },
       { id: 'pitcherworkload', label: 'WORKLOAD MONITOR' },
+      { id: 'pivindex', label: 'PIV INDEX' },
     ],
   },
   {
@@ -336,6 +340,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gameleverage', label: 'GAME LEVERAGE' },
       { id: 'catchercalling', label: 'CATCHER CALLING' },
       { id: 'gbfb', label: 'GB/FB TENDENCY' },
+      { id: 'runexpectancy', label: 'RUN EXPECTANCY' },
     ],
   },
   {
@@ -379,6 +384,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salarydump', label: 'SALARY DUMP' },
       { id: 'intlscoutboard', label: 'INTL SCOUT BOARD' },
       { id: 'milbaffiliates', label: 'MILB AFFILIATES' },
+      { id: 'frontoffice2', label: 'FRONT OFFICE' },
     ],
   },
   {
@@ -737,6 +743,9 @@ export default function Shell() {
       case 'milbaffiliates': return <MiLBAffiliatesView />;
       case 'buyoutcalc': return <BuyoutCalculatorView />;
       case 'pitcherworkload': return <PitcherWorkloadView />;
+      case 'runexpectancy': return <RunExpectancyView />;
+      case 'frontoffice2': return <FrontOfficeView />;
+      case 'pivindex': return <PIVIndexView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
