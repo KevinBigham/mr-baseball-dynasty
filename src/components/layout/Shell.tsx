@@ -48,6 +48,8 @@ import PitchingStaff from '../roster/PitchingStaff';
 import NewsFeed from '../dashboard/NewsFeed';
 import TripleCrownTracker from '../analytics/TripleCrownTracker';
 import TeamSnapshot from '../analytics/TeamSnapshot';
+import ProspectScoutingBoard from '../prospects/ProspectScoutingBoard';
+import OffseasonHub from '../offseason/OffseasonHub';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -81,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'MOVES',
     items: [
+      { id: 'offseason', label: 'OFFSEASON HUB' },
       { id: 'trades', label: 'TRADE CENTER' },
       { id: 'tradefinder', label: 'TRADE FINDER' },
       { id: 'deadline', label: 'DEADLINE RECAP' },
@@ -115,6 +118,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
       { id: 'prospects', label: 'PROSPECTS' },
+      { id: 'scoutingboard', label: 'SCOUTING BOARD' },
       { id: 'pipeline', label: 'FARM PIPELINE' },
       { id: 'devtracker', label: 'DEVELOPMENT' },
       { id: 'intl', label: 'INTL SIGNING' },
@@ -335,6 +339,8 @@ export default function Shell() {
       case 'newsfeed':     return <NewsFeed />;
       case 'triplecrown':  return <TripleCrownTracker />;
       case 'teamsnapshot':  return <TeamSnapshot />;
+      case 'scoutingboard': return <ProspectScoutingBoard />;
+      case 'offseason':    return <OffseasonHub />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
