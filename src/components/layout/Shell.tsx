@@ -16,6 +16,7 @@ import AdvancedStats from '../analytics/AdvancedStats';
 import CoachingStaffView from '../coaching/CoachingStaffView';
 import PlayerComparison from '../stats/PlayerComparison';
 import ParkComparisonView from '../stats/ParkComparisonView';
+import PowerRankings from '../analytics/PowerRankings';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',    label: 'HOME' },
@@ -32,6 +33,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'history',      label: 'HISTORY' },
   { id: 'stats',        label: 'LEADERS' },
   { id: 'compare',      label: 'COMPARE' },
+  { id: 'rankings',     label: 'POWER' },
   { id: 'parks',        label: 'PARKS' },
   { id: 'profile',      label: 'PLAYER' },
 ];
@@ -56,6 +58,7 @@ export default function Shell() {
       case 'history':      return <InjuryTransactions />;
       case 'stats':        return <Leaderboards />;
       case 'compare':    return <PlayerComparison allPlayers={[]} />;
+      case 'rankings':   return <PowerRankings />;
       case 'parks':      return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':    return <PlayerProfile />;
       default:           return <Dashboard />;

@@ -38,6 +38,7 @@ import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, compu
 import { getExtensionCandidates, evaluateExtension, runAIExtensions, type ExtensionOffer, type ExtensionResult, type ExtensionCandidate } from './contracts/extensions';
 import { processWaivers, getWaiverPlayers, claimWaiverPlayer, type WaiverPlayer, type WaiverClaim } from './waivers/waiverWire';
 import { computeTeamChemistry, type TeamChemistryData } from './chemistry/teamChemistry';
+import { computePowerRankings, type PowerRanking } from './analytics/powerRankings';
 import { initializeOwnerGoals, evaluateSeason as evaluateGMSeason, generateSeasonGoals, type OwnerGoalsState } from './owner/ownerGoals';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
@@ -1481,6 +1482,12 @@ const api = {
       return [p.playerId, { name: p.name, teamAbbr: team?.abbreviation ?? '---', position: p.position }] as const;
     }));
     return computeAllAdvancedStats(_playerSeasonStats, isPitcherMap, playerMeta);
+  },
+
+  // ── Power Rankings ───────────────────────────────────────────────────
+  async getPowerRankings(): Promise<PowerRanking[]> {
+    const state = requireState();
+    return computePowerRankings(state.teams, state.players);
   },
 
   // ── Coaching Staff ────────────────────────────────────────────────────
