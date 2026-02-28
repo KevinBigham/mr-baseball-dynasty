@@ -156,6 +156,63 @@ export default function PlayByPlayViewer({
         </table>
       </div>
 
+      {/* ── Pitching summary ────────────────────────────────────── */}
+      <div className="border-b border-gray-800 px-4 py-2 grid grid-cols-2 gap-4">
+        {[
+          { label: awayTeamName, pitchers: boxScore.awayPitching },
+          { label: homeTeamName, pitchers: boxScore.homePitching },
+        ].map(({ label, pitchers }) => (
+          <div key={label}>
+            <div className="text-gray-500 text-xs font-bold mb-1">{label} PITCHING</div>
+            <table className="text-xs font-mono w-full">
+              <thead>
+                <tr className="text-gray-600">
+                  <th className="text-left pr-2">NAME</th>
+                  <th className="text-right px-1">IP</th>
+                  <th className="text-right px-1">H</th>
+                  <th className="text-right px-1">R</th>
+                  <th className="text-right px-1">ER</th>
+                  <th className="text-right px-1">BB</th>
+                  <th className="text-right px-1">K</th>
+                  <th className="text-right px-1">HR</th>
+                  <th className="text-right px-1 text-orange-700">PC</th>
+                  <th className="text-right pl-2">DEC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pitchers.map(p => {
+                  const name = playerNames.get(p.playerId) ?? `#${p.playerId}`;
+                  const fullInnings = Math.floor(p.outs / 3);
+                  const partialOuts = p.outs % 3;
+                  const ip = `${fullInnings}.${partialOuts}`;
+                  const decColor = p.decision === 'W' ? 'text-green-400'
+                    : p.decision === 'L' ? 'text-red-400'
+                    : p.decision === 'S' ? 'text-cyan-400'
+                    : p.decision === 'BS' ? 'text-red-500'
+                    : 'text-gray-600';
+                  return (
+                    <tr key={p.playerId} className="text-gray-300">
+                      <td className="text-left pr-2 truncate max-w-[8rem]">{name}</td>
+                      <td className="text-right px-1 tabular-nums">{ip}</td>
+                      <td className="text-right px-1 tabular-nums">{p.h}</td>
+                      <td className="text-right px-1 tabular-nums">{p.r}</td>
+                      <td className="text-right px-1 tabular-nums">{p.er}</td>
+                      <td className="text-right px-1 tabular-nums">{p.bb}</td>
+                      <td className="text-right px-1 tabular-nums">{p.k}</td>
+                      <td className="text-right px-1 tabular-nums">{p.hr}</td>
+                      <td className="text-right px-1 tabular-nums text-orange-400">{p.pitchCount}</td>
+                      <td className={`text-right pl-2 font-bold ${decColor}`}>
+                        {p.decision ?? '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
       {/* ── Inning filter tabs ────────────────────────────────────── */}
       <div className="flex gap-1 px-4 py-2 border-b border-gray-800 overflow-x-auto">
         <button
