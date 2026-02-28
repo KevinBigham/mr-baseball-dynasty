@@ -35,6 +35,7 @@ export interface BoxScore {
   homePitching: PitcherGameStats[];
   awayPitching: PitcherGameStats[];
   playLog?: PlayEvent[];  // Only for hot storage
+  weather?: { temperature: number; windDirection: string; windSpeed: number }; // Game weather
 }
 
 export interface GameResult {

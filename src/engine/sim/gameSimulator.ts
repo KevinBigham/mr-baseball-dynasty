@@ -899,6 +899,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     homePitching: Array.from(homePitcherStats.values()),
     awayPitching: Array.from(awayPitcherStats.values()),
     playLog,
+    weather: { temperature: weather.temperature, windDirection: weather.windDirection, windSpeed: weather.windSpeed },
   };
 
   // Record pitcher appearances for rest tracking

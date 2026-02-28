@@ -96,8 +96,27 @@ export default function PlayByPlayViewer({
     return { away, home };
   }, [boxScore.lineScore, innings, inningNumbers]);
 
+  // Weather display helper
+  const weatherStr = boxScore.weather
+    ? `${boxScore.weather.temperature}°F · ${
+        boxScore.weather.windDirection === 'calm' ? 'Calm'
+        : `Wind ${boxScore.weather.windDirection} ${boxScore.weather.windSpeed} mph`
+      }`
+    : null;
+
   return (
     <div className="flex flex-col h-full">
+      {/* ── Weather bar ──────────────────────────────────────────── */}
+      {weatherStr && (
+        <div className="border-b border-gray-800 px-4 py-1.5 flex items-center gap-3 text-xs">
+          <span className="text-gray-500">WEATHER</span>
+          <span className="text-gray-400 font-mono">{weatherStr}</span>
+          {boxScore.innings > 9 && (
+            <span className="ml-auto text-orange-600 font-bold">F/{boxScore.innings}</span>
+          )}
+        </div>
+      )}
+
       {/* ── Linescore ─────────────────────────────────────────────── */}
       <div className="border-b border-gray-800 px-4 py-2 overflow-x-auto">
         <table className="text-xs font-mono min-w-max">
