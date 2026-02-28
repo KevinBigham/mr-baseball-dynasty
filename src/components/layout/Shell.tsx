@@ -215,6 +215,15 @@ import StadiumRevenueView from '../finance/StadiumRevenueView';
 import SpinRateView from '../pitching/SpinRateView';
 import DraftBoardView from '../draft/DraftBoardView';
 import PlayerCompView from '../analytics/PlayerCompView';
+import PitchLocationView from '../pitching/PitchLocationView';
+import TeamPayrollHistoryView from '../finance/TeamPayrollHistoryView';
+import ProspectETAView from '../scouting/ProspectETAView';
+import BatterEyeView from '../analytics/BatterEyeView';
+import CoachingTreeView from '../management/CoachingTreeView';
+import TransactionLogView from '../history/TransactionLogView';
+import PitchEffectivenessView from '../pitching/PitchEffectivenessView';
+import RevenueProjectionsView from '../finance/RevenueProjectionsView';
+import HOFMonitorView from '../history/HOFMonitorView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -302,6 +311,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchgrading', label: 'PITCH GRADING' },
       { id: 'pitchmatchup', label: 'PITCH MATCHUP' },
       { id: 'spinrate', label: 'SPIN RATE' },
+      { id: 'pitchlocation', label: 'PITCH LOCATION' },
+      { id: 'pitcheffcount', label: 'PITCH EFF/COUNT' },
     ],
   },
   {
@@ -390,6 +401,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'swingdecision', label: 'SWING DECISION' },
       { id: 'platoonmatrix', label: 'PLATOON MATRIX' },
       { id: 'playercomp', label: 'PLAYER COMP' },
+      { id: 'battereye', label: 'BATTER EYE' },
     ],
   },
   {
@@ -444,6 +456,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'milbstandings', label: 'MILB STANDINGS' },
       { id: 'prospectreport', label: 'SCOUT REPORTS' },
       { id: 'stadiumrevenue', label: 'STADIUM REVENUE' },
+      { id: 'payrollhistory', label: 'PAYROLL HISTORY' },
+      { id: 'prospecteta', label: 'PROSPECT ETA' },
+      { id: 'coachingtree', label: 'COACHING TREE' },
+      { id: 'revprojections', label: 'REVENUE PROJ' },
     ],
   },
   {
@@ -464,6 +480,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'retirement', label: 'RETIREMENT WATCH' },
       { id: 'mgrlegacy', label: 'MANAGER LEGACY' },
       { id: 'careermilestones', label: 'CAREER MILESTONES' },
+      { id: 'txnlog', label: 'TRANSACTION LOG' },
+      { id: 'hofmonitor', label: 'HOF MONITOR' },
     ],
   },
 ];
@@ -836,6 +854,15 @@ export default function Shell() {
       case 'spinrate': return <SpinRateView />;
       case 'draftboard': return <DraftBoardView />;
       case 'playercomp': return <PlayerCompView />;
+      case 'pitchlocation': return <PitchLocationView />;
+      case 'payrollhistory': return <TeamPayrollHistoryView />;
+      case 'prospecteta': return <ProspectETAView />;
+      case 'battereye': return <BatterEyeView />;
+      case 'coachingtree': return <CoachingTreeView />;
+      case 'txnlog': return <TransactionLogView />;
+      case 'pitcheffcount': return <PitchEffectivenessView />;
+      case 'revprojections': return <RevenueProjectionsView />;
+      case 'hofmonitor': return <HOFMonitorView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
