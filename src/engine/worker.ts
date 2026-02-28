@@ -717,12 +717,16 @@ const api = {
       grades['SPD'] = toScoutingScale(h.speed);
       grades['FLD'] = toScoutingScale(h.fielding);
       grades['ARM'] = toScoutingScale(h.armStrength);
+      grades['DUR'] = toScoutingScale(h.durability);
+      grades['BIQ'] = toScoutingScale(h.baserunningIQ);
     } else if (player.pitcherAttributes) {
       const p = player.pitcherAttributes;
       grades['STF'] = toScoutingScale(p.stuff);
       grades['MOV'] = toScoutingScale(p.movement);
       grades['CMD'] = toScoutingScale(p.command);
       grades['STM'] = toScoutingScale(p.stamina);
+      grades['DUR'] = toScoutingScale(p.durability);
+      grades['PIQ'] = toScoutingScale(p.pitchingIQ);
     }
 
     const seasonStats: null | { season: number; [key: string]: number } = s ? (() => {
