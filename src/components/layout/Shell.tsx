@@ -152,6 +152,9 @@ import DevelopmentPathView from '../prospects/DevelopmentPathView';
 import PitchArsenalView from '../pitching/PitchArsenalView';
 import WaiverClaimsView from '../roster/WaiverClaimsView';
 import GameScoreView from '../analytics/GameScoreView';
+import WinProbabilityView from '../analytics/WinProbabilityView';
+import ArbProjectionsView from '../contracts/ArbProjectionsView';
+import DefPositioningView from '../analytics/DefPositioningView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -188,6 +191,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pinchhit', label: 'PINCH HIT/RUN' },
       { id: 'sbanalytics', label: 'STOLEN BASE' },
       { id: 'momentum', label: 'MOMENTUM' },
+      { id: 'winprob', label: 'WIN PROBABILITY' },
     ],
   },
   {
@@ -249,6 +253,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'deadlinecountdown', label: 'DEADLINE COUNTDOWN' },
       { id: 'marketvalue', label: 'MARKET VALUE' },
       { id: 'waiverclaims', label: 'WAIVER CLAIMS' },
+      { id: 'arbprojections', label: 'ARB PROJECTIONS' },
     ],
   },
   {
@@ -282,6 +287,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'matchupexplorer', label: 'MATCHUP EXPLORER' },
       { id: 'situational', label: 'SITUATIONAL' },
       { id: 'gamescore', label: 'GAME SCORE' },
+      { id: 'defpositioning', label: 'DEF POSITIONING' },
     ],
   },
   {
@@ -647,6 +653,9 @@ export default function Shell() {
       case 'pitcharsenal': return <PitchArsenalView />;
       case 'waiverclaims': return <WaiverClaimsView />;
       case 'gamescore': return <GameScoreView />;
+      case 'winprob': return <WinProbabilityView />;
+      case 'arbprojections': return <ArbProjectionsView />;
+      case 'defpositioning': return <DefPositioningView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
