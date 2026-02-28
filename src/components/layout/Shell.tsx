@@ -125,6 +125,9 @@ import PlatoonAdvantageView from '../analytics/PlatoonAdvantageView';
 import BatProfileView from '../analytics/BatProfileView';
 import ClutchIndexView from '../analytics/ClutchIndexView';
 import PitchTunnelingView from '../pitching/PitchTunnelingView';
+import RunDifferentialView from '../analytics/RunDifferentialView';
+import RosterCrunchView from '../roster/RosterCrunchView';
+import RotationPlannerView from '../pitching/RotationPlannerView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -184,6 +187,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'conditioning', label: 'CONDITIONING' },
       { id: 'bullpenusage', label: 'BULLPEN USAGE' },
       { id: 'tunneling', label: 'PITCH TUNNELING' },
+      { id: 'rostercrunch', label: 'ROSTER CRUNCH' },
+      { id: 'rotationplan', label: 'ROTATION PLAN' },
     ],
   },
   {
@@ -234,6 +239,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platoonadv', label: 'PLATOON MATRIX' },
       { id: 'batprofile', label: 'BATTED BALL' },
       { id: 'clutchindex', label: 'CLUTCH INDEX' },
+      { id: 'rundiff', label: 'RUN DIFFERENTIAL' },
     ],
   },
   {
@@ -566,6 +572,9 @@ export default function Shell() {
       case 'batprofile': return <BatProfileView />;
       case 'clutchindex': return <ClutchIndexView />;
       case 'tunneling': return <PitchTunnelingView />;
+      case 'rundiff': return <RunDifferentialView />;
+      case 'rostercrunch': return <RosterCrunchView />;
+      case 'rotationplan': return <RotationPlannerView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
