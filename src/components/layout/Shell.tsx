@@ -92,6 +92,9 @@ import ScoutNetworkView from '../scouting/ScoutNetworkView';
 import UmpireView from '../game/UmpireView';
 import WeatherView from '../game/WeatherView';
 import RivalryView from '../team/RivalryView';
+import MinorLeagueView from '../minors/MinorLeagueView';
+import ChemistryMatrixView from '../clubhouse/ChemistryMatrixView';
+import ArbitrationView from '../contracts/ArbitrationView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -137,6 +140,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'injuries', label: 'INJURY TRACKER' },
       { id: 'archetypes', label: 'ARCHETYPES' },
       { id: 'bullpen', label: 'BULLPEN MGMT' },
+      { id: 'chemmatrix', label: 'CHEMISTRY MATRIX' },
     ],
   },
   {
@@ -155,6 +159,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'springtraining', label: 'SPRING TRAINING' },
       { id: 'holdouts', label: 'HOLDOUTS' },
       { id: 'incentives', label: 'INCENTIVES' },
+      { id: 'arbitration', label: 'ARBITRATION' },
       { id: 'offseasonevents', label: 'OFFSEASON EVENTS' },
     ],
   },
@@ -199,6 +204,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gmrep', label: 'GM REPUTATION' },
       { id: 'ownerpersonality', label: 'OWNER PERSONALITY' },
       { id: 'scoutnetwork', label: 'SCOUT NETWORK' },
+      { id: 'minors', label: 'MINOR LEAGUES' },
       { id: 'stadium', label: 'STADIUM UPGRADES' },
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
     ],
@@ -467,6 +473,9 @@ export default function Shell() {
       case 'umpires':  return <UmpireView />;
       case 'weather':  return <WeatherView />;
       case 'rivalries': return <RivalryView />;
+      case 'minors':    return <MinorLeagueView />;
+      case 'chemmatrix': return <ChemistryMatrixView />;
+      case 'arbitration': return <ArbitrationView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
