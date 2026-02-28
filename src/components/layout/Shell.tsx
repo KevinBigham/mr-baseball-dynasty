@@ -179,6 +179,9 @@ import GBFBTendenciesView from '../analytics/GBFBTendenciesView';
 import PitchReleaseView from '../pitching/PitchReleaseView';
 import IntlScoutingBoardView from '../scouting/IntlScoutingBoardView';
 import ClutchPitchingView from '../pitching/ClutchPitchingView';
+import MiLBAffiliatesView from '../minors/MiLBAffiliatesView';
+import BuyoutCalculatorView from '../contracts/BuyoutCalculatorView';
+import PitcherWorkloadView from '../pitching/PitcherWorkloadView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -257,6 +260,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchvalues', label: 'PITCH VALUES' },
       { id: 'pitchrelease', label: 'RELEASE POINT' },
       { id: 'clutchpitching', label: 'CLUTCH PITCHING' },
+      { id: 'pitcherworkload', label: 'WORKLOAD MONITOR' },
     ],
   },
   {
@@ -288,6 +292,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'optionchain', label: 'OPTION CHAIN' },
       { id: 'tradeleverage', label: 'TRADE LEVERAGE' },
       { id: 'fatracker', label: 'FA TRACKER' },
+      { id: 'buyoutcalc', label: 'BUYOUT CALC' },
     ],
   },
   {
@@ -373,6 +378,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'revsharing', label: 'REVENUE SHARING' },
       { id: 'salarydump', label: 'SALARY DUMP' },
       { id: 'intlscoutboard', label: 'INTL SCOUT BOARD' },
+      { id: 'milbaffiliates', label: 'MILB AFFILIATES' },
     ],
   },
   {
@@ -728,6 +734,9 @@ export default function Shell() {
       case 'pitchrelease': return <PitchReleaseView />;
       case 'intlscoutboard': return <IntlScoutingBoardView />;
       case 'clutchpitching': return <ClutchPitchingView />;
+      case 'milbaffiliates': return <MiLBAffiliatesView />;
+      case 'buyoutcalc': return <BuyoutCalculatorView />;
+      case 'pitcherworkload': return <PitcherWorkloadView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
