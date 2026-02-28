@@ -17,6 +17,7 @@ export interface PAInput {
   timesThrough: number; // 1, 2, or 3+ (for TTO penalty)
   parkFactor: ParkFactor;
   defenseRating: number; // 0–550 team defense quality
+  protectionBBMod?: number; // Lineup protection BB rate multiplier (< 1 = fewer walks)
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ function stage1(
   pRates: ReturnType<typeof pitcherToRates>,
   modifier: number,
   parkFactor: ParkFactor,
+  bbProtection: number,
 ): [string, RandomGenerator] {
   // Apply asymmetric pitcher/batter weights
   const kBlend   = weightedRates(hRates.kRate,   pRates.kRate,   LEAGUE_RATES.kRate,         PITCHER_WEIGHTS.strikeout);
@@ -148,6 +150,13 @@ function stage1(
     adjustedProbs['BB']  = Math.min(0.30,  probs['BB']!  * (1 + modifier));
     adjustedProbs['HR']  = Math.min(0.15,  probs['HR']!  * (1 + modifier * 0.7));
     // Re-normalize BIP
+    const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
+    adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
+  }
+
+  // Lineup protection: adjust BB rate based on on-deck batter threat
+  if (bbProtection !== 1.0) {
+    adjustedProbs['BB'] = Math.min(0.30, Math.max(0.02, adjustedProbs['BB']! * bbProtection));
     const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
     adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
   }
@@ -347,7 +356,7 @@ export function resolvePlateAppearance(
 
   // Stage 1: Non-contact gate
   let stage1Result: string;
-  [stage1Result, gen] = stage1(gen, hRates, pRates, modifier, input.parkFactor);
+  [stage1Result, gen] = stage1(gen, hRates, pRates, modifier, input.parkFactor, input.protectionBBMod ?? 1.0);
 
   if (stage1Result !== 'BIP') {
     const outcome = stage1Result as PAOutcome;

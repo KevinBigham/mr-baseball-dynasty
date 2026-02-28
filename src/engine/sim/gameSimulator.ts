@@ -19,6 +19,7 @@ import {
 import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
 import { selectDefensiveSub } from './defensiveSub';
 import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
+import { getProtectionModifier } from './lineupProtection';
 import {
   initialMomentum, updateMomentum, resetInningMomentum, getMomentumModifier,
   type MomentumState,
@@ -446,6 +447,9 @@ function simulateHalfInning(
       const momentumMod = getMomentumModifier(momentumRef.value);
       const effectivePitchCount = Math.max(0, pitchCountRef.value + Math.round(momentumMod * 200));
 
+      // Lineup protection: on-deck batter influences pitcher approach
+      const protectionBBMod = getProtectionModifier(onDeckBatter);
+
       // Normal PA resolution (with H&R modified batter if applicable)
       const paInput = {
         batter: hitAndRunBatter,
@@ -456,6 +460,7 @@ function simulateHalfInning(
         timesThrough: timesThroughRef.value,
         parkFactor,
         defenseRating,
+        protectionBBMod,
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
