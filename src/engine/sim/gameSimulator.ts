@@ -18,6 +18,7 @@ import {
 } from './fsm';
 import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
 import { selectDefensiveSub } from './defensiveSub';
+import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
 import { leverageIndex } from './winProbability';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
@@ -410,6 +411,22 @@ function simulateHalfInning(
     const preOuts = markov.outs;
     const preRunners = markov.runners;
 
+    // ── Hit-and-run check (before PA, after bunt/IBB) ──
+    const isHitAndRun = !isIBB && !buntOutcome && shouldHitAndRun(batter, markov.runners, markov.outs);
+    let hitAndRunBatter = batter;
+    if (isHitAndRun && batter.hitterAttributes) {
+      // Create a modified batter with H&R adjustments
+      const mods = getHitAndRunModifiers();
+      hitAndRunBatter = {
+        ...batter,
+        hitterAttributes: {
+          ...batter.hitterAttributes,
+          contact: Math.min(550, batter.hitterAttributes.contact + mods.contactBonus),
+          power: Math.max(100, batter.hitterAttributes.power - mods.powerPenalty),
+        },
+      };
+    }
+
     let outcome: PAOutcome;
     if (isIBB) {
       // Intentional walk: automatic BB, no PA resolution needed
@@ -418,9 +435,9 @@ function simulateHalfInning(
       // Bunt resolved: use the bunt outcome directly
       outcome = buntOutcome;
     } else {
-      // Normal PA resolution
+      // Normal PA resolution (with H&R modified batter if applicable)
       const paInput = {
-        batter,
+        batter: hitAndRunBatter,
         pitcher,
         runners: markov.runners,
         outs: markov.outs,
@@ -432,6 +449,18 @@ function simulateHalfInning(
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
       outcome = paResult.outcome;
+
+      // H&R consequence: if batter K's, runner is caught stealing
+      if (isHitAndRun && outcome === 'K' && (markov.runners & 0b001)) {
+        markov = { ...markov, runners: markov.runners & ~0b001, outs: markov.outs + 1 };
+        // Record CS in stats
+        const runnerOnFirst = lineup[(pos - 1 + 9) % 9];
+        if (runnerOnFirst) {
+          const stat = batterStats.get(runnerOnFirst.playerId) ?? blankBatterStats(runnerOnFirst.playerId);
+          stat.cs++;
+          batterStats.set(runnerOnFirst.playerId, stat);
+        }
+      }
     }
 
     const pitchesThisPA = isIBB ? 0 : estimatePitches(outcome);
@@ -445,6 +474,12 @@ function simulateHalfInning(
     // Update Markov state
     const runsBefore2 = markov.runsScored;
     [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, 350);
+
+    // H&R extra advance: on a single, runner on 2nd (from 1st) goes to 3rd
+    if (isHitAndRun && outcome === '1B' && (markov.runners & 0b010) && !(markov.runners & 0b100)) {
+      markov = { ...markov, runners: (markov.runners & ~0b010) | 0b100 };
+    }
+
     const runsThisPA = markov.runsScored - runsBefore2;
 
     // Determine unearned runs:
