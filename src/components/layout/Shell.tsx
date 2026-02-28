@@ -251,6 +251,18 @@ import PostseasonHistoryView from '../history/PostseasonHistoryView';
 import BvPHistoryView from '../analytics/BvPHistoryView';
 import DraftClassStrengthView from '../draft/DraftClassStrengthView';
 import TeamRecordBreakdownView from '../analytics/TeamRecordBreakdownView';
+import SBSuccessModelView from '../analytics/SBSuccessModelView';
+import PlatoonOptEngineView from '../analytics/PlatoonOptEngineView';
+import BuyoutAnalyzerView from '../contracts/BuyoutAnalyzerView';
+import PitchUsageCountView from '../pitching/PitchUsageCountView';
+import FOReputationView from '../management/FOReputationView';
+import DefPositionMatrixView from '../analytics/DefPositionMatrixView';
+import GamePaceView from '../analytics/GamePaceView';
+import ExtensionCalcView from '../contracts/ExtensionCalcView';
+import PitchLocationHeatmapView from '../pitching/PitchLocationHeatmapView';
+import UmpireZoneView from '../analytics/UmpireZoneView';
+import ProspectDevTimelineView from '../scouting/ProspectDevTimelineView';
+import DeadlineValueView from '../trade/DeadlineValueView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -345,6 +357,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rlevindex', label: 'RELIEVER LEV' },
       { id: 'pitchmovement', label: 'PITCH MOVEMENT' },
       { id: 'startergamelog', label: 'STARTER GAME LOG' },
+      { id: 'pitchusagecount', label: 'PITCH BY COUNT' },
+      { id: 'pitchlocalheatmap', label: 'PITCH LOC HEATMAP' },
     ],
   },
   {
@@ -383,6 +397,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'arbprojector', label: 'ARB PROJECTOR' },
       { id: 'tradepackage', label: 'TRADE PACKAGES' },
       { id: 'draftclassstrength', label: 'DRAFT CLASS' },
+      { id: 'buyoutanalyzer', label: 'BUYOUT ANALYZER' },
+      { id: 'extensioncalc', label: 'EXTENSION CALC' },
+      { id: 'deadlinevalue', label: 'DEADLINE VALUE' },
     ],
   },
   {
@@ -448,6 +465,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'exitvelo', label: 'EXIT VELOCITY' },
       { id: 'bvphistory', label: 'BvP HISTORY' },
       { id: 'recordbreakdown', label: 'RECORD SPLITS' },
+      { id: 'sbsuccessmodel', label: 'SB SUCCESS' },
+      { id: 'platoonoptengine', label: 'PLATOON ENGINE' },
+      { id: 'defposmatrix', label: 'DEF MATRIX' },
+      { id: 'gamepace', label: 'GAME PACE' },
+      { id: 'umpirezone', label: 'UMPIRE ZONES' },
     ],
   },
   {
@@ -511,6 +533,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'coachratings', label: 'COACH RATINGS' },
       { id: 'pipelinevalue', label: 'PIPELINE VALUE' },
       { id: 'scoutbudget', label: 'SCOUT BUDGET' },
+      { id: 'foreputation', label: 'FO REPUTATION' },
+      { id: 'prospectdevtimeline', label: 'PROSPECT DEV' },
     ],
   },
   {
@@ -944,6 +968,18 @@ export default function Shell() {
       case 'bvphistory': return <BvPHistoryView />;
       case 'draftclassstrength': return <DraftClassStrengthView />;
       case 'recordbreakdown': return <TeamRecordBreakdownView />;
+      case 'sbsuccessmodel': return <SBSuccessModelView />;
+      case 'platoonoptengine': return <PlatoonOptEngineView />;
+      case 'buyoutanalyzer': return <BuyoutAnalyzerView />;
+      case 'pitchusagecount': return <PitchUsageCountView />;
+      case 'foreputation': return <FOReputationView />;
+      case 'defposmatrix': return <DefPositionMatrixView />;
+      case 'gamepace': return <GamePaceView />;
+      case 'extensioncalc': return <ExtensionCalcView />;
+      case 'pitchlocalheatmap': return <PitchLocationHeatmapView />;
+      case 'umpirezone': return <UmpireZoneView />;
+      case 'prospectdevtimeline': return <ProspectDevTimelineView />;
+      case 'deadlinevalue': return <DeadlineValueView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
