@@ -347,6 +347,15 @@ import MiLBStandingsView from '../prospects/MiLBStandingsView';
 import PowerRankingsView from '../analytics/PowerRankingsView';
 import BaseRunningView from '../analytics/BaseRunningView';
 import SeasonProjectionView from '../analytics/SeasonProjectionView';
+import PHOptimizerView from '../analytics/PHOptimizerView';
+import BullpenHealthView from '../pitching/BullpenHealthView';
+import IntlSigningView from '../prospects/IntlSigningView';
+import GameScriptView from '../analytics/GameScriptView';
+import LuxuryTaxView from '../contracts/LuxuryTaxView';
+import TeamChemistryEngineView from '../analytics/TeamChemistryEngineView';
+import PlayoffSimView from '../analytics/PlayoffSimView';
+import PlayerValueView from '../analytics/PlayerValueView';
+import HomeAwayView from '../analytics/HomeAwayView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -459,6 +468,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'startergameplan', label: 'GAME PLAN' },
       { id: 'relievermatchup', label: 'RELIEVER MATCHUP' },
       { id: 'pitchefftracker', label: 'PITCH EFF TRACKER' },
+      { id: 'bullpenhealth', label: 'BP ARM HEALTH' },
     ],
   },
   {
@@ -512,6 +522,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'offseasonplan', label: 'OFFSEASON PLAN' },
       { id: 'optionyear', label: 'OPTION YEARS' },
       { id: 'tradevaluecalc', label: 'TRADE VALUE CALC' },
+      { id: 'luxurytaxcalc', label: 'CBT CALCULATOR' },
     ],
   },
   {
@@ -621,6 +632,12 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'powerrankingsengine', label: 'POWER RANKINGS+' },
       { id: 'baserunningeff', label: 'BASE RUNNING' },
       { id: 'seasonprojmodel', label: 'SEASON PROJ' },
+      { id: 'phoptimizer', label: 'PH OPTIMIZER' },
+      { id: 'gamescript', label: 'GAME SCRIPT' },
+      { id: 'teamchemengine', label: 'CHEMISTRY ENG' },
+      { id: 'playoffsim', label: 'PLAYOFF SIM' },
+      { id: 'playervalue', label: 'PLAYER VALUE' },
+      { id: 'homeaway', label: 'HOME/AWAY' },
     ],
   },
   {
@@ -701,6 +718,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'farmsystemgrader', label: 'FARM GRADER' },
       { id: 'prospecttoolgrader', label: 'TOOL GRADES' },
       { id: 'milbstandingstracker', label: 'MILB STANDINGS+' },
+      { id: 'intlsigningtracker', label: 'INTL SIGNINGS+' },
     ],
   },
   {
@@ -1232,6 +1250,15 @@ export default function Shell() {
       case 'powerrankingsengine': return <PowerRankingsView />;
       case 'baserunningeff': return <BaseRunningView />;
       case 'seasonprojmodel': return <SeasonProjectionView />;
+      case 'phoptimizer': return <PHOptimizerView />;
+      case 'bullpenhealth': return <BullpenHealthView />;
+      case 'intlsigningtracker': return <IntlSigningView />;
+      case 'gamescript': return <GameScriptView />;
+      case 'luxurytaxcalc': return <LuxuryTaxView />;
+      case 'teamchemengine': return <TeamChemistryEngineView />;
+      case 'playoffsim': return <PlayoffSimView />;
+      case 'playervalue': return <PlayerValueView />;
+      case 'homeaway': return <HomeAwayView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
