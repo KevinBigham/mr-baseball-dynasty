@@ -191,6 +191,9 @@ import PitchVelocityView from '../pitching/PitchVelocityView';
 import PlatoonOptView from '../analytics/PlatoonOptView';
 import DraftClassScoutingView from '../scouting/DraftClassScoutingView';
 import TunnelEffectivenessView from '../pitching/TunnelEffectivenessView';
+import AgingCurvesView from '../analytics/AgingCurvesView';
+import BullpenLeverageView from '../pitching/BullpenLeverageView';
+import PowerRankHistoryView from '../analytics/PowerRankHistoryView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -273,6 +276,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pivindex', label: 'PIV INDEX' },
       { id: 'velobands', label: 'VELO BANDS' },
       { id: 'tunneleffectiveness', label: 'TUNNEL EFF' },
+      { id: 'bpleverageroles', label: 'BP LEVERAGE' },
     ],
   },
   {
@@ -351,6 +355,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'runexpectancy', label: 'RUN EXPECTANCY' },
       { id: 'spraydirection', label: 'SPRAY DIRECTION' },
       { id: 'platoonopt', label: 'PLATOON OPT' },
+      { id: 'agingcurves', label: 'AGING CURVES' },
+      { id: 'rankhistory', label: 'RANK HISTORY' },
     ],
   },
   {
@@ -764,6 +770,9 @@ export default function Shell() {
       case 'platoonopt': return <PlatoonOptView />;
       case 'draftclassscouting': return <DraftClassScoutingView />;
       case 'tunneleffectiveness': return <TunnelEffectivenessView />;
+      case 'agingcurves': return <AgingCurvesView />;
+      case 'bpleverageroles': return <BullpenLeverageView />;
+      case 'rankhistory': return <PowerRankHistoryView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
