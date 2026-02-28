@@ -19,6 +19,9 @@ import type { PlayerSeasonStats } from '../../types/player';
 
 export interface AdvancedHitterStats {
   playerId:  number;
+  name:      string;
+  teamAbbr:  string;
+  position:  string;
   // Rate stats
   avg:       number;
   obp:       number;
@@ -43,6 +46,9 @@ export interface AdvancedHitterStats {
 
 export interface AdvancedPitcherStats {
   playerId:  number;
+  name:      string;
+  teamAbbr:  string;
+  position:  string;
   // Rate stats
   era:       number;
   whip:      number;
@@ -160,6 +166,7 @@ export function computeLeagueEnvironment(
 export function computeAdvancedHitterStats(
   s: PlayerSeasonStats,
   env: LeagueEnvironment,
+  meta?: { name: string; teamAbbr: string; position: string },
 ): AdvancedHitterStats {
   const avg = s.ab > 0 ? s.h / s.ab : 0;
   const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
@@ -207,6 +214,9 @@ export function computeAdvancedHitterStats(
 
   return {
     playerId: s.playerId,
+    name: meta?.name ?? String(s.playerId),
+    teamAbbr: meta?.teamAbbr ?? '---',
+    position: meta?.position ?? '??',
     avg: round3(avg), obp: round3(obp), slg: round3(slg), ops: round3(ops),
     iso: round3(iso), babip: round3(babip),
     kPct: round3(kPct), bbPct: round3(bbPct),
@@ -222,6 +232,7 @@ export function computeAdvancedHitterStats(
 export function computeAdvancedPitcherStats(
   s: PlayerSeasonStats,
   env: LeagueEnvironment,
+  meta?: { name: string; teamAbbr: string; position: string },
 ): AdvancedPitcherStats {
   const ip = s.outs / 3;
   const era = ip > 0 ? (s.er / ip) * 9 : 0;
@@ -257,6 +268,9 @@ export function computeAdvancedPitcherStats(
 
   return {
     playerId: s.playerId,
+    name: meta?.name ?? String(s.playerId),
+    teamAbbr: meta?.teamAbbr ?? '---',
+    position: meta?.position ?? '??',
     era: round2(era), whip: round2(whip), fip: round2(fip),
     k9: round1(k9), bb9: round1(bb9), hr9: round1(hr9),
     kbb: round2(kbb), kPct: round3(kPct), bbPct: round3(bbPct),
@@ -271,6 +285,7 @@ export function computeAdvancedPitcherStats(
 export function computeAllAdvancedStats(
   stats: Map<number, PlayerSeasonStats>,
   isPitcherMap: Map<number, boolean>,
+  playerMeta?: Map<number, { name: string; teamAbbr: string; position: string }>,
 ): { hitters: AdvancedHitterStats[]; pitchers: AdvancedPitcherStats[]; env: LeagueEnvironment } {
   const env = computeLeagueEnvironment(stats, isPitcherMap);
   const hitters: AdvancedHitterStats[] = [];
@@ -278,11 +293,12 @@ export function computeAllAdvancedStats(
 
   for (const [pid, s] of stats) {
     const isPitcher = isPitcherMap.get(pid) ?? false;
+    const meta = playerMeta?.get(pid);
     if (!isPitcher && s.pa >= 50) {
-      hitters.push(computeAdvancedHitterStats(s, env));
+      hitters.push(computeAdvancedHitterStats(s, env, meta));
     }
     if (isPitcher && s.outs >= 15) {
-      pitchers.push(computeAdvancedPitcherStats(s, env));
+      pitchers.push(computeAdvancedPitcherStats(s, env, meta));
     }
   }
 

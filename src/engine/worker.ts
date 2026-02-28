@@ -1374,7 +1374,11 @@ const api = {
   async getAdvancedStats(): Promise<{ hitters: AdvancedHitterStats[]; pitchers: AdvancedPitcherStats[]; env: LeagueEnvironment }> {
     const state = requireState();
     const isPitcherMap = new Map(state.players.map(p => [p.playerId, p.isPitcher]));
-    return computeAllAdvancedStats(_playerSeasonStats, isPitcherMap);
+    const playerMeta = new Map(state.players.map(p => {
+      const team = _teamMap.get(p.teamId);
+      return [p.playerId, { name: p.name, teamAbbr: team?.abbreviation ?? '---', position: p.position }] as const;
+    }));
+    return computeAllAdvancedStats(_playerSeasonStats, isPitcherMap, playerMeta);
   },
 
   // ── Coaching Staff ────────────────────────────────────────────────────

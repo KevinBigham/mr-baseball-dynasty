@@ -92,7 +92,7 @@ export default function AdvancedStats() {
                     {hitters.slice(0, 50).map((h, idx) => (
                       <tr key={h.playerId} className="text-xs hover:bg-gray-800/50 cursor-pointer" onClick={() => openPlayer(h.playerId)}>
                         <td className="px-1 py-1 text-gray-600 text-center">{idx + 1}</td>
-                        <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{h.playerId}</td>
+                        <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{h.name}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{h.pa}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{h.avg.toFixed(3).slice(1)}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{h.obp.toFixed(3).slice(1)}</td>
@@ -140,7 +140,7 @@ export default function AdvancedStats() {
                     {pitchers.slice(0, 50).map((p, idx) => (
                       <tr key={p.playerId} className="text-xs hover:bg-gray-800/50 cursor-pointer" onClick={() => openPlayer(p.playerId)}>
                         <td className="px-1 py-1 text-gray-600 text-center">{idx + 1}</td>
-                        <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{p.playerId}</td>
+                        <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{p.name}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{p.ip.toFixed(1)}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{p.w}-{p.l}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{p.era.toFixed(2)}</td>
