@@ -173,6 +173,9 @@ import DefRunsSavedView from '../analytics/DefRunsSavedView';
 import PitchValueMatrixView from '../pitching/PitchValueMatrixView';
 import RosterConstructionView from '../analytics/RosterConstructionView';
 import GameLeverageView from '../analytics/GameLeverageView';
+import CatcherGameCallingView from '../analytics/CatcherGameCallingView';
+import SalaryDumpView from '../finance/SalaryDumpView';
+import GBFBTendenciesView from '../analytics/GBFBTendenciesView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -321,6 +324,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'defruns', label: 'DEF RUNS SAVED' },
       { id: 'rosterconstruction', label: 'ROSTER BUILD' },
       { id: 'gameleverage', label: 'GAME LEVERAGE' },
+      { id: 'catchercalling', label: 'CATCHER CALLING' },
+      { id: 'gbfb', label: 'GB/FB TENDENCY' },
     ],
   },
   {
@@ -361,6 +366,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'luxurytax', label: 'LUXURY TAX' },
       { id: 'prospectgrades', label: 'PROSPECT GRADES' },
       { id: 'revsharing', label: 'REVENUE SHARING' },
+      { id: 'salarydump', label: 'SALARY DUMP' },
     ],
   },
   {
@@ -710,6 +716,9 @@ export default function Shell() {
       case 'pitchvalues': return <PitchValueMatrixView />;
       case 'rosterconstruction': return <RosterConstructionView />;
       case 'gameleverage': return <GameLeverageView />;
+      case 'catchercalling': return <CatcherGameCallingView />;
+      case 'salarydump': return <SalaryDumpView />;
+      case 'gbfb': return <GBFBTendenciesView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
