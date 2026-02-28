@@ -167,6 +167,9 @@ import ZoneHeatmapView from '../analytics/ZoneHeatmapView';
 import ProspectGradesView from '../scouting/ProspectGradesView';
 import RevenueSharingView from '../finance/RevenueSharingView';
 import TunnelMatrixView from '../pitching/TunnelMatrixView';
+import PlatoonSplitsView from '../analytics/PlatoonSplitsView';
+import FATrackerView from '../offseason/FATrackerView';
+import DefRunsSavedView from '../analytics/DefRunsSavedView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -272,6 +275,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'arbprojections', label: 'ARB PROJECTIONS' },
       { id: 'optionchain', label: 'OPTION CHAIN' },
       { id: 'tradeleverage', label: 'TRADE LEVERAGE' },
+      { id: 'fatracker', label: 'FA TRACKER' },
     ],
   },
   {
@@ -309,6 +313,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'contactquality', label: 'CONTACT QUALITY' },
       { id: 'defalignment', label: 'DEF ALIGNMENT' },
       { id: 'zoneheatmap', label: 'ZONE HEATMAP' },
+      { id: 'platoonsplits', label: 'PLATOON SPLITS+' },
+      { id: 'defruns', label: 'DEF RUNS SAVED' },
     ],
   },
   {
@@ -692,6 +698,9 @@ export default function Shell() {
       case 'prospectgrades': return <ProspectGradesView />;
       case 'revsharing': return <RevenueSharingView />;
       case 'tunnelmatrix': return <TunnelMatrixView />;
+      case 'platoonsplits': return <PlatoonSplitsView />;
+      case 'fatracker': return <FATrackerView />;
+      case 'defruns': return <DefRunsSavedView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
