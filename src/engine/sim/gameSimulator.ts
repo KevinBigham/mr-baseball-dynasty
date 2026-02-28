@@ -53,6 +53,7 @@ import { getHitterApproachKMod } from './hitterApproach';
 import { getGBFBKMod } from './gbPitcherKPenalty';
 import { getBatterEyeBBMod } from './batterEyeResistance';
 import { getCommandKMod } from './commandControl';
+import { getMentalToughnessBBMod } from './mentalToughnessBB';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -548,7 +549,8 @@ function simulateHalfInning(
           )
           * getDeceptionBBMod(pitcher)
           * getExperienceBBMod(pitcher, li)
-          * getBatterEyeBBMod(batter),
+          * getBatterEyeBBMod(batter)
+          * getMentalToughnessBBMod(pitcher, li),
         tempoBABIPMod: getTempoModifier(pitcher) + getGameCallingMod(catcher),
       };
       let paResult: import('../../types/game').PAResult;
