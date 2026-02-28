@@ -200,6 +200,9 @@ import SalaryCapSimView from '../finance/SalaryCapSimView';
 import ExpectedBAView from '../analytics/ExpectedBAView';
 import DeadlineWarRoomView from '../trade/DeadlineWarRoomView';
 import ProspectCompMatrixView from '../scouting/ProspectCompMatrixView';
+import PitchGradingView from '../pitching/PitchGradingView';
+import DefensiveWARView from '../analytics/DefensiveWARView';
+import IntlScoutingBudgetView from '../scouting/IntlScoutingBudgetView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -284,6 +287,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'tunneleffectiveness', label: 'TUNNEL EFF' },
       { id: 'bpleverageroles', label: 'BP LEVERAGE' },
       { id: 'arsenalheatmap', label: 'ARSENAL HEATMAP' },
+      { id: 'pitchgrading', label: 'PITCH GRADING' },
     ],
   },
   {
@@ -367,6 +371,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rankhistory', label: 'RANK HISTORY' },
       { id: 'teamdepth', label: 'TEAM DEPTH' },
       { id: 'expectedba', label: 'EXPECTED BA' },
+      { id: 'defwar', label: 'DEF WAR' },
     ],
   },
   {
@@ -415,6 +420,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'draftclassscouting', label: 'DRAFT REPORTS' },
       { id: 'salarycapsim', label: 'SALARY CAP SIM' },
       { id: 'prospectcomp', label: 'PROSPECT COMP' },
+      { id: 'intlbudget', label: 'INTL BUDGET' },
     ],
   },
   {
@@ -791,6 +797,9 @@ export default function Shell() {
       case 'expectedba': return <ExpectedBAView />;
       case 'deadlinewarroom': return <DeadlineWarRoomView />;
       case 'prospectcomp': return <ProspectCompMatrixView />;
+      case 'pitchgrading': return <PitchGradingView />;
+      case 'defwar': return <DefensiveWARView />;
+      case 'intlbudget': return <IntlScoutingBudgetView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
