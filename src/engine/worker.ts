@@ -624,21 +624,19 @@ const api = {
     const state = requireState();
     const results: Array<{ player: Player; value: number }> = [];
 
-    // Pre-compute WAR if needed
-    let warMap: Map<number, number> | null = null;
-    if (stat === 'war_h' || stat === 'war_p') {
+    // Pre-compute advanced stats if needed for WAR, wRC+, OPS+, ERA+, K/BB
+    const advancedStats = ['war_h', 'war_p', 'wrc', 'ops_plus', 'era_plus', 'kbb'];
+    let advMap: Map<number, Record<string, number>> | null = null;
+    if (advancedStats.includes(stat)) {
       const isPitcherMap = new Map(state.players.map(p => [p.playerId, p.isPitcher]));
       const playerMeta = new Map(state.players.map(p => {
         const team = _teamMap.get(p.teamId);
         return [p.playerId, { name: p.name, teamAbbr: team?.abbreviation ?? '---', position: p.position }] as const;
       }));
       const adv = computeAllAdvancedStats(_playerSeasonStats, isPitcherMap, playerMeta);
-      warMap = new Map<number, number>();
-      if (stat === 'war_h') {
-        for (const h of adv.hitters) warMap.set(h.playerId, h.war);
-      } else {
-        for (const p of adv.pitchers) warMap.set(p.playerId, p.war);
-      }
+      advMap = new Map();
+      for (const h of adv.hitters) advMap.set(h.playerId, { war: h.war, wrcPlus: h.wrcPlus, opsPlus: h.opsPlus });
+      for (const p of adv.pitchers) advMap.set(p.playerId, { war: p.war, eraPlus: p.eraPlus, kbb: p.kbb });
     }
 
     for (const [playerId, s] of _playerSeasonStats) {
@@ -711,7 +709,24 @@ const api = {
         }
         case 'war_h':
         case 'war_p': {
-          value = warMap?.get(playerId) ?? 0;
+          value = advMap?.get(playerId)?.war ?? 0;
+          break;
+        }
+        case 'wrc': {
+          value = advMap?.get(playerId)?.wrcPlus ?? 0;
+          break;
+        }
+        case 'ops_plus': {
+          value = advMap?.get(playerId)?.opsPlus ?? 0;
+          break;
+        }
+        case 'era_plus': {
+          value = advMap?.get(playerId)?.eraPlus ?? 0;
+          break;
+        }
+        case 'kbb': {
+          const ip = s.outs / 3;
+          value = ip > 20 && s.bba > 0 ? s.ka / s.bba : 0;
           break;
         }
         default:     value = 0;
@@ -728,6 +743,8 @@ const api = {
       let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
       if (stat === 'era' || stat === 'whip' || stat === 'fip') displayValue = (-r.value).toFixed(2);
       if (stat === 'k9' || stat === 'gsc' || stat === 'ip' || stat === 'war_h' || stat === 'war_p') displayValue = r.value.toFixed(1);
+      if (stat === 'wrc' || stat === 'ops_plus' || stat === 'era_plus') displayValue = String(Math.round(r.value));
+      if (stat === 'kbb') displayValue = r.value.toFixed(2);
       if (stat === 'bb9') displayValue = (-r.value).toFixed(1);
       return {
         rank: i + 1,
