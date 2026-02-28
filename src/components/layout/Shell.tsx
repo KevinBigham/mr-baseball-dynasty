@@ -140,6 +140,9 @@ import PlateDisciplineView from '../analytics/PlateDisciplineView';
 import PitchCommandView from '../pitching/PitchCommandView';
 import ProspectPipelineView from '../scouting/ProspectPipelineView';
 import PayrollFlexibilityView from '../finance/PayrollFlexibilityView';
+import MatchupExplorerView from '../analytics/MatchupExplorerView';
+import DraftCapitalView from '../draft/DraftCapitalView';
+import ChemistryDynamicsView from '../clubhouse/ChemistryDynamicsView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -205,6 +208,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'careerprog', label: 'CAREER CURVES' },
       { id: 'pitchmix', label: 'PITCH MIX' },
       { id: 'pitchcommand', label: 'PITCH COMMAND' },
+      { id: 'chemdynamics', label: 'CHEM DYNAMICS' },
     ],
   },
   {
@@ -260,6 +264,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'spraychart', label: 'SPRAY CHARTS' },
       { id: 'defmetrics', label: 'DEF METRICS' },
       { id: 'platediscipline', label: 'PLATE DISCIPLINE' },
+      { id: 'matchupexplorer', label: 'MATCHUP EXPLORER' },
     ],
   },
   {
@@ -295,6 +300,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scoutreports', label: 'SCOUTING REPORTS' },
       { id: 'prospectpipeline', label: 'PROSPECT PIPELINE' },
       { id: 'payrollflex', label: 'PAYROLL FLEX' },
+      { id: 'draftcapital', label: 'DRAFT CAPITAL' },
     ],
   },
   {
@@ -611,6 +617,9 @@ export default function Shell() {
       case 'pitchcommand': return <PitchCommandView />;
       case 'prospectpipeline': return <ProspectPipelineView />;
       case 'payrollflex': return <PayrollFlexibilityView />;
+      case 'matchupexplorer': return <MatchupExplorerView />;
+      case 'draftcapital': return <DraftCapitalView />;
+      case 'chemdynamics': return <ChemistryDynamicsView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
