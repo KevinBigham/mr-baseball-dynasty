@@ -36,6 +36,7 @@ import Rule5Protection from '../roster/Rule5Protection';
 import TeamChemistry from '../analytics/TeamChemistry';
 import LeagueSalaries from '../finance/LeagueSalaries';
 import SeasonRecap from '../dashboard/SeasonRecap';
+import RosterComparison from '../analytics/RosterComparison';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -84,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rankings', label: 'POWER RANKINGS' },
       { id: 'compare', label: 'PLAYER COMPARE' },
       { id: 'teamcompare', label: 'TEAM COMPARE' },
+      { id: 'rostercompare', label: 'ROSTER COMPARE' },
       { id: 'chemistry', label: 'CHEMISTRY' },
       { id: 'parks', label: 'BALLPARKS' },
     ],
@@ -299,6 +301,7 @@ export default function Shell() {
       case 'chemistry':    return <TeamChemistry />;
       case 'salaries':     return <LeagueSalaries />;
       case 'recap':        return <SeasonRecap />;
+      case 'rostercompare': return <RosterComparison />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;

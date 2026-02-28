@@ -38,6 +38,7 @@ import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, compu
 import { getExtensionCandidates, evaluateExtension, runAIExtensions, type ExtensionOffer, type ExtensionResult, type ExtensionCandidate } from './contracts/extensions';
 import { processWaivers, getWaiverPlayers, claimWaiverPlayer, type WaiverPlayer, type WaiverClaim } from './waivers/waiverWire';
 import { computeTeamChemistry, type TeamChemistryData } from './chemistry/teamChemistry';
+import { assignTraits, type PlayerTrait } from './playerTraits';
 import { computePowerRankings, type PowerRanking } from './analytics/powerRankings';
 import { initializeOwnerGoals, evaluateSeason as evaluateGMSeason, generateSeasonGoals, type OwnerGoalsState } from './owner/ownerGoals';
 // ─── Worker-side state ────────────────────────────────────────────────────────
@@ -915,6 +916,130 @@ const api = {
         if (!career || career.seasonLog.length === 0) return undefined;
         return career.seasonLog;
       })(),
+    };
+  },
+
+  // ── Scouting Report (enhanced) ──────────────────────────────────────────────
+  async getPlayerScoutingReport(playerId: number): Promise<{
+    devPhase: string;
+    sigma: number;
+    theta: number;
+    risk: string;
+    ceiling: string;
+    eta: string;
+    fv: number;
+    summary: string;
+    traits: PlayerTrait[];
+    agingCurvePhase: string;
+  }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) throw new Error(`Player ${playerId} not found`);
+
+    // Build RosterPlayer for trait assignment
+    const rp: import('../types/league').RosterPlayer = {
+      playerId: player.playerId,
+      name: player.name,
+      position: player.position,
+      age: player.age,
+      bats: player.bats,
+      throws: player.throws,
+      isPitcher: player.isPitcher,
+      overall: toScoutingScale(player.overall),
+      potential: toScoutingScale(player.potential),
+      rosterStatus: player.rosterData.rosterStatus,
+      isOn40Man: player.rosterData.isOn40Man,
+      optionYearsRemaining: player.rosterData.optionYearsRemaining,
+      serviceTimeDays: player.rosterData.serviceTimeDays,
+      salary: player.rosterData.salary,
+      contractYearsRemaining: player.rosterData.contractYearsRemaining,
+      stats: {},
+    };
+
+    const traits = assignTraits(rp);
+
+    // Risk / ceiling / ETA / FV (reuse prospectRankings logic inline)
+    const ovr = toScoutingScale(player.overall);
+    const pot = toScoutingScale(player.potential);
+    const dev = player.development;
+
+    // Risk
+    let risk = 'Medium';
+    if (dev.sigma >= 28) risk = 'Extreme';
+    else if (dev.sigma >= 22) risk = 'High';
+    else if (player.age <= 18 && dev.phase === 'prospect') risk = 'High';
+    else if (dev.sigma <= 12 && player.age >= 22) risk = 'Low';
+
+    // Ceiling
+    let ceiling = 'Average';
+    if (pot >= 75) ceiling = 'Superstar';
+    else if (pot >= 65) ceiling = 'All-Star';
+    else if (pot >= 55) ceiling = 'Above Average';
+    else if (pot >= 45) ceiling = 'Average';
+    else if (pot >= 38) ceiling = 'Bench';
+    else ceiling = 'Organizational';
+
+    // ETA
+    let eta = 'MLB';
+    const status = player.rosterData.rosterStatus;
+    if (status === 'MLB_ACTIVE' || status === 'MLB_IL_10' || status === 'MLB_IL_60') {
+      eta = 'MLB';
+    } else {
+      const levelYears: Record<string, number> = {
+        'MINORS_AAA': 0.5, 'MINORS_AA': 1.5, 'MINORS_APLUS': 2.5,
+        'MINORS_AMINUS': 3, 'MINORS_ROOKIE': 3.5, 'MINORS_INTL': 4.5, 'DRAFT_ELIGIBLE': 4,
+      };
+      const base = levelYears[status] ?? 3;
+      const ovrAdj = ovr >= 60 ? -0.5 : ovr >= 50 ? 0 : 0.5;
+      const potAdj = pot >= 65 ? -0.5 : 0;
+      const years = Math.max(0.5, base + ovrAdj + potAdj);
+      eta = years <= 0.5 ? 'MLB Ready' : String(Math.round(state.season + years));
+    }
+
+    // FV
+    const ageWeight = Math.max(0.2, Math.min(0.8, (player.age - 16) / 10));
+    const fvBase = ovr * ageWeight + pot * (1 - ageWeight);
+    const youngBonus = Math.max(0, (22 - player.age) * 0.5);
+    const fv = Math.round(Math.max(20, Math.min(80, fvBase + youngBonus)));
+
+    // Summary
+    let summary: string;
+    if (player.isPitcher) {
+      const pa = player.pitcherAttributes;
+      const bestTool = pa
+        ? (toScoutingScale(pa.stuff) >= toScoutingScale(pa.command) && toScoutingScale(pa.stuff) >= toScoutingScale(pa.movement) ? 'electric arm'
+          : toScoutingScale(pa.command) >= toScoutingScale(pa.movement) ? 'pinpoint command' : 'quality pitch movement')
+        : 'balanced arsenal';
+      summary = `${ceiling} ceiling ${player.position} with ${bestTool}. ${risk} risk profile.`;
+    } else {
+      const ha = player.hitterAttributes;
+      const bestTool = ha
+        ? (toScoutingScale(ha.power) >= toScoutingScale(ha.contact) && toScoutingScale(ha.power) >= toScoutingScale(ha.speed) ? 'plus raw power'
+          : toScoutingScale(ha.contact) >= toScoutingScale(ha.speed) ? 'advanced hit tool' : 'elite speed')
+        : 'balanced tools';
+      summary = `${ceiling} ceiling ${player.position} with ${bestTool}. ${risk} risk profile.`;
+    }
+
+    // Aging curve phase description
+    const phaseLabel: Record<string, string> = {
+      prospect: 'Developing',
+      ascent: 'Rising',
+      prime: 'Peak Years',
+      decline: 'Declining',
+      retirement: 'End of Career',
+    };
+
+    return {
+      devPhase: dev.phase,
+      sigma: Math.round(dev.sigma * 10) / 10,
+      theta: Math.round(dev.theta * 10) / 10,
+      risk,
+      ceiling,
+      eta,
+      fv,
+      summary,
+      traits,
+      agingCurvePhase: phaseLabel[dev.phase] ?? dev.phase,
     };
   },
 
