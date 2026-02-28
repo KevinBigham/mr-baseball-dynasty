@@ -101,6 +101,9 @@ import ProspectGraduationView from '../prospects/ProspectGraduationView';
 import WinExpectancyView from '../game/WinExpectancyView';
 import StaffPoachingView from '../management/StaffPoachingView';
 import MediaPersonaView from '../narrative/MediaPersonaView';
+import FilmStudyView from '../game/FilmStudyView';
+import CompPicksView from '../draft/CompPicksView';
+import QualifyingOfferView from '../contracts/QualifyingOfferView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -131,6 +134,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rivalries', label: 'RIVALRIES' },
       { id: 'winexpectancy', label: 'WIN EXPECTANCY' },
       { id: 'mediapersona', label: 'MEDIA PERSONA' },
+      { id: 'filmstudy', label: 'FILM STUDY' },
     ],
   },
   {
@@ -170,6 +174,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'arbitration', label: 'ARBITRATION' },
       { id: 'offseasonevents', label: 'OFFSEASON EVENTS' },
       { id: 'traderumors', label: 'TRADE RUMORS' },
+      { id: 'comppicks', label: 'COMP PICKS' },
+      { id: 'qualifyingoffer', label: 'QUALIFYING OFFER' },
     ],
   },
   {
@@ -494,6 +500,9 @@ export default function Shell() {
       case 'winexpectancy': return <WinExpectancyView />;
       case 'staffpoaching': return <StaffPoachingView />;
       case 'mediapersona': return <MediaPersonaView />;
+      case 'filmstudy': return <FilmStudyView />;
+      case 'comppicks': return <CompPicksView />;
+      case 'qualifyingoffer': return <QualifyingOfferView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
