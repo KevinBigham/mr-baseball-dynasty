@@ -59,6 +59,9 @@ import CoachSkillTree from '../coaching/CoachSkillTree';
 import BreakoutTracker from '../prospects/BreakoutTracker';
 import OpponentScouting from '../scouting/OpponentScouting';
 import StoryArcViewer from '../narrative/StoryArcViewer';
+import SpringTraining from '../offseason/SpringTraining';
+import RingOfHonor from '../history/RingOfHonor';
+import SeriesChallenges from '../game/SeriesChallenges';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -78,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'schedule', label: 'SCHEDULE' },
       { id: 'standings', label: 'STANDINGS' },
       { id: 'playoffpicture', label: 'PLAYOFF PICTURE' },
+      { id: 'challenges', label: 'SERIES CHALLENGES' },
     ],
   },
   {
@@ -102,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'extensions', label: 'EXTENSIONS' },
       { id: 'draft', label: 'DRAFT' },
       { id: 'rule5', label: 'RULE 5' },
+      { id: 'springtraining', label: 'SPRING TRAINING' },
     ],
   },
   {
@@ -152,6 +157,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'milestones', label: 'MILESTONES' },
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
+      { id: 'ringofhonor', label: 'RING OF HONOR' },
     ],
   },
 ];
@@ -368,6 +374,9 @@ export default function Shell() {
       case 'breakouts':    return <BreakoutTracker />;
       case 'scouting':     return <OpponentScouting />;
       case 'storyarcs':    return <StoryArcViewer />;
+      case 'springtraining': return <SpringTraining />;
+      case 'ringofhonor':  return <RingOfHonor />;
+      case 'challenges':   return <SeriesChallenges />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
