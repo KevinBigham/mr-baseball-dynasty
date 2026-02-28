@@ -62,6 +62,12 @@ import StoryArcViewer from '../narrative/StoryArcViewer';
 import SpringTraining from '../offseason/SpringTraining';
 import RingOfHonor from '../history/RingOfHonor';
 import SeriesChallenges from '../game/SeriesChallenges';
+import ClubhouseEvents from '../clubhouse/ClubhouseEvents';
+import MentorHub from '../player/MentorHub';
+import GMReputationView from '../management/GMReputationView';
+import HoldoutCenter from '../contracts/HoldoutCenter';
+import OffseasonEventsView from '../offseason/OffseasonEventsView';
+import FranchiseLegacyView from '../history/FranchiseLegacyView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -92,6 +98,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitching', label: 'PITCHING STAFF' },
       { id: 'fortyman', label: '40-MAN ROSTER' },
       { id: 'lineup', label: 'LINEUP' },
+      { id: 'clubhouse', label: 'CLUBHOUSE' },
+      { id: 'mentors', label: 'MENTOR HUB' },
     ],
   },
   {
@@ -107,6 +115,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'draft', label: 'DRAFT' },
       { id: 'rule5', label: 'RULE 5' },
       { id: 'springtraining', label: 'SPRING TRAINING' },
+      { id: 'holdouts', label: 'HOLDOUTS' },
+      { id: 'offseasonevents', label: 'OFFSEASON EVENTS' },
     ],
   },
   {
@@ -143,6 +153,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scouting', label: 'OPPONENT INTEL' },
       { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
+      { id: 'gmrep', label: 'GM REPUTATION' },
     ],
   },
   {
@@ -158,6 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
       { id: 'ringofhonor', label: 'RING OF HONOR' },
+      { id: 'legacy', label: 'LEGACY SCORE' },
     ],
   },
 ];
@@ -377,6 +389,12 @@ export default function Shell() {
       case 'springtraining': return <SpringTraining />;
       case 'ringofhonor':  return <RingOfHonor />;
       case 'challenges':   return <SeriesChallenges />;
+      case 'clubhouse':    return <ClubhouseEvents />;
+      case 'mentors':      return <MentorHub />;
+      case 'gmrep':        return <GMReputationView />;
+      case 'holdouts':     return <HoldoutCenter />;
+      case 'offseasonevents': return <OffseasonEventsView />;
+      case 'legacy':       return <FranchiseLegacyView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
