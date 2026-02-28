@@ -335,7 +335,10 @@ function stage3(
       if (runnerOn1st && outs < 2) {
         let dpRoll: number;
         [dpRoll, gen] = nextFloat(gen);
-        const dpRate = infieldIn ? 0.42 * 0.55 : 0.42; // Infield in makes DP harder to turn
+        // Base DP rate adjusted by batter speed (slow = more DP) and pitcher GB tendency
+        const speedMod = 1.0 - ((batter.hitterAttributes?.speed ?? 350) - 350) / 400 * 0.10; // fast = -10% DP
+        let dpRate = 0.42 * speedMod;
+        if (infieldIn) dpRate *= 0.55; // Infield in makes DP harder to turn
         if (dpRoll < dpRate) return ['GDP', gen];
       }
       return ['GB_OUT', gen];
