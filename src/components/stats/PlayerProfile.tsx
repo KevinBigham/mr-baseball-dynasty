@@ -164,6 +164,53 @@ export default function PlayerProfile() {
         </div>
       )}
 
+      {/* Career stats */}
+      {data.careerStats && data.careerStats.seasons > 0 && (
+        <div className="bloomberg-border mt-4">
+          <div className="bloomberg-header">CAREER TOTALS ({data.careerStats.seasons} {data.careerStats.seasons === 1 ? 'SEASON' : 'SEASONS'})</div>
+          <div className="grid grid-cols-2 gap-4 p-0">
+            <table className="w-full">
+              <tbody>
+                {isPitcher ? (
+                  <>
+                    {statRow('W', data.careerStats.w)}
+                    {statRow('L', data.careerStats.l)}
+                    {statRow('SV', data.careerStats.sv)}
+                    {statRow('IP', data.careerStats.ip, 1)}
+                    {statRow('ERA', data.careerStats.era, 2)}
+                  </>
+                ) : (
+                  <>
+                    {statRow('PA', data.careerStats.pa)}
+                    {statRow('H', data.careerStats.h)}
+                    {statRow('HR', data.careerStats.hr)}
+                    {statRow('RBI', data.careerStats.rbi)}
+                    {statRow('SB', data.careerStats.sb)}
+                  </>
+                )}
+              </tbody>
+            </table>
+            <table className="w-full">
+              <tbody>
+                {isPitcher ? (
+                  <>
+                    {statRow('K', data.careerStats.ka)}
+                    {statRow('BB', data.careerStats.bba)}
+                  </>
+                ) : (
+                  <>
+                    {statRow('AVG', data.careerStats.avg, 3)}
+                    {statRow('OBP', data.careerStats.obp, 3)}
+                    {statRow('BB', data.careerStats.bb)}
+                    {statRow('K', data.careerStats.k)}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Platoon splits (hitters only) */}
       {data.splits && !isPitcher && (data.splits.vsLHP.pa > 0 || data.splits.vsRHP.pa > 0) && (
         <div className="bloomberg-border mt-4">
