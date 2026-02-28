@@ -134,6 +134,9 @@ import PitchMixView from '../pitching/PitchMixView';
 import DefensiveMetricsView from '../analytics/DefensiveMetricsView';
 import ContractProjectionsView from '../contracts/ContractProjectionsView';
 import TeamMomentumView from '../analytics/TeamMomentumView';
+import ScoutingReportsView from '../scouting/ScoutingReportsView';
+import DeadlineCountdownView from '../trade/DeadlineCountdownView';
+import PlateDisciplineView from '../analytics/PlateDisciplineView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -222,6 +225,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'comppicks', label: 'COMP PICKS' },
       { id: 'qualifyingoffer', label: 'QUALIFYING OFFER' },
       { id: 'tradecalc', label: 'TRADE CALCULATOR' },
+      { id: 'deadlinecountdown', label: 'DEADLINE COUNTDOWN' },
     ],
   },
   {
@@ -251,6 +255,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rundiff', label: 'RUN DIFFERENTIAL' },
       { id: 'spraychart', label: 'SPRAY CHARTS' },
       { id: 'defmetrics', label: 'DEF METRICS' },
+      { id: 'platediscipline', label: 'PLATE DISCIPLINE' },
     ],
   },
   {
@@ -283,6 +288,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'unlocks', label: 'UNLOCKS' },
       { id: 'servicetime', label: 'SERVICE TIME' },
       { id: 'contractproj', label: 'CONTRACT PROJ' },
+      { id: 'scoutreports', label: 'SCOUTING REPORTS' },
     ],
   },
   {
@@ -593,6 +599,9 @@ export default function Shell() {
       case 'defmetrics': return <DefensiveMetricsView />;
       case 'contractproj': return <ContractProjectionsView />;
       case 'momentum': return <TeamMomentumView />;
+      case 'scoutreports': return <ScoutingReportsView />;
+      case 'deadlinecountdown': return <DeadlineCountdownView />;
+      case 'platediscipline': return <PlateDisciplineView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
