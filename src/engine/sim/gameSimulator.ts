@@ -88,18 +88,42 @@ function pickReliever(
   gameIndex?: number,
   restMap?: PitcherRestMap,
 ): Player | null {
+  // In save situations, prefer CL first
+  if (wantCloser) {
+    const closers = players.filter(
+      p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
+        && p.position === 'CL' && !excludeIds.has(p.playerId),
+    );
+    if (closers.length > 0) {
+      // Check rest
+      if (restMap && gameIndex !== undefined) {
+        const restedCloser = closers.find(p => isRelieverAvailable(p, gameIndex, restMap));
+        if (restedCloser) return restedCloser;
+      } else {
+        closers.sort((a, b) => b.overall - a.overall);
+        return closers[0] ?? null;
+      }
+    }
+  }
+
+  // Standard reliever selection (RP and CL included if not in a save situation)
   let relievers = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
-      && (p.position === 'RP' || (wantCloser && p.position === 'CL'))
+      && (p.position === 'RP' || p.position === 'CL')
       && !excludeIds.has(p.playerId),
   );
   if (relievers.length === 0) return null;
+
+  // In non-save situations, deprioritize closers (save them for later)
+  if (!wantCloser) {
+    const nonClosers = relievers.filter(p => p.position !== 'CL');
+    if (nonClosers.length > 0) relievers = nonClosers;
+  }
 
   // Filter by rest availability if tracking is available
   if (restMap && gameIndex !== undefined) {
     const rested = relievers.filter(p => isRelieverAvailable(p, gameIndex, restMap));
     if (rested.length > 0) relievers = rested;
-    // If no one is rested, use the full pool (emergency)
   }
 
   // If we have a hand preference, try to match it
