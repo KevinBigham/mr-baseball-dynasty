@@ -80,6 +80,9 @@ import CoachCarouselView from '../coaching/CoachCarouselView';
 import AwardPredictions from '../analytics/AwardPredictions';
 import FanEngagementView from '../team/FanEngagementView';
 import InjuryTrackerView from '../medical/InjuryTrackerView';
+import PlayerArchetypesView from '../player/PlayerArchetypesView';
+import GrudgeRevengeView from '../narrative/GrudgeRevengeView';
+import OwnerPersonalityView from '../management/OwnerPersonalityView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -102,6 +105,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'challenges', label: 'SERIES CHALLENGES' },
       { id: 'pressroom', label: 'PRESS ROOM' },
       { id: 'seasongoals', label: 'SEASON GOALS' },
+      { id: 'grudges', label: 'GRUDGE & REVENGE' },
     ],
   },
   {
@@ -117,6 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'repertoire', label: 'PITCH REPERTOIRE' },
       { id: 'fanengagement', label: 'FAN ENGAGEMENT' },
       { id: 'injuries', label: 'INJURY TRACKER' },
+      { id: 'archetypes', label: 'ARCHETYPES' },
     ],
   },
   {
@@ -176,6 +181,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
       { id: 'gmrep', label: 'GM REPUTATION' },
+      { id: 'ownerpersonality', label: 'OWNER PERSONALITY' },
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
     ],
   },
@@ -431,6 +437,9 @@ export default function Shell() {
       case 'awardpredictions': return <AwardPredictions />;
       case 'fanengagement': return <FanEngagementView />;
       case 'injuries':   return <InjuryTrackerView />;
+      case 'archetypes': return <PlayerArchetypesView />;
+      case 'grudges':    return <GrudgeRevengeView />;
+      case 'ownerpersonality': return <OwnerPersonalityView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
