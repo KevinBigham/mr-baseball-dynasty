@@ -21,6 +21,7 @@ import { selectDefensiveSub } from './defensiveSub';
 import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
 import { getProtectionModifier } from './lineupProtection';
 import { getClutchModifier } from './clutch';
+import { shouldInfieldIn } from './infieldIn';
 import {
   initialMomentum, updateMomentum, resetInningMomentum, getMomentumModifier,
   type MomentumState,
@@ -468,6 +469,12 @@ function simulateHalfInning(
       // Lineup protection: on-deck batter influences pitcher approach
       const protectionBBMod = getProtectionModifier(onDeckBatter);
 
+      // Infield-in: fielding team's run differential (positive = fielding team leads)
+      const fieldingRunDiff = ctx.isTop
+        ? ctx.homeScore - ctx.awayScore
+        : ctx.awayScore - ctx.homeScore;
+      const infieldIn = shouldInfieldIn(markov.runners, markov.outs, fieldingRunDiff, ctx.inning);
+
       // Normal PA resolution (with clutch + H&R modified batter if applicable)
       const paInput = {
         batter: clutchBatter,
@@ -479,6 +486,7 @@ function simulateHalfInning(
         parkFactor,
         defenseRating,
         protectionBBMod,
+        infieldIn,
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);

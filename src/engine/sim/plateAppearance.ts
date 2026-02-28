@@ -18,6 +18,7 @@ export interface PAInput {
   parkFactor: ParkFactor;
   defenseRating: number; // 0–550 team defense quality
   protectionBBMod?: number; // Lineup protection BB rate multiplier (< 1 = fewer walks)
+  infieldIn?: boolean;       // Infield drawn in (runner on 3rd, close game)
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ function stage3(
   runners: number,
   outs: number,
   batter: Player,
+  infieldIn?: boolean,
 ): [PAOutcome, RandomGenerator] {
   // Defense modifier: average (400) = neutral; better defense lowers BABIP
   const defMod = (defenseRating - 400) / 550 * 0.03;
@@ -246,8 +248,11 @@ function stage3(
   const shift = computeShiftDecision(batter, defenseRating);
   const shiftMod = battedBall === 'GB' ? shift.babipModifier : 0;
 
+  // Infield-in modifier (affects GB BABIP and GDP rate)
+  const infieldInMod = (infieldIn && battedBall === 'GB') ? 0.06 : 0;
+
   const effectiveBabip = Math.max(0.15, Math.min(0.45,
-    hRates.babip - defMod + parkBabipMod + shiftMod,
+    hRates.babip - defMod + parkBabipMod + shiftMod + infieldInMod,
   ));
 
   let roll: number;
@@ -287,7 +292,8 @@ function stage3(
       if (runnerOn1st && outs < 2) {
         let dpRoll: number;
         [dpRoll, gen] = nextFloat(gen);
-        if (dpRoll < 0.42) return ['GDP', gen]; // ~42% of GB with runner on 1st + <2 outs = DP
+        const dpRate = infieldIn ? 0.42 * 0.55 : 0.42; // Infield in makes DP harder to turn
+        if (dpRoll < dpRate) return ['GDP', gen];
       }
       return ['GB_OUT', gen];
     }
@@ -378,6 +384,7 @@ export function resolvePlateAppearance(
     input.runners,
     input.outs,
     input.batter,
+    input.infieldIn,
   );
 
   return [{ outcome: finalOutcome, runsScored: 0, runnersAdvanced: 0 }, gen];
