@@ -466,11 +466,16 @@ function simulateHalfInning(
       // Bunt resolved: use the bunt outcome directly
       outcome = buntOutcome;
     } else {
+      // Reliever warm-up penalty: first batter faced by a new pitcher gets
+      // a slight penalty (simulated as +15 effective pitches). Real data shows
+      // relievers allow ~10-15% higher OPS to their first batter faced.
+      const warmUpPenalty = (pitchCountRef.value === 0 && pitcher.position !== 'SP') ? 15 : 0;
+
       // Apply momentum to pitch count (momentum modifier piggybacks on fatigue curve)
       // Positive momentum (pitcher locked in) → effective fewer pitches thrown
       // Negative momentum (pitcher rattled) → effective more pitches thrown
       const momentumMod = getMomentumModifier(momentumRef.value);
-      const effectivePitchCount = Math.max(0, pitchCountRef.value + Math.round(momentumMod * 200));
+      const effectivePitchCount = Math.max(0, pitchCountRef.value + warmUpPenalty + Math.round(momentumMod * 200));
 
       // Lineup protection: on-deck batter influences pitcher approach
       const protectionBBMod = getProtectionModifier(onDeckBatter);
