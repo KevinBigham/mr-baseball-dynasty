@@ -6,8 +6,8 @@
  */
 import { useState, useMemo } from 'react';
 import {
-  CompletedTrade,
-  TRADE_GRADE_DISPLAY,
+  HistoricalTrade,
+  GRADE_DISPLAY,
   getGMTradeHistorySummary,
   generateDemoGMTradeHistory,
 } from '../../engine/management/gmTradeHistory';
@@ -15,7 +15,7 @@ import {
 export default function GMTradeHistoryView() {
   const data = useMemo(() => generateDemoGMTradeHistory(), []);
   const summary = useMemo(() => getGMTradeHistorySummary(data), [data]);
-  const [selected, setSelected] = useState<CompletedTrade | null>(null);
+  const [selected, setSelected] = useState<HistoricalTrade | null>(null);
 
   return (
     <div style={{ padding: 18, color: '#e0e0e0', fontFamily: 'monospace', fontSize: 13 }}>
@@ -28,8 +28,8 @@ export default function GMTradeHistoryView() {
       <div style={{ display: 'flex', gap: 18, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
           { label: 'Total Trades', value: summary.totalTrades },
-          { label: 'Avg Grade', value: data.avgGrade },
-          { label: 'Net Value', value: `${data.totalSurplus >= 0 ? '+' : ''}${data.totalSurplus.toFixed(1)}`, color: data.totalSurplus >= 0 ? '#22c55e' : '#ef4444' },
+          { label: 'Avg Grade', value: summary.avgGrade },
+          { label: 'Net Value', value: summary.netValue, color: data.totalNetValue >= 0 ? '#22c55e' : '#ef4444' },
           { label: 'Win%', value: `${summary.winPct}%` },
           { label: 'Best Deal', value: data.bestTrade },
         ].map(s => (
@@ -54,7 +54,7 @@ export default function GMTradeHistoryView() {
             </thead>
             <tbody>
               {data.trades.map(t => {
-                const gd = TRADE_GRADE_DISPLAY[t.currentGrade];
+                const gd = GRADE_DISPLAY[t.currentGrade];
                 return (
                   <tr
                     key={t.id}
@@ -67,15 +67,14 @@ export default function GMTradeHistoryView() {
                   >
                     <td style={{ padding: 6, color: '#aaa' }}>{t.date}</td>
                     <td style={{ padding: 6, fontWeight: 600 }}>
-                      {t.partnerAbbr}
-                      <span style={{ color: '#666', fontWeight: 400, marginLeft: 6, fontSize: 10 }}>{t.tradeType}</span>
+                      {t.partner}
                     </td>
                     <td style={{ padding: 6, textAlign: 'center', color: gd.color, fontWeight: 700 }}>{gd.label}</td>
                     <td style={{
                       padding: 6, textAlign: 'center', fontWeight: 600,
-                      color: t.surplusValue >= 0 ? '#22c55e' : '#ef4444',
+                      color: t.netValue >= 0 ? '#22c55e' : '#ef4444',
                     }}>
-                      {t.surplusValue >= 0 ? '+' : ''}{t.surplusValue.toFixed(1)}
+                      {t.netValue >= 0 ? '+' : ''}{t.netValue.toFixed(1)}
                     </td>
                   </tr>
                 );
@@ -89,34 +88,30 @@ export default function GMTradeHistoryView() {
           {selected ? (
             <div className="bloomberg-border" style={{ padding: 14 }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>
-                Trade with {selected.partnerTeam}
+                Trade with {selected.partner}
                 <span style={{ color: '#888', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                  {selected.date} · S{selected.season}
+                  {selected.date}
                 </span>
               </div>
 
               <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ color: TRADE_GRADE_DISPLAY[selected.immediateGrade].color, fontWeight: 700 }}>
-                    {TRADE_GRADE_DISPLAY[selected.immediateGrade].label}
+                  <div style={{ color: GRADE_DISPLAY[selected.initialGrade].color, fontWeight: 700 }}>
+                    {GRADE_DISPLAY[selected.initialGrade].label}
                   </div>
                   <div style={{ color: '#666', fontSize: 10 }}>Initial Grade</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ color: TRADE_GRADE_DISPLAY[selected.currentGrade].color, fontWeight: 700 }}>
-                    {TRADE_GRADE_DISPLAY[selected.currentGrade].label}
+                  <div style={{ color: GRADE_DISPLAY[selected.currentGrade].color, fontWeight: 700 }}>
+                    {GRADE_DISPLAY[selected.currentGrade].label}
                   </div>
                   <div style={{ color: '#666', fontSize: 10 }}>Current Grade</div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ color: selected.surplusValue >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
-                    {selected.surplusValue >= 0 ? '+' : ''}{selected.surplusValue.toFixed(1)}
+                  <div style={{ color: selected.netValue >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                    {selected.netValue >= 0 ? '+' : ''}{selected.netValue.toFixed(1)}
                   </div>
                   <div style={{ color: '#666', fontSize: 10 }}>Net Value</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ color: '#ccc', fontWeight: 700 }}>{selected.tradeType}</div>
-                  <div style={{ color: '#666', fontSize: 10 }}>Type</div>
                 </div>
               </div>
 
@@ -126,24 +121,24 @@ export default function GMTradeHistoryView() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
                     <th style={{ textAlign: 'left', padding: 4 }}>Name</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Pos</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Type</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>WAR@Trade</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>Curr WAR</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Yrs</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>$M</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Surplus</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selected.sent.map((a, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                      <td style={{ padding: 4, fontWeight: 600 }}>{a.playerName}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.position}</td>
+                      <td style={{ padding: 4, fontWeight: 600 }}>{a.name}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.type}</td>
                       <td style={{ padding: 4, textAlign: 'center' }}>{a.warAtTrade.toFixed(1)}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: a.warSinceTrade >= 2.0 ? '#22c55e' : '#ccc' }}>
-                        {a.warSinceTrade.toFixed(1)}
+                      <td style={{ padding: 4, textAlign: 'center', color: a.currentWAR >= 2.0 ? '#22c55e' : '#ccc' }}>
+                        {a.currentWAR.toFixed(1)}
                       </td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.contractYears}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>${a.salary}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: a.surplus >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {a.surplus >= 0 ? '+' : ''}{a.surplus.toFixed(1)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -155,33 +150,33 @@ export default function GMTradeHistoryView() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
                     <th style={{ textAlign: 'left', padding: 4 }}>Name</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Pos</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Type</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>WAR@Trade</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>Curr WAR</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Yrs</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>$M</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Surplus</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selected.received.map((a, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                      <td style={{ padding: 4, fontWeight: 600 }}>{a.playerName}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.position}</td>
+                      <td style={{ padding: 4, fontWeight: 600 }}>{a.name}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.type}</td>
                       <td style={{ padding: 4, textAlign: 'center' }}>{a.warAtTrade.toFixed(1)}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: a.warSinceTrade >= 2.0 ? '#22c55e' : '#ccc' }}>
-                        {a.warSinceTrade.toFixed(1)}
+                      <td style={{ padding: 4, textAlign: 'center', color: a.currentWAR >= 2.0 ? '#22c55e' : '#ccc' }}>
+                        {a.currentWAR.toFixed(1)}
                       </td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{a.contractYears}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>${a.salary}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: a.surplus >= 0 ? '#22c55e' : '#ef4444' }}>
+                        {a.surplus >= 0 ? '+' : ''}{a.surplus.toFixed(1)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Analysis Notes */}
+              {/* Description */}
               <div style={{ color: '#888', fontSize: 10, marginBottom: 4 }}>ANALYSIS</div>
               <div style={{ color: '#aaa', fontSize: 11, lineHeight: 1.5, padding: '6px 8px', background: '#111', border: '1px solid #222' }}>
-                {selected.notes}
+                {selected.description}
               </div>
             </div>
           ) : (

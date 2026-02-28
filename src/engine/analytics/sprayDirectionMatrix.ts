@@ -1,23 +1,43 @@
 /**
- * Spray Direction Matrix – directional hitting tendency engine
+ * sprayDirectionMatrix.ts – Advanced directional hitting analysis
  *
- * Models pull/center/oppo tendencies by zone (inner/middle/outer third),
- * wOBA by spray direction, hard-hit rates, and batted-ball event distribution.
+ * Bloomberg-terminal-style spray chart analytics for hitters.
+ * Breaks down batted balls across a 9-zone matrix (pull/center/oppo
+ * crossed with ground/line/fly), pitch-type spray tendencies,
+ * spray scores, gap-to-gap profiling, and pull-power metrics.
+ * All demo data — no sim engine changes.
  */
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SprayDirection = 'pull' | 'center' | 'oppo';
-export type ZoneThird = 'inner' | 'middle' | 'outer';
+export type SprayZone =
+  | 'pull_ground'
+  | 'pull_line'
+  | 'pull_fly'
+  | 'center_ground'
+  | 'center_line'
+  | 'center_fly'
+  | 'oppo_ground'
+  | 'oppo_line'
+  | 'oppo_fly';
 
-export interface ZoneSprayCell {
-  zone: ZoneThird;
-  direction: SprayDirection;
-  pct: number;       // % of BIP in this zone going that direction
-  wOBA: number;      // wOBA on balls hit that direction from that zone
-  hardHitPct: number; // hard-hit % (95+ mph)
-  avgEV: number;      // average exit velocity
-  babip: number;      // BABIP for that cell
+export interface SprayZoneData {
+  zone: SprayZone;
+  hitPct: number;       // % of total batted balls landing in this zone
+  avgEV: number;        // average exit velocity (mph)
+  wOBA: number;         // weighted on-base average in zone
+  xBA: number;          // expected batting average in zone
+  hardHitPct: number;   // % of balls hit >= 95 mph EV in this zone
+}
+
+export interface PitchTypeSpray {
+  pitchType: string;    // e.g. "4-Seam Fastball", "Slider"
+  pullPct: number;      // % of batted balls pulled
+  centerPct: number;    // % to center
+  oppoPct: number;      // % to opposite field
+  pullwOBA: number;     // wOBA on pulled balls of this pitch type
+  centerwOBA: number;   // wOBA on center-field balls of this pitch type
+  oppowOBA: number;     // wOBA on opposite-field balls of this pitch type
 }
 
 export interface SprayProfile {
@@ -29,179 +49,347 @@ export interface SprayProfile {
   overallPullPct: number;
   overallCenterPct: number;
   overallOppoPct: number;
-  overallWOBA: number;
-  bestDirection: SprayDirection;
-  worstDirection: SprayDirection;
-  cells: ZoneSprayCell[];       // 9 cells (3 zones x 3 directions)
-  groundBallPullPct: number;    // GB pull rate
-  flyBallOppoPct: number;       // FB oppo rate
-  lineupSlot: number;
+  zones: SprayZoneData[];               // 9 zones (3 directions x 3 ball types)
+  pitchTypeBreakdown: PitchTypeSpray[]; // 4 pitch types
+  pullPower: number;                    // HR pct to pull side (0-100)
+  oppoFieldPct: number;                 // % of all batted balls to oppo field
+  gapToGapPct: number;                  // % of line drives to LCF/RCF gaps
+  sprayScore: number;                   // 0-100 — how well they use all fields
+  tendencyLabel: string;                // e.g. "Dead Pull Hitter", "All-Fields Hitter"
   notes: string;
 }
 
-export interface SprayDirectionSummary {
-  totalBatters: number;
-  avgPullPct: string;
-  heaviestPuller: string;
-  bestOppoHitter: string;
-  bestOverallWOBA: string;
-  avgHardHitPct: string;
+export type SprayGrade =
+  | 'elite_spray'
+  | 'good_spray'
+  | 'avg_spray'
+  | 'pull_heavy'
+  | 'extreme_pull';
+
+// ─── Display Map ────────────────────────────────────────────────────────────
+
+export const SPRAY_GRADE_DISPLAY: Record<SprayGrade, { label: string; color: string; emoji: string }> = {
+  elite_spray:  { label: 'ELITE SPRAY',    color: '#22c55e', emoji: '🎯' },
+  good_spray:   { label: 'GOOD SPRAY',     color: '#4ade80', emoji: '✅' },
+  avg_spray:    { label: 'AVERAGE SPRAY',  color: '#f59e0b', emoji: '➡️' },
+  pull_heavy:   { label: 'PULL HEAVY',     color: '#f97316', emoji: '⬅️' },
+  extreme_pull: { label: 'EXTREME PULL',   color: '#ef4444', emoji: '🔴' },
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+export function sprayGradeFromScore(score: number): SprayGrade {
+  if (score >= 80) return 'elite_spray';
+  if (score >= 65) return 'good_spray';
+  if (score >= 45) return 'avg_spray';
+  if (score >= 25) return 'pull_heavy';
+  return 'extreme_pull';
 }
 
-// ── Display helpers ────────────────────────────────────────────────────────
+export function sprayGradeColor(grade: SprayGrade): string {
+  return SPRAY_GRADE_DISPLAY[grade].color;
+}
 
-export const DIRECTION_DISPLAY: Record<SprayDirection, { label: string; color: string }> = {
-  pull:   { label: 'PULL', color: '#ef4444' },
-  center: { label: 'CENTER', color: '#f59e0b' },
-  oppo:   { label: 'OPPO', color: '#3b82f6' },
-};
+function deriveTendencyLabel(pullPct: number, oppoPct: number, sprayScore: number): string {
+  if (sprayScore >= 85) return 'All-Fields Hitter';
+  if (sprayScore >= 70 && oppoPct >= 28) return 'Gap-to-Gap Hitter';
+  if (pullPct >= 55) return 'Dead Pull Hitter';
+  if (pullPct >= 48) return 'Pull-Side Heavy';
+  if (oppoPct >= 35) return 'Opposite-Field Artist';
+  if (sprayScore >= 55) return 'Balanced Approach';
+  return 'Pull-Dominant';
+}
 
-export const ZONE_DISPLAY: Record<ZoneThird, { label: string }> = {
-  inner:  { label: 'Inner Third' },
-  middle: { label: 'Middle' },
-  outer:  { label: 'Outer Third' },
-};
+// ─── Summary ────────────────────────────────────────────────────────────────
 
-// ── Summary ────────────────────────────────────────────────────────────────
+export interface SprayDirectionSummary {
+  totalHitters: number;
+  bestSpray: string;
+  worstSpray: string;
+  avgPullPct: string;
+  avgSprayScore: string;
+  mostPower: string;
+}
 
-export function getSprayDirectionSummary(batters: SprayProfile[]): SprayDirectionSummary {
-  if (batters.length === 0) {
-    return { totalBatters: 0, avgPullPct: '0', heaviestPuller: '-', bestOppoHitter: '-', bestOverallWOBA: '-', avgHardHitPct: '0' };
+export function getSprayDirectionSummary(profiles: SprayProfile[]): SprayDirectionSummary {
+  if (profiles.length === 0) {
+    return {
+      totalHitters: 0,
+      bestSpray: 'N/A',
+      worstSpray: 'N/A',
+      avgPullPct: '0.0',
+      avgSprayScore: '0.0',
+      mostPower: 'N/A',
+    };
   }
-  const avgPull = batters.reduce((s, b) => s + b.overallPullPct, 0) / batters.length;
-  const puller = [...batters].sort((a, b) => b.overallPullPct - a.overallPullPct)[0];
-  const oppo = [...batters].sort((a, b) => {
-    const aOppo = a.cells.filter(c => c.direction === 'oppo').reduce((s, c) => s + c.wOBA, 0) / 3;
-    const bOppo = b.cells.filter(c => c.direction === 'oppo').reduce((s, c) => s + c.wOBA, 0) / 3;
-    return bOppo - aOppo;
-  })[0];
-  const bestWoba = [...batters].sort((a, b) => b.overallWOBA - a.overallWOBA)[0];
-  const avgHH = batters.reduce((s, b) => s + b.cells.reduce((ss, c) => ss + c.hardHitPct, 0) / 9, 0) / batters.length;
+
+  const byScore = [...profiles].sort((a, b) => b.sprayScore - a.sprayScore);
+  const bestSpray = byScore[0];
+  const worstSpray = byScore[byScore.length - 1];
+
+  const avgPull = profiles.reduce((s, p) => s + p.overallPullPct, 0) / profiles.length;
+  const avgScore = profiles.reduce((s, p) => s + p.sprayScore, 0) / profiles.length;
+
+  const mostPowerHitter = [...profiles].sort((a, b) => b.pullPower - a.pullPower)[0];
+
   return {
-    totalBatters: batters.length,
+    totalHitters: profiles.length,
+    bestSpray: bestSpray.name,
+    worstSpray: worstSpray.name,
     avgPullPct: avgPull.toFixed(1),
-    heaviestPuller: puller.name,
-    bestOppoHitter: oppo.name,
-    bestOverallWOBA: bestWoba.name,
-    avgHardHitPct: avgHH.toFixed(1),
+    avgSprayScore: avgScore.toFixed(1),
+    mostPower: mostPowerHitter.name,
   };
 }
 
-// ── Demo Data ──────────────────────────────────────────────────────────────
+// ─── Demo Data Builders ─────────────────────────────────────────────────────
 
-function makeCell(zone: ZoneThird, dir: SprayDirection, pct: number, wOBA: number, hh: number, ev: number, bab: number): ZoneSprayCell {
-  return { zone, direction: dir, pct, wOBA, hardHitPct: hh, avgEV: ev, babip: bab };
+function buildZones(
+  pullG: number, pullL: number, pullF: number,
+  cenG: number,  cenL: number,  cenF: number,
+  oppG: number,  oppL: number,  oppF: number,
+): SprayZoneData[] {
+  // Each tuple: zone key, pct, base EV, base wOBA, base xBA, base hardHit%
+  const raw: [SprayZone, number, number, number, number, number][] = [
+    ['pull_ground',   pullG, 88.4,  0.195, 0.225, 22.4],
+    ['pull_line',     pullL, 97.2,  0.485, 0.558, 62.8],
+    ['pull_fly',      pullF, 95.0,  0.405, 0.262, 54.2],
+    ['center_ground', cenG,  85.6,  0.235, 0.260, 15.8],
+    ['center_line',   cenL,  94.8,  0.565, 0.625, 58.4],
+    ['center_fly',    cenF,  93.2,  0.358, 0.198, 48.6],
+    ['oppo_ground',   oppG,  83.2,  0.175, 0.235, 10.2],
+    ['oppo_line',     oppL,  91.4,  0.445, 0.502, 42.6],
+    ['oppo_fly',      oppF,  89.0,  0.295, 0.165, 28.8],
+  ];
+
+  return raw.map(([zone, pct, baseEV, baseWoba, baseXba, baseHH]) => ({
+    zone,
+    hitPct:     +pct.toFixed(1),
+    avgEV:      +(baseEV + pct * 0.15).toFixed(1),
+    wOBA:       +(baseWoba + pct * 0.006).toFixed(3),
+    xBA:        +Math.min(baseXba + pct * 0.004, 0.780).toFixed(3),
+    hardHitPct: +Math.min(baseHH + pct * 0.8, 95.0).toFixed(1),
+  }));
 }
 
+function buildPitchSpray(
+  pitchType: string,
+  pullPct: number, centerPct: number, oppoPct: number,
+  pullW: number, centerW: number, oppoW: number,
+): PitchTypeSpray {
+  return {
+    pitchType,
+    pullPct:    +pullPct.toFixed(1),
+    centerPct:  +centerPct.toFixed(1),
+    oppoPct:    +oppoPct.toFixed(1),
+    pullwOBA:   +pullW.toFixed(3),
+    centerwOBA: +centerW.toFixed(3),
+    oppowOBA:   +oppoW.toFixed(3),
+  };
+}
+
+// ─── Demo Generator ─────────────────────────────────────────────────────────
+
 export function generateDemoSprayDirection(): SprayProfile[] {
-  return [
+  const profiles: SprayProfile[] = [
+    // 1 — Elite spray hitter (contact/gap artist)
     {
-      id: 'sd1', name: 'Juan Ramirez', team: 'NYM', position: 'LF', bats: 'L',
-      overallPullPct: 44.2, overallCenterPct: 33.1, overallOppoPct: 22.7, overallWOBA: .362,
-      bestDirection: 'pull', worstDirection: 'oppo', lineupSlot: 3,
-      groundBallPullPct: 68.4, flyBallOppoPct: 18.2,
-      cells: [
-        makeCell('inner', 'pull', 52.1, .418, 48.3, 94.2, .342),
-        makeCell('inner', 'center', 30.4, .352, 38.1, 91.0, .318),
-        makeCell('inner', 'oppo', 17.5, .288, 22.0, 86.4, .280),
-        makeCell('middle', 'pull', 42.3, .396, 44.8, 93.1, .335),
-        makeCell('middle', 'center', 35.8, .368, 40.2, 91.8, .322),
-        makeCell('middle', 'oppo', 21.9, .312, 28.5, 88.2, .295),
-        makeCell('outer', 'pull', 38.1, .342, 36.2, 90.5, .310),
-        makeCell('outer', 'center', 33.2, .358, 34.8, 89.8, .305),
-        makeCell('outer', 'oppo', 28.7, .328, 30.1, 87.6, .298),
+      id: 'sdm-1',
+      name: 'Kenji Tanaka',
+      team: 'SEA',
+      position: '2B',
+      bats: 'L',
+      overallPullPct: 34.2,
+      overallCenterPct: 33.4,
+      overallOppoPct: 32.4,
+      zones: buildZones(10.4, 13.2, 10.6, 11.0, 12.6, 9.8, 10.8, 12.4, 9.2),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 36.0, 33.2, 30.8, 0.372, 0.395, 0.380),
+        buildPitchSpray('Slider',          32.8, 34.0, 33.2, 0.335, 0.352, 0.345),
+        buildPitchSpray('Changeup',        31.4, 35.2, 33.4, 0.358, 0.382, 0.362),
+        buildPitchSpray('Curveball',       34.2, 33.0, 32.8, 0.305, 0.328, 0.318),
       ],
-      notes: 'Elite pull power from inner third. Vulnerable to oppo-field approach vs outer half. Ground balls heavily pulled — shift candidate.',
+      pullPower: 44.8,
+      oppoFieldPct: 32.4,
+      gapToGapPct: 51.2,
+      sprayScore: 93,
+      tendencyLabel: '',
+      notes: 'Best spray hitter in the league. Near-perfect 1/3 distribution across all directions. Elite contact with gap-to-gap approach. Virtually impossible to shift effectively.',
     },
+    // 2 — Extreme pull power hitter
     {
-      id: 'sd2', name: 'Derek Williams', team: 'BOS', position: '1B', bats: 'R',
-      overallPullPct: 48.6, overallCenterPct: 28.3, overallOppoPct: 23.1, overallWOBA: .388,
-      bestDirection: 'pull', worstDirection: 'oppo', lineupSlot: 4,
-      groundBallPullPct: 72.1, flyBallOppoPct: 14.8,
-      cells: [
-        makeCell('inner', 'pull', 56.2, .442, 52.1, 96.4, .358),
-        makeCell('inner', 'center', 26.8, .362, 40.5, 92.2, .320),
-        makeCell('inner', 'oppo', 17.0, .278, 20.1, 85.8, .268),
-        makeCell('middle', 'pull', 48.1, .424, 49.2, 95.0, .348),
-        makeCell('middle', 'center', 29.4, .378, 42.8, 92.8, .325),
-        makeCell('middle', 'oppo', 22.5, .302, 26.4, 87.6, .288),
-        makeCell('outer', 'pull', 41.4, .362, 38.4, 91.2, .315),
-        makeCell('outer', 'center', 28.6, .344, 32.1, 89.4, .302),
-        makeCell('outer', 'oppo', 30.0, .318, 28.8, 86.8, .292),
+      id: 'sdm-2',
+      name: 'Carlos Ramirez',
+      team: 'HOU',
+      position: '1B',
+      bats: 'R',
+      overallPullPct: 58.8,
+      overallCenterPct: 25.6,
+      overallOppoPct: 15.6,
+      zones: buildZones(20.2, 22.4, 16.2, 9.0, 9.6, 7.0, 5.0, 6.2, 4.4),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 63.2, 24.2, 12.6, 0.472, 0.318, 0.192),
+        buildPitchSpray('Slider',          55.8, 26.8, 17.4, 0.385, 0.270, 0.168),
+        buildPitchSpray('Changeup',        51.2, 29.8, 19.0, 0.408, 0.302, 0.210),
+        buildPitchSpray('Curveball',       59.4, 25.0, 15.6, 0.352, 0.255, 0.148),
       ],
-      notes: 'Pure pull hitter with massive power to the pull side. Inner third is damage zone — 56% pull rate with .442 wOBA. Shift heavily.',
+      pullPower: 92.4,
+      oppoFieldPct: 15.6,
+      gapToGapPct: 21.8,
+      sprayScore: 16,
+      tendencyLabel: '',
+      notes: 'Extreme pull hitter — 92% of HRs to pull side. Devastating power but predictable. Aggressive shifts reduce BABIP by ~40 points. Feasts on inside fastballs.',
     },
+    // 3 — All-fields gap hitter
     {
-      id: 'sd3', name: 'Marcus Chen', team: 'HOU', position: 'CF', bats: 'S',
-      overallPullPct: 34.8, overallCenterPct: 38.4, overallOppoPct: 26.8, overallWOBA: .356,
-      bestDirection: 'center', worstDirection: 'pull', lineupSlot: 1,
-      groundBallPullPct: 48.2, flyBallOppoPct: 28.4,
-      cells: [
-        makeCell('inner', 'pull', 38.2, .348, 36.4, 90.8, .312),
-        makeCell('inner', 'center', 36.8, .372, 38.8, 91.4, .322),
-        makeCell('inner', 'oppo', 25.0, .332, 30.2, 88.6, .298),
-        makeCell('middle', 'pull', 34.1, .358, 38.2, 91.2, .318),
-        makeCell('middle', 'center', 39.4, .382, 42.4, 92.6, .328),
-        makeCell('middle', 'oppo', 26.5, .342, 32.8, 89.2, .305),
-        makeCell('outer', 'pull', 32.0, .328, 30.1, 88.4, .295),
-        makeCell('outer', 'center', 39.1, .368, 36.2, 90.2, .315),
-        makeCell('outer', 'oppo', 28.9, .352, 34.5, 89.8, .308),
+      id: 'sdm-3',
+      name: 'David Chen',
+      team: 'LAD',
+      position: 'SS',
+      bats: 'L',
+      overallPullPct: 36.8,
+      overallCenterPct: 34.0,
+      overallOppoPct: 29.2,
+      zones: buildZones(11.6, 14.2, 11.0, 11.4, 12.8, 9.8, 9.8, 11.2, 8.2),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 38.6, 33.8, 27.6, 0.392, 0.415, 0.368),
+        buildPitchSpray('Slider',          35.2, 35.4, 29.4, 0.348, 0.378, 0.342),
+        buildPitchSpray('Changeup',        33.4, 36.0, 30.6, 0.372, 0.398, 0.356),
+        buildPitchSpray('Curveball',       35.8, 34.2, 30.0, 0.315, 0.345, 0.332),
       ],
-      notes: 'True all-fields hitter with excellent center-field coverage. Switch-hitter advantage gives balanced spray. Hard to shift against.',
+      pullPower: 53.6,
+      oppoFieldPct: 29.2,
+      gapToGapPct: 47.8,
+      sprayScore: 84,
+      tendencyLabel: '',
+      notes: 'True all-fields hitter. Spray score in 96th percentile. Can drive the ball to any part of the park. Shifts are ineffective. MVP-caliber bat.',
     },
+    // 4 — Switch hitter with balanced profile
     {
-      id: 'sd4', name: 'Tyler Brooks', team: 'LAD', position: 'RF', bats: 'R',
-      overallPullPct: 38.2, overallCenterPct: 32.8, overallOppoPct: 29.0, overallWOBA: .374,
-      bestDirection: 'oppo', worstDirection: 'center', lineupSlot: 2,
-      groundBallPullPct: 52.8, flyBallOppoPct: 32.6,
-      cells: [
-        makeCell('inner', 'pull', 42.8, .388, 44.2, 93.6, .332),
-        makeCell('inner', 'center', 30.4, .348, 36.8, 90.4, .310),
-        makeCell('inner', 'oppo', 26.8, .362, 38.4, 91.2, .318),
-        makeCell('middle', 'pull', 37.2, .372, 40.8, 92.4, .325),
-        makeCell('middle', 'center', 33.6, .358, 38.2, 91.0, .315),
-        makeCell('middle', 'oppo', 29.2, .378, 42.1, 92.8, .328),
-        makeCell('outer', 'pull', 34.5, .348, 34.6, 89.8, .305),
-        makeCell('outer', 'center', 34.2, .342, 32.8, 89.2, .300),
-        makeCell('outer', 'oppo', 31.3, .388, 40.2, 92.0, .325),
+      id: 'sdm-4',
+      name: 'Tyler Washington',
+      team: 'ATL',
+      position: 'CF',
+      bats: 'S',
+      overallPullPct: 40.6,
+      overallCenterPct: 34.2,
+      overallOppoPct: 25.2,
+      zones: buildZones(13.6, 15.0, 12.0, 11.8, 12.8, 9.6, 8.4, 10.0, 6.8),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 43.2, 32.4, 24.4, 0.402, 0.386, 0.345),
+        buildPitchSpray('Slider',          38.8, 35.6, 25.6, 0.358, 0.368, 0.322),
+        buildPitchSpray('Changeup',        36.4, 37.0, 26.6, 0.378, 0.392, 0.338),
+        buildPitchSpray('Curveball',       40.2, 34.0, 25.8, 0.325, 0.352, 0.302),
       ],
-      notes: 'Elite oppo-field power — rare .388 wOBA to opposite field on outer third. Can drive the outside pitch. Very hard to pitch to.',
+      pullPower: 63.8,
+      oppoFieldPct: 25.2,
+      gapToGapPct: 43.2,
+      sprayScore: 71,
+      tendencyLabel: '',
+      notes: 'Switch hitter with balanced spray from both sides. More pull-oriented from right side vs LHP. Good gap power and plus speed creates extra-base hits.',
     },
+    // 5 — Pull-heavy slugger
     {
-      id: 'sd5', name: 'Andre Jackson', team: 'CHC', position: '3B', bats: 'L',
-      overallPullPct: 42.8, overallCenterPct: 31.2, overallOppoPct: 26.0, overallWOBA: .345,
-      bestDirection: 'pull', worstDirection: 'oppo', lineupSlot: 5,
-      groundBallPullPct: 64.8, flyBallOppoPct: 20.1,
-      cells: [
-        makeCell('inner', 'pull', 50.2, .402, 46.8, 94.0, .340),
-        makeCell('inner', 'center', 29.8, .338, 34.2, 89.8, .305),
-        makeCell('inner', 'oppo', 20.0, .275, 18.4, 84.2, .265),
-        makeCell('middle', 'pull', 42.1, .378, 42.4, 92.6, .328),
-        makeCell('middle', 'center', 32.4, .352, 36.8, 90.4, .312),
-        makeCell('middle', 'oppo', 25.5, .298, 24.2, 86.8, .282),
-        makeCell('outer', 'pull', 36.2, .332, 32.8, 89.4, .300),
-        makeCell('outer', 'center', 31.4, .342, 30.4, 88.6, .295),
-        makeCell('outer', 'oppo', 32.4, .308, 26.8, 87.2, .288),
+      id: 'sdm-5',
+      name: 'Derek Williams',
+      team: 'CHC',
+      position: 'LF',
+      bats: 'R',
+      overallPullPct: 53.2,
+      overallCenterPct: 28.0,
+      overallOppoPct: 18.8,
+      zones: buildZones(18.4, 20.2, 14.6, 9.6, 10.2, 8.2, 6.2, 7.4, 5.2),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 57.0, 26.4, 16.6, 0.448, 0.340, 0.228),
+        buildPitchSpray('Slider',          50.8, 29.0, 20.2, 0.372, 0.292, 0.202),
+        buildPitchSpray('Changeup',        49.2, 30.4, 20.4, 0.395, 0.315, 0.235),
+        buildPitchSpray('Curveball',       53.0, 28.0, 19.0, 0.332, 0.278, 0.182),
       ],
-      notes: 'Heavy pull tendency with power concentrated on inner third. Struggles going oppo on anything inside. Prime shift candidate.',
+      pullPower: 85.2,
+      oppoFieldPct: 18.8,
+      gapToGapPct: 27.6,
+      sprayScore: 28,
+      tendencyLabel: '',
+      notes: 'Heavy pull hitter with monster pull-side power. High K-rate on outside pitches. Struggles against oppo-field shifting but raw power compensates on pull side.',
     },
+    // 6 — Balanced veteran
     {
-      id: 'sd6', name: 'Sam Nakamura', team: 'SEA', position: 'SS', bats: 'R',
-      overallPullPct: 36.4, overallCenterPct: 36.8, overallOppoPct: 26.8, overallWOBA: .338,
-      bestDirection: 'center', worstDirection: 'oppo', lineupSlot: 6,
-      groundBallPullPct: 54.2, flyBallOppoPct: 24.8,
-      cells: [
-        makeCell('inner', 'pull', 40.8, .358, 38.2, 91.2, .318),
-        makeCell('inner', 'center', 35.2, .348, 36.4, 90.4, .312),
-        makeCell('inner', 'oppo', 24.0, .305, 26.2, 87.0, .285),
-        makeCell('middle', 'pull', 35.8, .342, 36.8, 90.6, .310),
-        makeCell('middle', 'center', 37.4, .358, 38.4, 91.2, .318),
-        makeCell('middle', 'oppo', 26.8, .322, 28.8, 87.8, .292),
-        makeCell('outer', 'pull', 32.6, .318, 30.2, 88.2, .295),
-        makeCell('outer', 'center', 37.8, .342, 34.6, 89.8, .308),
-        makeCell('outer', 'oppo', 29.6, .328, 30.4, 88.4, .298),
+      id: 'sdm-6',
+      name: 'Andre Brooks',
+      team: 'STL',
+      position: 'DH',
+      bats: 'R',
+      overallPullPct: 42.4,
+      overallCenterPct: 33.0,
+      overallOppoPct: 24.6,
+      zones: buildZones(14.2, 15.6, 12.6, 11.2, 12.2, 9.6, 8.2, 9.8, 6.6),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 45.2, 31.8, 23.0, 0.412, 0.388, 0.335),
+        buildPitchSpray('Slider',          40.6, 33.8, 25.6, 0.350, 0.322, 0.292),
+        buildPitchSpray('Changeup',        39.2, 34.8, 26.0, 0.378, 0.362, 0.318),
+        buildPitchSpray('Curveball',       42.8, 32.6, 24.6, 0.312, 0.298, 0.272),
       ],
-      notes: 'Balanced approach with slight center-field lean. Uses middle of field effectively. Gap-to-gap hitter profile.',
+      pullPower: 68.8,
+      oppoFieldPct: 24.6,
+      gapToGapPct: 40.6,
+      sprayScore: 64,
+      tendencyLabel: '',
+      notes: 'Balanced power hitter with slight pull tendency. Veteran approach — can adjust mid-AB. Good plate coverage makes him dangerous in RBI situations.',
+    },
+    // 7 — Opposite-field contact specialist
+    {
+      id: 'sdm-7',
+      name: 'Marcus Johnson',
+      team: 'NYY',
+      position: 'RF',
+      bats: 'R',
+      overallPullPct: 38.0,
+      overallCenterPct: 30.4,
+      overallOppoPct: 31.6,
+      zones: buildZones(12.2, 14.0, 11.8, 10.4, 11.2, 8.8, 10.6, 12.0, 9.0),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 40.8, 29.6, 29.6, 0.385, 0.358, 0.368),
+        buildPitchSpray('Slider',          36.2, 31.2, 32.6, 0.342, 0.318, 0.345),
+        buildPitchSpray('Changeup',        34.8, 32.0, 33.2, 0.365, 0.342, 0.358),
+        buildPitchSpray('Curveball',       37.4, 30.8, 31.8, 0.308, 0.288, 0.312),
+      ],
+      pullPower: 56.2,
+      oppoFieldPct: 31.6,
+      gapToGapPct: 44.8,
+      sprayScore: 78,
+      tendencyLabel: '',
+      notes: 'Rare oppo-field approach with above-average power to all fields. Produces higher wOBA to opposite field than most hitters do to pull side. Shift-proof.',
+    },
+    // 8 — Pull-side power with adjustment ability
+    {
+      id: 'sdm-8',
+      name: 'Jordan Mitchell',
+      team: 'SD',
+      position: '3B',
+      bats: 'R',
+      overallPullPct: 45.0,
+      overallCenterPct: 31.2,
+      overallOppoPct: 23.8,
+      zones: buildZones(15.4, 16.8, 12.8, 10.6, 11.6, 9.0, 7.8, 9.4, 6.6),
+      pitchTypeBreakdown: [
+        buildPitchSpray('4-Seam Fastball', 48.6, 29.8, 21.6, 0.428, 0.382, 0.315),
+        buildPitchSpray('Slider',          42.4, 32.4, 25.2, 0.362, 0.315, 0.278),
+        buildPitchSpray('Changeup',        40.8, 33.6, 25.6, 0.390, 0.358, 0.302),
+        buildPitchSpray('Curveball',       45.2, 30.8, 24.0, 0.318, 0.285, 0.252),
+      ],
+      pullPower: 72.4,
+      oppoFieldPct: 23.8,
+      gapToGapPct: 38.2,
+      sprayScore: 56,
+      tendencyLabel: '',
+      notes: 'Slightly pull-heavy but shows oppo-field ability on breaking balls. Corner power with 30+ HR upside. Adjusts approach with 2 strikes to use whole field.',
     },
   ];
+
+  // Derive tendency labels from computed stats
+  for (const p of profiles) {
+    p.tendencyLabel = deriveTendencyLabel(p.overallPullPct, p.overallOppoPct, p.sprayScore);
+  }
+
+  return profiles;
 }

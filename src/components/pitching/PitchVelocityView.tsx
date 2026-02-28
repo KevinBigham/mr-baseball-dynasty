@@ -32,6 +32,7 @@ export default function PitchVelocityView() {
           { label: 'Best Stamina', value: summary.bestStamina },
           { label: 'Avg FB', value: `${summary.avgFBVelo} mph` },
           { label: 'Avg Drop', value: `${summary.avgVeloDrop} mph` },
+          { label: 'Most Consistent', value: summary.mostConsistent },
         ].map(s => (
           <div key={s.label} className="bloomberg-border" style={{ padding: '8px 14px', minWidth: 110, textAlign: 'center' }}>
             <div style={{ color: '#888', fontSize: 10, marginBottom: 2 }}>{s.label}</div>
@@ -70,17 +71,17 @@ export default function PitchVelocityView() {
                       {p.name}
                       <span style={{ color: '#666', fontWeight: 400, marginLeft: 6, fontSize: 10 }}>{p.team} · {p.role}</span>
                     </td>
-                    <td style={{ padding: 6, textAlign: 'center', color: p.primaryVelo >= 96 ? '#22c55e' : '#ccc' }}>
-                      {p.primaryVelo}
+                    <td style={{ padding: 6, textAlign: 'center', color: p.primaryFBVelo >= 96 ? '#22c55e' : '#ccc' }}>
+                      {p.primaryFBVelo}
                     </td>
-                    <td style={{ padding: 6, textAlign: 'center', color: p.maxVelo >= 100 ? '#f59e0b' : '#ccc', fontWeight: 600 }}>
-                      {p.maxVelo}
+                    <td style={{ padding: 6, textAlign: 'center', color: p.maxFBVelo >= 100 ? '#f59e0b' : '#ccc', fontWeight: 600 }}>
+                      {p.maxFBVelo}
                     </td>
-                    <td style={{ padding: 6, textAlign: 'center', color: p.veloDropPerInning >= 0.6 ? '#ef4444' : '#22c55e' }}>
-                      {p.veloDropPerInning.toFixed(1)}
+                    <td style={{ padding: 6, textAlign: 'center', color: p.avgVeloDrop >= 2.0 ? '#ef4444' : '#22c55e' }}>
+                      {p.avgVeloDrop.toFixed(1)}
                     </td>
-                    <td style={{ padding: 6, textAlign: 'center', color: sg.color, fontWeight: 600, fontSize: 10 }}>
-                      {sg.label}
+                    <td style={{ padding: 6, textAlign: 'center', color: sg?.color ?? '#f59e0b', fontWeight: 600, fontSize: 10 }}>
+                      {sg?.label ?? p.staminaGrade}
                     </td>
                   </tr>
                 );
@@ -102,10 +103,11 @@ export default function PitchVelocityView() {
 
               <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Primary Velo', value: `${selected.primaryVelo} mph`, color: '#f59e0b' },
-                  { label: 'Max Velo', value: `${selected.maxVelo} mph`, color: selected.maxVelo >= 100 ? '#22c55e' : '#ccc' },
-                  { label: 'Consistency', value: selected.consistencyScore, color: selected.consistencyScore >= 80 ? '#22c55e' : '#eab308' },
-                  { label: 'Stamina', value: STAMINA_GRADE_DISPLAY[selected.staminaGrade].label, color: STAMINA_GRADE_DISPLAY[selected.staminaGrade].color },
+                  { label: 'Primary FB', value: `${selected.primaryFBVelo} mph`, color: '#f59e0b' },
+                  { label: 'Max FB', value: `${selected.maxFBVelo} mph`, color: selected.maxFBVelo >= 100 ? '#22c55e' : '#ccc' },
+                  { label: 'Consistency', value: selected.veloConsistency, color: selected.veloConsistency >= 80 ? '#22c55e' : '#eab308' },
+                  { label: 'Stamina', value: STAMINA_GRADE_DISPLAY[selected.staminaGrade]?.label ?? selected.staminaGrade, color: STAMINA_GRADE_DISPLAY[selected.staminaGrade]?.color ?? '#f59e0b' },
+                  { label: 'Overall', value: selected.overallGrade, color: '#f59e0b' },
                 ].map(s => (
                   <div key={s.label} style={{ textAlign: 'center' }}>
                     <div style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -133,40 +135,46 @@ export default function PitchVelocityView() {
                       <td style={{ padding: 4, fontWeight: 600 }}>{pt.pitchType}</td>
                       <td style={{ padding: 4, textAlign: 'center' }}>{pt.avgVelo}</td>
                       <td style={{ padding: 4, textAlign: 'center', color: '#f59e0b' }}>{pt.maxVelo}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#ccc' }}>{pt.p95}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{pt.p5}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: pt.spread <= 4.5 ? '#22c55e' : '#eab308' }}>{pt.spread}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: '#ccc' }}>{pt.p95Velo}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{pt.p5Velo}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: pt.veloSpread <= 4.5 ? '#22c55e' : '#eab308' }}>{pt.veloSpread}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Velocity Bands */}
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>
-                VELOCITY BANDS — {selected.primaryPitch.toUpperCase()}
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 14 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
-                    <th style={{ textAlign: 'left', padding: 4 }}>Range</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Pct</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Whiff%</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>wOBA</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.velocityBands.map(vb => (
-                    <tr key={vb.range} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                      <td style={{ padding: 4, fontWeight: 600 }}>{vb.range}</td>
-                      <td style={{ padding: 4, textAlign: 'center' }}>{vb.pct}%</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: vb.whiffPct >= 30 ? '#22c55e' : '#ccc' }}>{vb.whiffPct}%</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: vb.wOBA <= 0.260 ? '#22c55e' : vb.wOBA >= 0.340 ? '#ef4444' : '#ccc' }}>
-                        {vb.wOBA.toFixed(3)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {/* Velocity Bands — show first pitch type's bands */}
+              {selected.pitchTypes.length > 0 && (
+                <>
+                  <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>
+                    VELOCITY BANDS — {selected.pitchTypes[0].pitchType.toUpperCase()}
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 14 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
+                        <th style={{ textAlign: 'left', padding: 4 }}>Range</th>
+                        <th style={{ textAlign: 'center', padding: 4 }}>Count</th>
+                        <th style={{ textAlign: 'center', padding: 4 }}>Pct</th>
+                        <th style={{ textAlign: 'center', padding: 4 }}>Whiff%</th>
+                        <th style={{ textAlign: 'center', padding: 4 }}>wOBA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.pitchTypes[0].bands.map(vb => (
+                        <tr key={vb.range} style={{ borderBottom: '1px solid #1a1a2e' }}>
+                          <td style={{ padding: 4, fontWeight: 600 }}>{vb.range}</td>
+                          <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{vb.count}</td>
+                          <td style={{ padding: 4, textAlign: 'center' }}>{vb.pct}%</td>
+                          <td style={{ padding: 4, textAlign: 'center', color: vb.whiffPct >= 30 ? '#22c55e' : '#ccc' }}>{vb.whiffPct}%</td>
+                          <td style={{ padding: 4, textAlign: 'center', color: vb.wOBA <= 0.260 ? '#22c55e' : vb.wOBA >= 0.340 ? '#ef4444' : '#ccc' }}>
+                            {vb.wOBA.toFixed(3)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
 
               {/* Inning by Inning */}
               <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>INNING BY INNING</div>
@@ -174,8 +182,9 @@ export default function PitchVelocityView() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
                     <th style={{ textAlign: 'center', padding: 4 }}>INN</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Avg Velo</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Max Velo</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Avg</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Max</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Min</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>Drop</th>
                   </tr>
                 </thead>
@@ -185,11 +194,12 @@ export default function PitchVelocityView() {
                       <td style={{ padding: 4, textAlign: 'center', fontWeight: 600 }}>{iv.inning}</td>
                       <td style={{ padding: 4, textAlign: 'center' }}>{iv.avgVelo}</td>
                       <td style={{ padding: 4, textAlign: 'center', color: '#f59e0b' }}>{iv.maxVelo}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: '#888' }}>{iv.minVelo}</td>
                       <td style={{
                         padding: 4, textAlign: 'center',
-                        color: iv.veloDrop === 0 ? '#666' : iv.veloDrop >= 2.0 ? '#ef4444' : iv.veloDrop >= 1.0 ? '#eab308' : '#22c55e',
+                        color: iv.veloDropFromFirst === 0 ? '#666' : iv.veloDropFromFirst >= 2.0 ? '#ef4444' : iv.veloDropFromFirst >= 1.0 ? '#eab308' : '#22c55e',
                       }}>
-                        {iv.veloDrop === 0 ? '--' : `-${iv.veloDrop.toFixed(1)}`}
+                        {iv.veloDropFromFirst === 0 ? '--' : `-${iv.veloDropFromFirst.toFixed(1)}`}
                       </td>
                     </tr>
                   ))}

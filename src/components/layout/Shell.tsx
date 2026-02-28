@@ -293,6 +293,15 @@ import SeasonSimForecastView from '../analytics/SeasonSimForecastView';
 import WalkRateLeaderboardView from '../analytics/WalkRateLeaderboardView';
 import CatcherPopTimeView from '../analytics/CatcherPopTimeView';
 import RosterFlexScoreView from '../analytics/RosterFlexScoreView';
+import PitchTunnelHeatmapView from '../pitching/PitchTunnelHeatmapView';
+import DefOptView from '../analytics/DefOptView';
+import ContractBuyoutScenariosView from '../contracts/ContractBuyoutScenariosView';
+import PlayerAgingProjectionsView from '../analytics/PlayerAgingProjectionsView';
+import TeamChemistryWebView from '../analytics/TeamChemistryWebView';
+import ScoutReportV2View from '../scouting/ScoutReportV2View';
+import PinchHitDecisionView from '../analytics/PinchHitDecisionView';
+import BPMatchupOptView from '../pitching/BPMatchupOptView';
+import ScheduleStrengthView from '../analytics/ScheduleStrengthView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -395,6 +404,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitcherstamina', label: 'STAMINA TRACKER' },
       { id: 'lineuprules', label: 'LINEUP RULES' },
       { id: 'relieverfatigue', label: 'RELIEVER FATIGUE' },
+      { id: 'pitchtunnelheatmap', label: 'TUNNEL HEATMAP' },
+      { id: 'bpmatchupopt', label: 'BP MATCHUP OPT' },
     ],
   },
   {
@@ -440,6 +451,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'draftpickvalue', label: 'DRAFT PICK VALUE' },
       { id: 'fabiddingwar', label: 'FA BIDDING WAR' },
       { id: 'deadlinestrategy', label: 'DEADLINE STRATEGY' },
+      { id: 'contractbuyout', label: 'CONTRACT BUYOUT' },
     ],
   },
   {
@@ -521,6 +533,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'catcherpoptime', label: 'CATCHER POP TIME' },
       { id: 'rosterflex', label: 'ROSTER FLEX' },
       { id: 'fanmorale', label: 'FAN MORALE' },
+      { id: 'defoptimizer', label: 'DEF OPTIMIZER' },
+      { id: 'agingprojections', label: 'AGING CURVES+' },
+      { id: 'teamchemweb', label: 'CHEMISTRY WEB' },
+      { id: 'phdecision', label: 'PH DECISION' },
+      { id: 'schedulestrength', label: 'SCHEDULE SOS' },
     ],
   },
   {
@@ -593,6 +610,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectrptcard', label: 'PROSPECT RPT CARDS' },
       { id: 'salarycapsim2', label: 'CAP SIMULATOR' },
       { id: 'prospectgradimpact', label: 'GRAD IMPACT' },
+      { id: 'scoutreportv2', label: 'ADV SCOUT REPORT' },
     ],
   },
   {
@@ -1070,6 +1088,15 @@ export default function Shell() {
       case 'walkrateleaders': return <WalkRateLeaderboardView />;
       case 'catcherpoptime': return <CatcherPopTimeView />;
       case 'rosterflex': return <RosterFlexScoreView />;
+      case 'pitchtunnelheatmap': return <PitchTunnelHeatmapView />;
+      case 'defoptimizer': return <DefOptView />;
+      case 'contractbuyout': return <ContractBuyoutScenariosView />;
+      case 'agingprojections': return <PlayerAgingProjectionsView />;
+      case 'teamchemweb': return <TeamChemistryWebView />;
+      case 'scoutreportv2': return <ScoutReportV2View />;
+      case 'phdecision': return <PinchHitDecisionView />;
+      case 'bpmatchupopt': return <BPMatchupOptView />;
+      case 'schedulestrength': return <ScheduleStrengthView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;

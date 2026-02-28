@@ -7,11 +7,17 @@
 import { useState, useMemo } from 'react';
 import {
   SprayProfile,
-  DIRECTION_DISPLAY,
-  ZONE_DISPLAY,
+  SPRAY_GRADE_DISPLAY,
+  sprayGradeFromScore,
   getSprayDirectionSummary,
   generateDemoSprayDirection,
 } from '../../engine/analytics/sprayDirectionMatrix';
+
+const DIR_COLORS = {
+  pull:   '#ef4444',
+  center: '#f59e0b',
+  oppo:   '#3b82f6',
+};
 
 export default function SprayDirectionView() {
   const profiles = useMemo(() => generateDemoSprayDirection(), []);
@@ -28,11 +34,11 @@ export default function SprayDirectionView() {
       {/* ── Summary Cards ── */}
       <div style={{ display: 'flex', gap: 18, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
-          { label: 'Hitters', value: summary.totalBatters },
-          { label: 'Best Spray', value: summary.bestOverallWOBA },
+          { label: 'Hitters', value: summary.totalHitters },
+          { label: 'Best Spray', value: summary.bestSpray },
           { label: 'Avg Pull%', value: `${summary.avgPullPct}%` },
-          { label: 'Avg HH%', value: `${summary.avgHardHitPct}%` },
-          { label: 'Most Pull', value: summary.heaviestPuller },
+          { label: 'Avg Spray Score', value: summary.avgSprayScore },
+          { label: 'Most Power', value: summary.mostPower },
         ].map(s => (
           <div key={s.label} className="bloomberg-border" style={{ padding: '8px 14px', minWidth: 110, textAlign: 'center' }}>
             <div style={{ color: '#888', fontSize: 10, marginBottom: 2 }}>{s.label}</div>
@@ -51,11 +57,14 @@ export default function SprayDirectionView() {
                 <th style={{ textAlign: 'center', padding: 6 }}>Pull%</th>
                 <th style={{ textAlign: 'center', padding: 6 }}>Center%</th>
                 <th style={{ textAlign: 'center', padding: 6 }}>Oppo%</th>
-                <th style={{ textAlign: 'center', padding: 6 }}>wOBA</th>
+                <th style={{ textAlign: 'center', padding: 6 }}>Spray</th>
               </tr>
             </thead>
             <tbody>
-              {profiles.map(p => (
+              {profiles.map(p => {
+                const grade = sprayGradeFromScore(p.sprayScore);
+                const gd = SPRAY_GRADE_DISPLAY[grade];
+                return (
                   <tr
                     key={p.id}
                     onClick={() => setSelected(p)}
@@ -69,14 +78,15 @@ export default function SprayDirectionView() {
                       {p.name}
                       <span style={{ color: '#666', fontWeight: 400, marginLeft: 6, fontSize: 10 }}>{p.team}</span>
                     </td>
-                    <td style={{ padding: 6, textAlign: 'center', color: DIRECTION_DISPLAY.pull.color }}>{p.overallPullPct}%</td>
-                    <td style={{ padding: 6, textAlign: 'center', color: DIRECTION_DISPLAY.center.color }}>{p.overallCenterPct}%</td>
-                    <td style={{ padding: 6, textAlign: 'center', color: DIRECTION_DISPLAY.oppo.color }}>{p.overallOppoPct}%</td>
-                    <td style={{ padding: 6, textAlign: 'center', color: p.overallWOBA >= 0.360 ? '#22c55e' : '#ccc', fontWeight: 600 }}>
-                      {p.overallWOBA.toFixed(3)}
+                    <td style={{ padding: 6, textAlign: 'center', color: DIR_COLORS.pull }}>{p.overallPullPct}%</td>
+                    <td style={{ padding: 6, textAlign: 'center', color: DIR_COLORS.center }}>{p.overallCenterPct}%</td>
+                    <td style={{ padding: 6, textAlign: 'center', color: DIR_COLORS.oppo }}>{p.overallOppoPct}%</td>
+                    <td style={{ padding: 6, textAlign: 'center', color: gd.color, fontWeight: 600 }}>
+                      {p.sprayScore}
                     </td>
                   </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -94,9 +104,10 @@ export default function SprayDirectionView() {
 
               <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Overall wOBA', value: selected.overallWOBA.toFixed(3), color: '#f59e0b' },
-                  { label: 'Best Dir', value: DIRECTION_DISPLAY[selected.bestDirection].label, color: DIRECTION_DISPLAY[selected.bestDirection].color },
-                  { label: 'Lineup Slot', value: `#${selected.lineupSlot}`, color: '#ccc' },
+                  { label: 'Spray Score', value: `${selected.sprayScore}`, color: SPRAY_GRADE_DISPLAY[sprayGradeFromScore(selected.sprayScore)].color },
+                  { label: 'Tendency', value: selected.tendencyLabel, color: '#ccc' },
+                  { label: 'Pull Power', value: `${selected.pullPower}%`, color: selected.pullPower >= 75 ? '#22c55e' : '#ccc' },
+                  { label: 'Gap-to-Gap', value: `${selected.gapToGapPct}%`, color: selected.gapToGapPct >= 40 ? '#22c55e' : '#ccc' },
                 ].map(s => (
                   <div key={s.label} style={{ textAlign: 'center' }}>
                     <div style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
@@ -111,64 +122,71 @@ export default function SprayDirectionView() {
                 <thead>
                   <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
                     <th style={{ textAlign: 'left', padding: 4 }}>Zone</th>
-                    <th style={{ textAlign: 'center', padding: 4 }}>Dir</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>Hit%</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>Avg EV</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>wOBA</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>xBA</th>
                     <th style={{ textAlign: 'center', padding: 4 }}>HH%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.cells.map((c, i) => (
+                  {selected.zones.map((z, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #1a1a2e' }}>
-                      <td style={{ padding: 4, fontWeight: 600 }}>{ZONE_DISPLAY[c.zone].label}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: DIRECTION_DISPLAY[c.direction].color, fontWeight: 600 }}>
-                        {DIRECTION_DISPLAY[c.direction].label}
-                      </td>
-                      <td style={{ padding: 4, textAlign: 'center' }}>{c.pct}%</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: c.avgEV >= 92 ? '#22c55e' : '#ccc' }}>{c.avgEV}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: c.wOBA >= 0.370 ? '#22c55e' : '#ccc' }}>{c.wOBA.toFixed(3)}</td>
-                      <td style={{ padding: 4, textAlign: 'center', color: c.hardHitPct >= 40 ? '#f59e0b' : '#ccc' }}>{c.hardHitPct}%</td>
+                      <td style={{ padding: 4, fontWeight: 600 }}>{z.zone.replace('_', ' ').toUpperCase()}</td>
+                      <td style={{ padding: 4, textAlign: 'center' }}>{z.hitPct}%</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: z.avgEV >= 92 ? '#22c55e' : '#ccc' }}>{z.avgEV}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: z.wOBA >= 0.370 ? '#22c55e' : '#ccc' }}>{z.wOBA.toFixed(3)}</td>
+                      <td style={{ padding: 4, textAlign: 'center' }}>{z.xBA.toFixed(3)}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: z.hardHitPct >= 40 ? '#f59e0b' : '#ccc' }}>{z.hardHitPct}%</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Key Metrics */}
-              <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>KEY METRICS</div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-                {[
-                  { label: 'GB Pull%', value: `${selected.groundBallPullPct}%`, color: selected.groundBallPullPct >= 60 ? '#ef4444' : '#ccc' },
-                  { label: 'FB Oppo%', value: `${selected.flyBallOppoPct}%`, color: selected.flyBallOppoPct >= 25 ? '#3b82f6' : '#ccc' },
-                ].map(s => (
-                  <div key={s.label} style={{ textAlign: 'center' }}>
-                    <div style={{ color: s.color, fontWeight: 700 }}>{s.value}</div>
-                    <div style={{ color: '#666', fontSize: 10 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
+              {/* Pitch Type Breakdown */}
+              <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>PITCH TYPE SPRAY</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 14 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #333', color: '#666' }}>
+                    <th style={{ textAlign: 'left', padding: 4 }}>Pitch</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Pull%</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Cen%</th>
+                    <th style={{ textAlign: 'center', padding: 4 }}>Opp%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected.pitchTypeBreakdown.map((pt, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #1a1a2e' }}>
+                      <td style={{ padding: 4, fontWeight: 600 }}>{pt.pitchType}</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: DIR_COLORS.pull }}>{pt.pullPct}%</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: DIR_COLORS.center }}>{pt.centerPct}%</td>
+                      <td style={{ padding: 4, textAlign: 'center', color: DIR_COLORS.oppo }}>{pt.oppoPct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
               {/* Direction Breakdown */}
               <div style={{ color: '#888', fontSize: 10, marginBottom: 6 }}>DIRECTION BREAKDOWN</div>
               <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-                {(['pull', 'center', 'oppo'] as const).map(dir => {
-                  const pct = dir === 'pull' ? selected.overallPullPct : dir === 'center' ? selected.overallCenterPct : selected.overallOppoPct;
-                  const dInfo = DIRECTION_DISPLAY[dir];
-                  return (
-                    <div key={dir} style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ height: 40, background: '#111', position: 'relative', border: '1px solid #222' }}>
-                        <div style={{
-                          position: 'absolute', bottom: 0, left: 0, right: 0,
-                          height: `${pct}%`,
-                          background: dInfo.color,
-                          opacity: 0.7,
-                        }} />
-                      </div>
-                      <div style={{ fontSize: 9, color: dInfo.color, marginTop: 2, fontWeight: 700 }}>{dInfo.label}</div>
-                      <div style={{ fontSize: 11, color: '#ccc' }}>{pct}%</div>
+                {([
+                  { dir: 'Pull', pct: selected.overallPullPct, color: DIR_COLORS.pull },
+                  { dir: 'Center', pct: selected.overallCenterPct, color: DIR_COLORS.center },
+                  { dir: 'Oppo', pct: selected.overallOppoPct, color: DIR_COLORS.oppo },
+                ]).map(d => (
+                  <div key={d.dir} style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ height: 40, background: '#111', position: 'relative', border: '1px solid #222' }}>
+                      <div style={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                        height: `${d.pct}%`,
+                        background: d.color,
+                        opacity: 0.7,
+                      }} />
                     </div>
-                  );
-                })}
+                    <div style={{ fontSize: 9, color: d.color, marginTop: 2, fontWeight: 700 }}>{d.dir.toUpperCase()}</div>
+                    <div style={{ fontSize: 11, color: '#ccc' }}>{d.pct}%</div>
+                  </div>
+                ))}
               </div>
 
               {/* Analysis Notes */}
