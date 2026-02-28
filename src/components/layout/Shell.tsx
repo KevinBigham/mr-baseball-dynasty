@@ -203,6 +203,9 @@ import ProspectCompMatrixView from '../scouting/ProspectCompMatrixView';
 import PitchGradingView from '../pitching/PitchGradingView';
 import DefensiveWARView from '../analytics/DefensiveWARView';
 import IntlScoutingBudgetView from '../scouting/IntlScoutingBudgetView';
+import SwingDecisionView from '../analytics/SwingDecisionView';
+import FrontOfficeBudgetView from '../management/FrontOfficeBudgetView';
+import CareerMilestonesView from '../history/CareerMilestonesView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -372,6 +375,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'teamdepth', label: 'TEAM DEPTH' },
       { id: 'expectedba', label: 'EXPECTED BA' },
       { id: 'defwar', label: 'DEF WAR' },
+      { id: 'swingdecision', label: 'SWING DECISION' },
     ],
   },
   {
@@ -421,6 +425,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salarycapsim', label: 'SALARY CAP SIM' },
       { id: 'prospectcomp', label: 'PROSPECT COMP' },
       { id: 'intlbudget', label: 'INTL BUDGET' },
+      { id: 'fobudget', label: 'FO BUDGET' },
     ],
   },
   {
@@ -440,6 +445,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'alltimerecords', label: 'ALL-TIME RECORDS' },
       { id: 'retirement', label: 'RETIREMENT WATCH' },
       { id: 'mgrlegacy', label: 'MANAGER LEGACY' },
+      { id: 'careermilestones', label: 'CAREER MILESTONES' },
     ],
   },
 ];
@@ -800,6 +806,9 @@ export default function Shell() {
       case 'pitchgrading': return <PitchGradingView />;
       case 'defwar': return <DefensiveWARView />;
       case 'intlbudget': return <IntlScoutingBudgetView />;
+      case 'swingdecision': return <SwingDecisionView />;
+      case 'fobudget': return <FrontOfficeBudgetView />;
+      case 'careermilestones': return <CareerMilestonesView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
