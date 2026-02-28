@@ -107,6 +107,9 @@ import QualifyingOfferView from '../contracts/QualifyingOfferView';
 import UnlocksView from '../progression/UnlocksView';
 import ManagerLegacyView from '../management/ManagerLegacyView';
 import BattingPracticeView from '../game/BattingPracticeView';
+import SeptemberCallupsView from '../roster/SeptemberCallupsView';
+import ServiceTimeView from '../player/ServiceTimeView';
+import HotColdStreaksView from '../player/HotColdStreaksView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -157,6 +160,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'archetypes', label: 'ARCHETYPES' },
       { id: 'bullpen', label: 'BULLPEN MGMT' },
       { id: 'chemmatrix', label: 'CHEMISTRY MATRIX' },
+      { id: 'septcallups', label: 'SEPT CALL-UPS' },
+      { id: 'streaks', label: 'HOT/COLD STREAKS' },
     ],
   },
   {
@@ -229,6 +234,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectgrad', label: 'PROSPECT GRAD' },
       { id: 'staffpoaching', label: 'STAFF POACHING' },
       { id: 'unlocks', label: 'UNLOCKS' },
+      { id: 'servicetime', label: 'SERVICE TIME' },
     ],
   },
   {
@@ -512,6 +518,9 @@ export default function Shell() {
       case 'unlocks': return <UnlocksView />;
       case 'mgrlegacy': return <ManagerLegacyView />;
       case 'pregame': return <BattingPracticeView />;
+      case 'septcallups': return <SeptemberCallupsView />;
+      case 'servicetime': return <ServiceTimeView />;
+      case 'streaks': return <HotColdStreaksView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
