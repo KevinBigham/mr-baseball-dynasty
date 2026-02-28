@@ -1,5 +1,7 @@
+import { useState, useRef, useEffect } from 'react';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
+import { getEngine } from '../../engine/engineClient';
 import Dashboard from '../dashboard/Dashboard';
 import StandingsView from '../dashboard/StandingsTable';
 import RosterView from '../roster/RosterView';
@@ -23,63 +25,265 @@ import DepthChart from '../roster/DepthChart';
 import Scoreboard from '../game/Scoreboard';
 import AwardRaces from '../analytics/AwardRaces';
 import FranchiseOverview from '../dashboard/FranchiseOverview';
+import FortyManRoster from '../roster/FortyManRoster';
+import TradeDeadlineRecap from '../trade/TradeDeadlineRecap';
+import WaiverWire from '../roster/WaiverWire';
+import ExtensionCenter from '../contracts/ExtensionCenter';
+import OwnerDashboard from '../owner/OwnerDashboard';
 
-const NAV_TABS: Array<{ id: NavTab; label: string }> = [
-  { id: 'dashboard',    label: 'HOME' },
-  { id: 'scoreboard',   label: 'SCORES' },
-  { id: 'standings',    label: 'STANDINGS' },
-  { id: 'roster',       label: 'ROSTER' },
-  { id: 'depth',        label: 'DEPTH' },
-  { id: 'lineup',       label: 'LINEUP' },
-  { id: 'trades',       label: 'TRADES' },
-  { id: 'draft',        label: 'DRAFT' },
-  { id: 'freeagents',   label: 'FA MARKET' },
-  { id: 'prospects',    label: 'PROSPECTS' },
-  { id: 'finance',      label: 'FINANCE' },
-  { id: 'analytics',    label: 'ANALYTICS' },
-  { id: 'awards',       label: 'AWARDS' },
-  { id: 'frontoffice',  label: 'FRONT OFFICE' },
-  { id: 'franchise',    label: 'FRANCHISE' },
-  { id: 'history',      label: 'HISTORY' },
-  { id: 'records',      label: 'RECORDS' },
-  { id: 'stats',        label: 'LEADERS' },
-  { id: 'compare',      label: 'COMPARE' },
-  { id: 'teamcompare',  label: 'TEAMS' },
-  { id: 'rankings',     label: 'POWER' },
-  { id: 'parks',        label: 'PARKS' },
-  { id: 'profile',      label: 'PLAYER' },
+// ─── Navigation group definitions ───────────────────────────────────────────
+
+interface NavGroup {
+  label: string;
+  items: Array<{ id: NavTab; label: string }>;
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'GAME',
+    items: [
+      { id: 'dashboard', label: 'HOME' },
+      { id: 'scoreboard', label: 'SCOREBOARD' },
+      { id: 'standings', label: 'STANDINGS' },
+    ],
+  },
+  {
+    label: 'TEAM',
+    items: [
+      { id: 'roster', label: 'ROSTER' },
+      { id: 'depth', label: 'DEPTH CHART' },
+      { id: 'fortyman', label: '40-MAN ROSTER' },
+      { id: 'lineup', label: 'LINEUP' },
+    ],
+  },
+  {
+    label: 'MOVES',
+    items: [
+      { id: 'trades', label: 'TRADE CENTER' },
+      { id: 'deadline', label: 'DEADLINE RECAP' },
+      { id: 'freeagents', label: 'FA MARKET' },
+      { id: 'waivers', label: 'WAIVER WIRE' },
+      { id: 'extensions', label: 'EXTENSIONS' },
+      { id: 'draft', label: 'DRAFT' },
+    ],
+  },
+  {
+    label: 'STATS',
+    items: [
+      { id: 'stats', label: 'LEADERBOARDS' },
+      { id: 'analytics', label: 'ADVANCED STATS' },
+      { id: 'awards', label: 'AWARD RACES' },
+      { id: 'rankings', label: 'POWER RANKINGS' },
+      { id: 'compare', label: 'PLAYER COMPARE' },
+      { id: 'teamcompare', label: 'TEAM COMPARE' },
+      { id: 'parks', label: 'BALLPARKS' },
+    ],
+  },
+  {
+    label: 'ORG',
+    items: [
+      { id: 'finance', label: 'FINANCE' },
+      { id: 'frontoffice', label: 'COACHING STAFF' },
+      { id: 'prospects', label: 'PROSPECTS' },
+      { id: 'owner', label: 'OWNER & GOALS' },
+    ],
+  },
+  {
+    label: 'HISTORY',
+    items: [
+      { id: 'franchise', label: 'FRANCHISE' },
+      { id: 'history', label: 'TRANSACTIONS' },
+      { id: 'records', label: 'RECORDS & HOF' },
+    ],
+  },
 ];
 
+// ─── Dropdown component ─────────────────────────────────────────────────────
+
+function NavDropdown({
+  group,
+  activeTab,
+  setActiveTab,
+  openGroup,
+  setOpenGroup,
+}: {
+  group: NavGroup;
+  activeTab: NavTab;
+  setActiveTab: (t: NavTab) => void;
+  openGroup: string | null;
+  setOpenGroup: (g: string | null) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const isGroupActive = group.items.some(i => i.id === activeTab);
+  const isOpen = openGroup === group.label;
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        if (isOpen) setOpenGroup(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, setOpenGroup]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpenGroup(isOpen ? null : group.label)}
+        className={[
+          'px-3 py-2 text-xs font-bold tracking-wider uppercase transition-colors whitespace-nowrap flex items-center gap-1',
+          isGroupActive
+            ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
+            : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
+        ].join(' ')}
+      >
+        {group.label}
+        <svg className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 z-50 min-w-[11rem] bg-gray-900 border border-gray-700 shadow-xl shadow-black/50">
+          {group.items.map(item => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveTab(item.id);
+                setOpenGroup(null);
+              }}
+              className={[
+                'block w-full text-left px-3 py-1.5 text-xs font-bold tracking-wider transition-colors',
+                activeTab === item.id
+                  ? 'bg-orange-900/40 text-orange-400'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800',
+              ].join(' ')}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Player search ──────────────────────────────────────────────────────────
+
+function PlayerSearch({ onSelect }: { onSelect: (id: number) => void }) {
+  const { gameStarted } = useGameStore();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Array<{ playerId: number; name: string; position: string; teamAbbr: string }>>([]);
+  const [showResults, setShowResults] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setShowResults(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!gameStarted || query.length < 2) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getEngine().searchPlayers(query);
+        setResults(res);
+        setShowResults(true);
+      } catch {
+        setResults([]);
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [query, gameStarted]);
+
+  if (!gameStarted) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        placeholder="Search players..."
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onFocus={() => results.length > 0 && setShowResults(true)}
+        className="bg-gray-900 border border-gray-700 text-gray-300 text-xs px-2 py-1 w-40 rounded focus:outline-none focus:border-orange-500 placeholder-gray-600"
+      />
+      {showResults && results.length > 0 && (
+        <div className="absolute top-full right-0 z-50 min-w-[14rem] bg-gray-900 border border-gray-700 shadow-xl shadow-black/50 max-h-48 overflow-y-auto mt-0.5">
+          {results.map(r => (
+            <button
+              key={r.playerId}
+              onClick={() => {
+                onSelect(r.playerId);
+                setShowResults(false);
+                setQuery('');
+              }}
+              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-800 transition-colors"
+            >
+              <span className="text-orange-300 font-bold">{r.name}</span>
+              <span className="text-gray-600 ml-2">{r.position}</span>
+              <span className="text-gray-700 ml-1">{r.teamAbbr}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Shell ─────────────────────────────────────────────────────────────
+
 export default function Shell() {
-  const { activeTab, setActiveTab } = useUIStore();
+  const { activeTab, setActiveTab, setSelectedPlayer } = useUIStore();
   const { season, isSimulating, simProgress } = useGameStore();
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  const handlePlayerSearch = (id: number) => {
+    setSelectedPlayer(id);
+    setActiveTab('profile');
+  };
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':    return <Dashboard />;
       case 'scoreboard':   return <Scoreboard />;
       case 'standings':    return <StandingsView />;
-      case 'roster':     return <RosterView />;
-      case 'trades':     return <TradeCenter />;
-      case 'freeagents': return <FreeAgentMarket />;
-      case 'lineup':     return <LineupEditor />;
-      case 'draft':      return <DraftRoom />;
-      case 'prospects':  return <ProspectRankingsView />;
-      case 'finance':    return <FinanceDashboard />;
+      case 'roster':       return <RosterView />;
+      case 'trades':       return <TradeCenter />;
+      case 'freeagents':   return <FreeAgentMarket />;
+      case 'lineup':       return <LineupEditor />;
+      case 'draft':        return <DraftRoom />;
+      case 'prospects':    return <ProspectRankingsView />;
+      case 'finance':      return <FinanceDashboard />;
       case 'analytics':    return <AdvancedStats />;
       case 'frontoffice':  return <CoachingStaffView />;
       case 'history':      return <InjuryTransactions />;
       case 'stats':        return <Leaderboards />;
-      case 'compare':    return <PlayerComparison allPlayers={[]} />;
+      case 'compare':      return <PlayerComparison allPlayers={[]} />;
       case 'rankings':     return <PowerRankings />;
       case 'awards':       return <AwardRaces />;
-      case 'teamcompare': return <TeamComparison />;
+      case 'teamcompare':  return <TeamComparison />;
       case 'franchise':    return <FranchiseOverview />;
       case 'records':      return <HallOfFame />;
       case 'depth':        return <DepthChart />;
+      case 'fortyman':     return <FortyManRoster />;
+      case 'deadline':     return <TradeDeadlineRecap />;
+      case 'waivers':      return <WaiverWire />;
+      case 'extensions':   return <ExtensionCenter />;
+      case 'owner':        return <OwnerDashboard />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
-      default:           return <Dashboard />;
+      default:             return <Dashboard />;
     }
   };
 
@@ -88,42 +292,48 @@ export default function Shell() {
       {/* ── Header bar ──────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-4 py-2 bg-black border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-4">
-          <span className="text-orange-500 font-bold text-sm tracking-widest">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-600 text-xs">⚾</span>
-          <span className="text-gray-500 text-xs">SEASON {season}</span>
+          <span className="text-orange-500 font-bold text-sm tracking-widest cursor-pointer"
+            onClick={() => setActiveTab('dashboard')}>
+            MR. BASEBALL DYNASTY
+          </span>
+          <span className="text-gray-600 text-xs">SEASON {season}</span>
         </div>
-        {isSimulating && (
-          <div className="flex items-center gap-2">
-            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden">
-              <div
-                className="h-full bg-orange-500 transition-all duration-200"
-                style={{ width: `${Math.round(simProgress * 100)}%` }}
-              />
+        <div className="flex items-center gap-3">
+          {isSimulating && (
+            <div className="flex items-center gap-2">
+              <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden">
+                <div
+                  className="h-full bg-orange-500 transition-all duration-200"
+                  style={{ width: `${Math.round(simProgress * 100)}%` }}
+                />
+              </div>
+              <span className="text-orange-400 text-xs animate-pulse">SIMULATING</span>
             </div>
-            <span className="text-orange-400 text-xs animate-pulse">SIMULATING…</span>
-          </div>
-        )}
-        <span className="text-gray-600 text-xs hidden sm:block">
-          v0.1 — ENGINE PROOF
-        </span>
+          )}
+          <PlayerSearch onSelect={handlePlayerSearch} />
+        </div>
       </header>
 
-      {/* ── Nav bar ─────────────────────────────────────────────────── */}
-      <nav className="flex border-b border-gray-800 bg-gray-950 shrink-0 overflow-x-auto">
-        {NAV_TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={[
-              'px-4 py-2 text-xs font-bold tracking-wider uppercase transition-colors border-r border-gray-800 last:border-r-0 whitespace-nowrap',
-              activeTab === tab.id
-                ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
-            ].join(' ')}
-          >
-            {tab.label}
-          </button>
+      {/* ── Nav bar with grouped dropdowns ──────────────────────────── */}
+      <nav className="flex items-center border-b border-gray-800 bg-gray-950 shrink-0">
+        {NAV_GROUPS.map(group => (
+          <NavDropdown
+            key={group.label}
+            group={group}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            openGroup={openGroup}
+            setOpenGroup={setOpenGroup}
+          />
         ))}
+        {/* Player tab — always visible when active */}
+        {activeTab === 'profile' && (
+          <button
+            className="px-3 py-2 text-xs font-bold tracking-wider uppercase bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500 whitespace-nowrap ml-auto"
+          >
+            PLAYER
+          </button>
+        )}
       </nav>
 
       {/* ── Main content ─────────────────────────────────────────────── */}

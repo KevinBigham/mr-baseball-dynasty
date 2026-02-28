@@ -1735,6 +1735,27 @@ const api = {
     };
   },
 
+  // ── Player Search ──────────────────────────────────────────────────────────
+
+  async searchPlayers(query: string): Promise<Array<{ playerId: number; name: string; position: string; teamAbbr: string }>> {
+    if (!_state) return [];
+    const q = query.toLowerCase();
+    const teamMap = new Map(_state.teams.map(t => [t.teamId, t.abbreviation]));
+    return _state.players
+      .filter(p =>
+        p.name.toLowerCase().includes(q) &&
+        p.rosterData.rosterStatus !== 'RETIRED' &&
+        p.rosterData.rosterStatus !== 'DRAFT_ELIGIBLE'
+      )
+      .slice(0, 20)
+      .map(p => ({
+        playerId: p.playerId,
+        name: p.name,
+        position: p.position,
+        teamAbbr: teamMap.get(p.teamId) ?? 'FA',
+      }));
+  },
+
   // ── Utility ────────────────────────────────────────────────────────────────
   async ping(): Promise<string> {
     return 'pong';
