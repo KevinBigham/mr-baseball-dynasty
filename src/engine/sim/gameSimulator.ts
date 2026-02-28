@@ -31,6 +31,7 @@ import { leverageIndex } from './winProbability';
 import { getFramingModifier } from './catcherFraming';
 import { generateWeather, getWeatherHRModifier, getMonthFromDate } from './weather';
 import { getStreakContactModifier } from './hitterStreaks';
+import { generateUmpire } from './umpire';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -281,6 +282,7 @@ function simulateHalfInning(
   fieldingTeamId: number,
   bench: Player[],
   momentumRef: { value: MomentumState },
+  umpireMods: { kMod: number; bbMod: number },
   hitterStreaks?: Map<number, import('./hitterStreaks').HitterStreakState>,
   playLog?: PlayEvent[],
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
@@ -510,8 +512,8 @@ function simulateHalfInning(
         defenseRating,
         protectionBBMod,
         infieldIn,
-        countKMod: countMod.kRateMod * framing.kMod,
-        countBBMod: countMod.bbRateMod * framing.bbMod,
+        countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod,
+        countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod,
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
@@ -621,6 +623,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     ...baseParkFactor,
     hrFactor: baseParkFactor.hrFactor * weatherHRMod,
   };
+
+  // Generate umpire (deterministic from seed, no PRNG consumption)
+  const umpire = generateUmpire(input.seed);
 
   // Build lineups (use saved order if available)
   const homeLineup = buildLineup(input.players, input.homeTeam.teamId, input.lineups?.get(input.homeTeam.teamId));
@@ -750,6 +755,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.homeTeam.teamId,
       awayBench,
       homeMomentum,
+      umpire,
       input.hitterStreaks,
       playLog,
     );
@@ -819,6 +825,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.awayTeam.teamId,
       homeBench,
       awayMomentum,
+      umpire,
       input.hitterStreaks,
       playLog,
     );
