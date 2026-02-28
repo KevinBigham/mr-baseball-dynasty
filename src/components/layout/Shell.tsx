@@ -44,6 +44,8 @@ import DevelopmentTracker from '../prospects/DevelopmentTracker';
 import PlayoffPicture from '../dashboard/PlayoffPicture';
 import SeasonTimeline from '../history/SeasonTimeline';
 import PayrollPlanner from '../finance/PayrollPlanner';
+import PitchingStaff from '../roster/PitchingStaff';
+import NewsFeed from '../dashboard/NewsFeed';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -69,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'roster', label: 'ROSTER' },
       { id: 'depth', label: 'DEPTH CHART' },
+      { id: 'pitching', label: 'PITCHING STAFF' },
       { id: 'fortyman', label: '40-MAN ROSTER' },
       { id: 'lineup', label: 'LINEUP' },
     ],
@@ -120,6 +123,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'franchise', label: 'FRANCHISE' },
       { id: 'recap', label: 'SEASON RECAP' },
       { id: 'timeline', label: 'TIMELINE' },
+      { id: 'newsfeed', label: 'NEWS FEED' },
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
     ],
@@ -323,6 +327,8 @@ export default function Shell() {
       case 'playoffpicture': return <PlayoffPicture />;
       case 'timeline':     return <SeasonTimeline />;
       case 'payroll':      return <PayrollPlanner />;
+      case 'pitching':     return <PitchingStaff />;
+      case 'newsfeed':     return <NewsFeed />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
