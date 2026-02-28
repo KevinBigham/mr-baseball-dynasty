@@ -674,7 +674,9 @@ const api = {
         case '2b':   value = s.doubles; break;
         case 'bb':   value = s.bb; break;
         case 'k_h':  value = s.k; break;
+        case '3b':   value = s.triples; break;
         case 'cg':   value = s.cg; break;
+        case 'ip':   value = s.outs / 3; break;
         case 'sho':  value = s.sho; break;
         case 'gsc': {
           // Average Game Score: compute from season totals (starters only)
@@ -703,7 +705,7 @@ const api = {
       const isRateStat = ['avg', 'obp', 'slg', 'ops'].includes(stat);
       let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
       if (stat === 'era' || stat === 'whip' || stat === 'fip') displayValue = (-r.value).toFixed(2);
-      if (stat === 'k9' || stat === 'gsc') displayValue = r.value.toFixed(1);
+      if (stat === 'k9' || stat === 'gsc' || stat === 'ip') displayValue = r.value.toFixed(1);
       if (stat === 'bb9') displayValue = (-r.value).toFixed(1);
       return {
         rank: i + 1,

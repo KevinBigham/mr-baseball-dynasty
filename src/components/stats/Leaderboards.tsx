@@ -16,6 +16,7 @@ const HITTING_STATS = [
   { id: 'h',   label: 'HITS' },
   { id: 'r',   label: 'RUNS' },
   { id: '2b',  label: 'DOUBLES' },
+  { id: '3b',  label: 'TRIPLES' },
   { id: 'bb',  label: 'WALKS' },
   { id: 'k_h', label: 'STRIKEOUTS' },
 ];
@@ -33,6 +34,7 @@ const PITCHING_STATS = [
   { id: 'bb9',  label: 'BB/9' },
   { id: 'fip',  label: 'FIP' },
   { id: 'gsc',  label: 'AVG GAME SCORE' },
+  { id: 'ip',   label: 'INNINGS PITCHED' },
 ];
 
 export default function Leaderboards() {
