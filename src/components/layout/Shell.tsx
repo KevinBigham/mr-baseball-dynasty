@@ -74,6 +74,9 @@ import SalaryBreakdown from '../finance/SalaryBreakdown';
 import PitchRepertoireView from '../pitching/PitchRepertoireView';
 import TradeBlockManager from '../trade/TradeBlockManager';
 import DraftScoutBoardView from '../scouting/DraftScoutBoardView';
+import PlatoonMatchupsView from '../analytics/PlatoonMatchupsView';
+import AllTimeRecordsView from '../history/AllTimeRecordsView';
+import CoachCarouselView from '../coaching/CoachCarouselView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -143,6 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rostercompare', label: 'ROSTER COMPARE' },
       { id: 'chemistry', label: 'CHEMISTRY' },
       { id: 'dynasty', label: 'DYNASTY ANALYTICS' },
+      { id: 'platoons', label: 'PLATOON SPLITS' },
       { id: 'parks', label: 'BALLPARKS' },
     ],
   },
@@ -153,6 +157,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'payroll', label: 'PAYROLL PLANNER' },
       { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
+      { id: 'carousel', label: 'COACH CAROUSEL' },
       { id: 'skilltree', label: 'SKILL TREE' },
       { id: 'gmstrategy', label: 'GM STRATEGY' },
       { id: 'prospects', label: 'PROSPECTS' },
@@ -182,6 +187,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'records', label: 'RECORDS & HOF' },
       { id: 'ringofhonor', label: 'RING OF HONOR' },
       { id: 'legacy', label: 'LEGACY SCORE' },
+      { id: 'alltimerecords', label: 'ALL-TIME RECORDS' },
     ],
   },
 ];
@@ -413,6 +419,9 @@ export default function Shell() {
       case 'repertoire':  return <PitchRepertoireView />;
       case 'tradeblock':  return <TradeBlockManager />;
       case 'draftscout':  return <DraftScoutBoardView />;
+      case 'platoons':   return <PlatoonMatchupsView />;
+      case 'alltimerecords': return <AllTimeRecordsView />;
+      case 'carousel':   return <CoachCarouselView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
