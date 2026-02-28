@@ -137,6 +137,9 @@ import TeamMomentumView from '../analytics/TeamMomentumView';
 import ScoutingReportsView from '../scouting/ScoutingReportsView';
 import DeadlineCountdownView from '../trade/DeadlineCountdownView';
 import PlateDisciplineView from '../analytics/PlateDisciplineView';
+import PitchCommandView from '../pitching/PitchCommandView';
+import ProspectPipelineView from '../scouting/ProspectPipelineView';
+import PayrollFlexibilityView from '../finance/PayrollFlexibilityView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -201,6 +204,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rotationplan', label: 'ROTATION PLAN' },
       { id: 'careerprog', label: 'CAREER CURVES' },
       { id: 'pitchmix', label: 'PITCH MIX' },
+      { id: 'pitchcommand', label: 'PITCH COMMAND' },
     ],
   },
   {
@@ -289,6 +293,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'servicetime', label: 'SERVICE TIME' },
       { id: 'contractproj', label: 'CONTRACT PROJ' },
       { id: 'scoutreports', label: 'SCOUTING REPORTS' },
+      { id: 'prospectpipeline', label: 'PROSPECT PIPELINE' },
+      { id: 'payrollflex', label: 'PAYROLL FLEX' },
     ],
   },
   {
@@ -602,6 +608,9 @@ export default function Shell() {
       case 'scoutreports': return <ScoutingReportsView />;
       case 'deadlinecountdown': return <DeadlineCountdownView />;
       case 'platediscipline': return <PlateDisciplineView />;
+      case 'pitchcommand': return <PitchCommandView />;
+      case 'prospectpipeline': return <ProspectPipelineView />;
+      case 'payrollflex': return <PayrollFlexibilityView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
