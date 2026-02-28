@@ -117,7 +117,7 @@ export default function LineupEditor() {
   };
 
   const slotLabels = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'];
-  const slotRoles = ['Leadoff', 'Contact', 'Best', 'Cleanup', 'Power', '', '', '', ''];
+  const slotRoles = ['Leadoff', 'Table Set', 'Best', 'Cleanup', 'Power', 'Contact', '', '', '2nd LO'];
   const rotLabels = ['ACE', 'SP2', 'SP3', 'SP4', 'SP5'];
 
   const handleDragStart = (idx: number) => setDragIdx(idx);

@@ -31,6 +31,7 @@ import { runRule5Draft, identifyRule5Eligible, protectPlayer, type Rule5Selectio
 import { processArbitration, type ArbitrationCase } from './offseason/arbitration';
 import { simulateTradeDeadline, type DeadlineDeal } from './trade/tradeDeadline';
 import { generateIntlClass, runAIIntlSigning, type IntlProspect } from './offseason/intlSigning';
+import { optimizeLineup } from './sim/lineupOptimizer';
 import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, restoreAwardsHistory, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
 import { computeAllAdvancedStats, type AdvancedHitterStats, type AdvancedPitcherStats, type LeagueEnvironment } from './analytics/sabermetrics';
 import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, computeCoachingEffects, advanceCoachContracts, type Coach, type CoachingStaffData } from './coaching/coachingStaff';
@@ -1043,49 +1044,8 @@ const api = {
 
     if (batters.length < 9) return existing;
 
-    // Score each batter for different batting order roles
-    const scored = batters.map(p => {
-      const h = p.hitterAttributes;
-      if (!h) return { player: p, leadoff: 0, contact: 0, best: 0, power: 0, overall: p.overall };
-
-      return {
-        player: p,
-        // Leadoff: OBP (eye + contact) + speed
-        leadoff: (h.eye * 1.2 + h.contact * 0.8 + h.speed * 0.6) / 400,
-        // 2-hole: contact + eye, bat control
-        contact: (h.contact * 1.3 + h.eye * 0.7 + h.speed * 0.3) / 400,
-        // 3-hole: best all-around hitter
-        best: (h.contact * 1.0 + h.power * 1.0 + h.eye * 0.8 + h.speed * 0.2) / 400,
-        // 4-5: power / cleanup
-        power: (h.power * 1.4 + h.contact * 0.5 + h.eye * 0.3) / 400,
-        // Generic overall
-        overall: (h.contact + h.power * 0.8 + h.eye * 0.6) / 400,
-      };
-    });
-
-    const used = new Set<number>();
-    const order: number[] = new Array(9);
-
-    const pickBest = (key: 'leadoff' | 'contact' | 'best' | 'power' | 'overall'): number => {
-      let best: typeof scored[0] | null = null;
-      for (const s of scored) {
-        if (used.has(s.player.playerId)) continue;
-        if (!best || s[key] > best[key]) best = s;
-      }
-      if (!best) return scored[0]!.player.playerId;
-      used.add(best.player.playerId);
-      return best.player.playerId;
-    };
-
-    order[0] = pickBest('leadoff');   // Slot 1: Best OBP + speed
-    order[1] = pickBest('contact');   // Slot 2: Best bat control
-    order[2] = pickBest('best');      // Slot 3: Best overall hitter
-    order[3] = pickBest('power');     // Slot 4: Cleanup — best power
-    order[4] = pickBest('power');     // Slot 5: Second power bat
-    order[5] = pickBest('overall');   // Slots 6-8: By overall
-    order[6] = pickBest('overall');
-    order[7] = pickBest('overall');
-    order[8] = pickBest('overall');   // Slot 9: Weakest remaining
+    const ordered = optimizeLineup(batters);
+    const order = ordered.map(p => p.playerId);
 
     const optimized: LineupData = { ...existing, battingOrder: order };
     _lineups.set(teamId, optimized);
