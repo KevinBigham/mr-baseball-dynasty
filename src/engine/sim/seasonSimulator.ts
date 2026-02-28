@@ -1,10 +1,12 @@
 import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
-import type { ScheduleEntry } from '../../types/game';
-import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
+import type { ScheduleEntry, GameSummary } from '../../types/game';
+import type { Player, PlayerSeasonStats, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
+import type { PitcherRestMap } from './pitcherRest';
+import { updateAllStreaks, type HitterStreakState } from './hitterStreaks';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -16,7 +18,7 @@ function blankPlayerSeason(playerId: number, teamId: number, season: number): Pl
     g: 0, pa: 0, ab: 0, r: 0, h: 0,
     doubles: 0, triples: 0, hr: 0,
     rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0,
-    w: 0, l: 0, sv: 0, hld: 0, bs: 0,
+    w: 0, l: 0, sv: 0, hld: 0, bs: 0, qs: 0, cg: 0, sho: 0,
     gp: 0, gs: 0, outs: 0,
     ha: 0, ra: 0, er: 0, bba: 0, ka: 0, hra: 0,
     pitchCount: 0,
@@ -39,8 +41,7 @@ function getOrCreate(
 
 function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
-  playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
-    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number }>,
+  playerGameStats: PlayerGameStats[],
   playerTeamMap: Map<number, number>,
   season: number,
 ): void {
@@ -58,6 +59,33 @@ function accumulateBatting(
     s.rbi   += gs.rbi;
     s.bb    += gs.bb;
     s.k     += gs.k;
+    s.hbp   += gs.hbp ?? 0;
+    s.sb    += gs.sb ?? 0;
+    s.cs    += gs.cs ?? 0;
+
+    // Accumulate platoon splits
+    if (gs.vsLHP) {
+      if (!s.vsLHP) s.vsLHP = { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0, doubles: 0, triples: 0 };
+      s.vsLHP.pa += gs.vsLHP.pa;
+      s.vsLHP.ab += gs.vsLHP.ab;
+      s.vsLHP.h += gs.vsLHP.h;
+      s.vsLHP.hr += gs.vsLHP.hr;
+      s.vsLHP.bb += gs.vsLHP.bb;
+      s.vsLHP.k += gs.vsLHP.k;
+      s.vsLHP.doubles += gs.vsLHP.doubles;
+      s.vsLHP.triples += gs.vsLHP.triples;
+    }
+    if (gs.vsRHP) {
+      if (!s.vsRHP) s.vsRHP = { pa: 0, ab: 0, h: 0, hr: 0, bb: 0, k: 0, doubles: 0, triples: 0 };
+      s.vsRHP.pa += gs.vsRHP.pa;
+      s.vsRHP.ab += gs.vsRHP.ab;
+      s.vsRHP.h += gs.vsRHP.h;
+      s.vsRHP.hr += gs.vsRHP.hr;
+      s.vsRHP.bb += gs.vsRHP.bb;
+      s.vsRHP.k += gs.vsRHP.k;
+      s.vsRHP.doubles += gs.vsRHP.doubles;
+      s.vsRHP.triples += gs.vsRHP.triples;
+    }
   }
 }
 
@@ -91,6 +119,9 @@ function accumulatePitching(
     if (pg.decision === 'S') s.sv++;
     if (pg.decision === 'H') s.hld++;
     if (pg.decision === 'BS') s.bs++;
+    if (pg.qualityStart) s.qs++;
+    if (pg.completeGame) s.cg++;
+    if (pg.shutout) s.sho++;
   }
 }
 
@@ -105,14 +136,197 @@ function stddev(values: number[]): number {
 
 // ─── Main season simulator ────────────────────────────────────────────────────
 
+// ─── Granular sim: simulate a slice of the schedule ─────────────────────────
+
+export interface PartialSimInput {
+  teams: Team[];
+  players: Player[];
+  schedule: ScheduleEntry[];
+  baseSeed: number;
+  startGameIndex: number;  // 0-based index into schedule
+  endGameIndex: number;    // exclusive
+  lineups?: Map<number, number[]>;  // teamId → saved batting order
+  // Carry-over state from previous partial sim
+  existingStats?: Map<number, PlayerSeasonStats>;
+  existingTeamWins?: Map<number, number>;
+  existingTeamLosses?: Map<number, number>;
+  existingTeamRS?: Map<number, number>;
+  existingTeamRA?: Map<number, number>;
+  rotationIndex?: Map<number, number>;
+  bullpenOffset?: Map<number, number>;
+  pitcherRestMap?: PitcherRestMap;
+  userTeamId?: number;  // Track recent games for this team
+  onProgress?: (pct: number) => void;
+}
+
+export async function simulateGamesRange(input: PartialSimInput): Promise<{
+  playerStatsMap: Map<number, PlayerSeasonStats>;
+  teamWins: Map<number, number>;
+  teamLosses: Map<number, number>;
+  teamRS: Map<number, number>;
+  teamRA: Map<number, number>;
+  rotationIndex: Map<number, number>;
+  bullpenOffset: Map<number, number>;
+  pitcherRestMap: PitcherRestMap;
+  recentGames: GameSummary[];
+  gamesCompleted: number;
+}> {
+  const { teams, players, schedule, baseSeed } = input;
+  const season = new Date().getFullYear();
+
+  const playerTeamMap = new Map<number, number>();
+  const playerPositionMap = new Map<number, string>();
+  for (const p of players) {
+    playerTeamMap.set(p.playerId, p.teamId);
+    playerPositionMap.set(p.playerId, p.position);
+  }
+
+  const teamMap = new Map<number, Team>();
+  for (const t of teams) teamMap.set(t.teamId, t);
+
+  const teamWins = input.existingTeamWins ?? new Map<number, number>();
+  const teamLosses = input.existingTeamLosses ?? new Map<number, number>();
+  const teamRS = input.existingTeamRS ?? new Map<number, number>();
+  const teamRA = input.existingTeamRA ?? new Map<number, number>();
+  for (const t of teams) {
+    if (!teamWins.has(t.teamId)) teamWins.set(t.teamId, 0);
+    if (!teamLosses.has(t.teamId)) teamLosses.set(t.teamId, 0);
+    if (!teamRS.has(t.teamId)) teamRS.set(t.teamId, 0);
+    if (!teamRA.has(t.teamId)) teamRA.set(t.teamId, 0);
+  }
+
+  const playerStatsMap = input.existingStats ?? new Map<number, PlayerSeasonStats>();
+  const rotationIndex = input.rotationIndex ?? new Map<number, number>();
+  const bullpenOffset = input.bullpenOffset ?? new Map<number, number>();
+  const pitcherRestMap: PitcherRestMap = input.pitcherRestMap ?? new Map();
+  const hitterStreaks = new Map<number, import('./hitterStreaks').HitterStreakState>();
+
+  for (const t of teams) {
+    if (!rotationIndex.has(t.teamId)) rotationIndex.set(t.teamId, 0);
+    if (!bullpenOffset.has(t.teamId)) bullpenOffset.set(t.teamId, 0);
+  }
+
+  const sliceLength = input.endGameIndex - input.startGameIndex;
+  let completed = 0;
+  const recentGames: GameSummary[] = [];
+  const MAX_RECENT = 10;
+
+  for (let i = input.startGameIndex; i < Math.min(input.endGameIndex, schedule.length); i++) {
+    const entry = schedule[i]!;
+    const homeTeam = teamMap.get(entry.homeTeamId);
+    const awayTeam = teamMap.get(entry.awayTeamId);
+
+    if (!homeTeam || !awayTeam) { completed++; continue; }
+
+    const gameSeed = (baseSeed ^ (entry.gameId * 2654435761)) >>> 0;
+
+    const homeWithRotation: Team = {
+      ...homeTeam,
+      rotationIndex: rotationIndex.get(entry.homeTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.homeTeamId) ?? 0,
+    };
+    const awayWithRotation: Team = {
+      ...awayTeam,
+      rotationIndex: rotationIndex.get(entry.awayTeamId) ?? 0,
+      bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
+    };
+
+    const result = simulateGame({
+      gameId: entry.gameId,
+      season,
+      date: entry.date,
+      homeTeam: homeWithRotation,
+      awayTeam: awayWithRotation,
+      players,
+      seed: gameSeed,
+      lineups: input.lineups,
+      gameIndex: i,
+      pitcherRestMap,
+      hitterStreaks,
+      teamWins,
+      teamLosses,
+    });
+
+    rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
+    rotationIndex.set(entry.awayTeamId, (rotationIndex.get(entry.awayTeamId) ?? 0) + 1);
+    bullpenOffset.set(entry.homeTeamId, (bullpenOffset.get(entry.homeTeamId) ?? 0) + 3);
+    bullpenOffset.set(entry.awayTeamId, (bullpenOffset.get(entry.awayTeamId) ?? 0) + 3);
+
+    if (result.homeScore > result.awayScore) {
+      teamWins.set(entry.homeTeamId, (teamWins.get(entry.homeTeamId) ?? 0) + 1);
+      teamLosses.set(entry.awayTeamId, (teamLosses.get(entry.awayTeamId) ?? 0) + 1);
+    } else {
+      teamWins.set(entry.awayTeamId, (teamWins.get(entry.awayTeamId) ?? 0) + 1);
+      teamLosses.set(entry.homeTeamId, (teamLosses.get(entry.homeTeamId) ?? 0) + 1);
+    }
+    teamRS.set(entry.homeTeamId, (teamRS.get(entry.homeTeamId) ?? 0) + result.homeScore);
+    teamRS.set(entry.awayTeamId, (teamRS.get(entry.awayTeamId) ?? 0) + result.awayScore);
+    teamRA.set(entry.homeTeamId, (teamRA.get(entry.homeTeamId) ?? 0) + result.awayScore);
+    teamRA.set(entry.awayTeamId, (teamRA.get(entry.awayTeamId) ?? 0) + result.homeScore);
+
+    const box = result.boxScore;
+    accumulateBatting(playerStatsMap, box.homeBatting, playerTeamMap, season);
+    accumulateBatting(playerStatsMap, box.awayBatting, playerTeamMap, season);
+    accumulatePitching(playerStatsMap, box.homePitching, playerTeamMap, playerPositionMap, season);
+    accumulatePitching(playerStatsMap, box.awayPitching, playerTeamMap, playerPositionMap, season);
+
+    // Update hitter streaks from this game's batting stats
+    updateAllStreaks(hitterStreaks, box.homeBatting);
+    updateAllStreaks(hitterStreaks, box.awayBatting);
+
+    // Collect recent games for the user's team
+    if (input.userTeamId !== undefined &&
+        (entry.homeTeamId === input.userTeamId || entry.awayTeamId === input.userTeamId)) {
+      recentGames.push({
+        gameId: entry.gameId,
+        date: entry.date,
+        homeTeamId: entry.homeTeamId,
+        awayTeamId: entry.awayTeamId,
+        homeScore: result.homeScore,
+        awayScore: result.awayScore,
+        innings: result.innings,
+        walkOff: result.walkOff,
+        lineScore: box.lineScore,
+        homeHits: box.homeBatting.reduce((s, b) => s + b.h, 0),
+        awayHits: box.awayBatting.reduce((s, b) => s + b.h, 0),
+      });
+      // Keep only the last N
+      if (recentGames.length > MAX_RECENT) recentGames.shift();
+    }
+
+    completed++;
+
+    if (completed % 50 === 0 && input.onProgress) {
+      input.onProgress(completed / sliceLength);
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    }
+  }
+
+  if (input.onProgress) input.onProgress(1.0);
+
+  return {
+    playerStatsMap,
+    teamWins,
+    teamLosses,
+    teamRS,
+    teamRA,
+    rotationIndex,
+    bullpenOffset,
+    pitcherRestMap,
+    recentGames,
+    gamesCompleted: completed,
+  };
+}
+
 export async function simulateSeason(
   teams: Team[],
   players: Player[],
   schedule: ScheduleEntry[],
   baseSeed: number,
   onProgress?: (pct: number) => void,
+  lineups?: Map<number, number[]>,
 ): Promise<SeasonResult> {
-  const season = new Date().getFullYear(); // Caller should pass season number; use current year as fallback
+  const season = new Date().getFullYear();
 
   // Build lookup maps for player metadata
   const playerTeamMap = new Map<number, number>();
@@ -145,6 +359,8 @@ export async function simulateSeason(
   const rotationIndex = new Map<number, number>();
   // Track bullpen cycle offset per team (so different relievers pitch each game)
   const bullpenOffset = new Map<number, number>();
+  // Track pitcher rest between games
+  const pitcherRestMap: PitcherRestMap = new Map();
   for (const t of teams) {
     rotationIndex.set(t.teamId, 0);
     bullpenOffset.set(t.teamId, 0);
@@ -181,7 +397,7 @@ export async function simulateSeason(
       bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
     };
 
-    const input: SimulateGameInput = {
+    const simInput: SimulateGameInput = {
       gameId: entry.gameId,
       season,
       date: entry.date,
@@ -189,9 +405,12 @@ export async function simulateSeason(
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      lineups,
+      gameIndex: completed,
+      pitcherRestMap,
     };
 
-    const result = simulateGame(input);
+    const result = simulateGame(simInput);
 
     // Advance rotation (each game uses next starter in 5-man rotation)
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);

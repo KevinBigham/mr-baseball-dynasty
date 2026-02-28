@@ -5,6 +5,9 @@ import { nextFloat } from '../math/prng';
 import { log5MultiOutcome, weightedRates, PITCHER_WEIGHTS, squashModifier, sampleOutcome } from '../math/log5';
 import { LEAGUE_RATES } from '../../data/positionalPriors';
 import type { ParkFactor } from '../../data/parkFactors';
+import { computeShiftDecision } from './defensiveShift';
+import { getInfieldHitBonus } from './infieldHit';
+import { getGBPitcherBABIPMod } from './gbPitcherAdvantage';
 
 // ─── Inputs to a single plate appearance ──────────────────────────────────────
 export interface PAInput {
@@ -16,6 +19,11 @@ export interface PAInput {
   timesThrough: number; // 1, 2, or 3+ (for TTO penalty)
   parkFactor: ParkFactor;
   defenseRating: number; // 0–550 team defense quality
+  protectionBBMod?: number; // Lineup protection BB rate multiplier (< 1 = fewer walks)
+  infieldIn?: boolean;       // Infield drawn in (runner on 3rd, close game)
+  countKMod?: number;        // Count leverage K rate modifier (< 1 = fewer Ks)
+  countBBMod?: number;       // Count leverage BB rate modifier (> 1 = more walks)
+  tempoBABIPMod?: number;    // Pitch tempo BABIP modifier (negative = defense-friendly)
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -23,7 +31,9 @@ export interface PAInput {
 function computeTTO(attrs: PitcherAttributes, timesThrough: number): number {
   const rawTTO = [0, 0.026, 0.066][Math.min(timesThrough - 1, 2)] ?? 0;
   const arsenalFactor = 0.80 - attrs.pitchArsenalCount * 0.10;
-  return rawTTO * arsenalFactor;
+  // Pitching IQ reduces TTO penalty (smarter pitchers vary approach better)
+  const iqFactor = 1.0 - ((attrs.pitchingIQ ?? 400) - 400) / 550 * 0.15;
+  return rawTTO * arsenalFactor * iqFactor;
 }
 
 function computeFatigue(attrs: PitcherAttributes, pitchCount: number): number {
@@ -32,9 +42,29 @@ function computeFatigue(attrs: PitcherAttributes, pitchCount: number): number {
   const fbStress = 1.0 + (attrs.pitchTypeMix.fastball - 0.50) * 0.3;
   const adjustedVeloLoss = veloLoss * fbStress;
 
-  if (adjustedVeloLoss < 1.0) return adjustedVeloLoss * 0.03;
-  if (adjustedVeloLoss < 2.0) return 0.03 + (adjustedVeloLoss - 1.0) * 0.06;
-  return 0.09 + (adjustedVeloLoss - 2.0) * 0.10;
+  // Stamina gates the onset of fatigue — high stamina delays the cliff
+  const staminaFactor = 1.0 - (attrs.stamina - 350) / 400; // 0.5 for elite, 1.0 for low
+
+  let baseFatigue: number;
+  if (adjustedVeloLoss < 1.0) baseFatigue = adjustedVeloLoss * 0.03;
+  else if (adjustedVeloLoss < 2.0) baseFatigue = 0.03 + (adjustedVeloLoss - 1.0) * 0.06;
+  else baseFatigue = 0.09 + (adjustedVeloLoss - 2.0) * 0.10;
+
+  // Durability affects how quickly a pitcher wears down
+  // Low durability = faster fatigue accumulation, high = more resilient
+  const durabilityFactor = 1.0 + (350 - (attrs.durability ?? 350)) / 350 * 0.3; // 0.7–1.3
+
+  // High pitch count cliff: sharp penalty past 90 pitches, severe past 110
+  let cliffPenalty = 0;
+  if (pitchCount > 90) {
+    const overPitches = pitchCount - 90;
+    cliffPenalty = overPitches * 0.002 * staminaFactor * durabilityFactor;
+  }
+  if (pitchCount > 110) {
+    cliffPenalty += (pitchCount - 110) * 0.004 * staminaFactor * durabilityFactor;
+  }
+
+  return baseFatigue + cliffPenalty;
 }
 
 function computePlatoon(batter: Player, pitcher: Player): number {
@@ -78,19 +108,26 @@ function hitterToRates(h: HitterAttributes): {
 
 function pitcherToRates(p: PitcherAttributes): {
   kRate: number; bbRate: number; hrRate: number; hbpRate: number;
-  gbPercent: number;
+  gbPercent: number; movementBABIP: number;
 } {
   const stuffFactor   = p.stuff   / 400;
   const commandFactor = p.command / 400;
+  const movementFactor = (p.movement ?? 400) / 400;
+
+  // Movement reduces hard contact quality (lower BABIP) and HR rate
+  const movementHRSuppression = 1.0 - (movementFactor - 1.0) * 0.15; // High movement suppresses HR
 
   return {
-    // exponent=0.9: moderates K tail — elite stuff (stuffFactor~1.12→kRate=0.250) allows
-    // 200+K seasons without over-producing 200K pitchers; capped at 0.38 for realism
-    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 0.9))),
+    // exponent=1.3: elite stuff generates 200+K seasons (gate ≥ 15); avg pitchers unchanged
+    // since 1.0^1.3=1.0; at stuffFactor=1.30→kRate≈0.316, producing realistic K distributions
+    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 1.3))),
     bbRate:    Math.max(0.03, LEAGUE_RATES.pitcherBBRate * (2 - commandFactor)),
-    hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor)),
+    hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor) * movementHRSuppression),
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),
     gbPercent: p.gbFbTendency / 100,
+    // Movement quality: high movement → weaker contact, lower BABIP (±0.01)
+    // Plus GB pitcher advantage: extreme GB pitchers get lower BABIP
+    movementBABIP: -(movementFactor - 1.0) * 0.01 + getGBPitcherBABIPMod(p.gbFbTendency),
   };
 }
 
@@ -103,6 +140,9 @@ function stage1(
   pRates: ReturnType<typeof pitcherToRates>,
   modifier: number,
   parkFactor: ParkFactor,
+  bbProtection: number,
+  countKMod: number,
+  countBBMod: number,
 ): [string, RandomGenerator] {
   // Apply asymmetric pitcher/batter weights
   const kBlend   = weightedRates(hRates.kRate,   pRates.kRate,   LEAGUE_RATES.kRate,         PITCHER_WEIGHTS.strikeout);
@@ -135,6 +175,21 @@ function stage1(
     adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
   }
 
+  // Lineup protection: adjust BB rate based on on-deck batter threat
+  if (bbProtection !== 1.0) {
+    adjustedProbs['BB'] = Math.min(0.30, Math.max(0.02, adjustedProbs['BB']! * bbProtection));
+    const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
+    adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
+  }
+
+  // Count leverage: adjust K and BB rates based on simulated count context
+  if (countKMod !== 1.0 || countBBMod !== 1.0) {
+    adjustedProbs['K']  = Math.max(0.001, adjustedProbs['K']! * countKMod);
+    adjustedProbs['BB'] = Math.min(0.30, Math.max(0.02, adjustedProbs['BB']! * countBBMod));
+    const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
+    adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
+  }
+
   let roll: number;
   [roll, gen] = nextFloat(gen);
   const result = sampleOutcome(roll, Object.entries(adjustedProbs).map(([name, prob]) => ({ name, prob })));
@@ -148,6 +203,7 @@ function stage2(
   gen: RandomGenerator,
   hRates: ReturnType<typeof hitterToRates>,
   pRates: ReturnType<typeof pitcherToRates>,
+  gbFactor: number,
 ): [string, RandomGenerator] {
   // GB/FB interaction: if pitcher is GB-heavy and batter is FB-heavy, more groundouts
   const pitcherGB = pRates.gbPercent;
@@ -159,8 +215,11 @@ function stage2(
   const blendedGB = (pitcherGB * 0.55 + hRates.gbPercent * 0.45);
   const baseLD = 0.20;
 
-  let gbProb = blendedGB;
+  // Apply park GB factor (>1 = more GBs, <1 = more FBs)
+  let gbProb = blendedGB * gbFactor;
   let fbProb = 1 - blendedGB - baseLD - 0.08; // 0.08 = PU rate
+  // Compensate: if park increases GBs, reduce FBs proportionally
+  fbProb *= (2 - gbFactor);
 
   // Apply interaction modifier
   if (pitcherGB > 0.50 && batterFB > 0.40) {
@@ -183,6 +242,25 @@ function stage2(
 // ─── STAGE 3: Hit/out resolution ──────────────────────────────────────────────
 // Returns the final PAOutcome given batted ball type
 
+// ─── Error probability by batted ball type ──────────────────────────────────
+// MLB average: ~0.55 errors/team/game ≈ 1 error per ~65 BIP
+// Better defense → fewer errors; poor defense → more errors
+
+function errorProbability(battedBall: string, defenseRating: number): number {
+  // Base error rates per batted ball type
+  const baseRates: Record<string, number> = {
+    'GB':  0.022,  // Ground balls — most common error type (bad hops, bobbles, throws)
+    'LD':  0.004,  // Line drives — rare (hot shot off glove)
+    'FB':  0.005,  // Fly balls — misjudged, lost in sun
+    'PU':  0.002,  // Popups — very rare
+  };
+  const base = baseRates[battedBall] ?? 0.01;
+
+  // Defense modifier: avg (400) = neutral, elite (550) cuts errors by ~40%, poor (250) increases by ~40%
+  const defFactor = 1.0 - (defenseRating - 400) / 375;
+  return Math.max(0.001, Math.min(0.06, base * defFactor));
+}
+
 function stage3(
   gen: RandomGenerator,
   battedBall: string,
@@ -191,14 +269,35 @@ function stage3(
   parkFactor: ParkFactor,
   runners: number,
   outs: number,
+  batter: Player,
+  infieldIn?: boolean,
+  tempoBABIPMod?: number,
 ): [PAOutcome, RandomGenerator] {
   // Defense modifier: average (400) = neutral; better defense lowers BABIP
   const defMod = (defenseRating - 400) / 550 * 0.03;
   const parkBabipMod = parkFactor.babipFactor - 1.0;
 
+  // Defensive shift modifier (affects GB BABIP only)
+  const shift = computeShiftDecision(batter, defenseRating);
+  const shiftMod = battedBall === 'GB' ? shift.babipModifier : 0;
+
+  // Infield-in modifier (affects GB BABIP and GDP rate)
+  const infieldInMod = (infieldIn && battedBall === 'GB') ? 0.06 : 0;
+
   const effectiveBabip = Math.max(0.15, Math.min(0.45,
-    hRates.babip - defMod + parkBabipMod,
+    hRates.babip - defMod + parkBabipMod + shiftMod + infieldInMod + (tempoBABIPMod ?? 0),
   ));
+
+  // Spray chart: pull tendency shifts XBH distribution
+  // Pull hitters: more doubles (down-the-line), fewer triples
+  // Spray hitters: more triples (gap-to-gap), slightly fewer doubles
+  const h = batter.hitterAttributes;
+  const pullRaw = h ? (h.power / 550) * 0.55 + (1 - h.speed / 550) * 0.25 + (1 - h.contact / 550) * 0.20 : 0.5;
+  const pullT = Math.max(0.1, Math.min(0.9, pullRaw));
+  // pullDblBonus: pull hitters get +4% doubles on XBH, spray hitters get -2%
+  const pullDblBonus = (pullT - 0.5) * 0.08;
+  // pull3bPenalty: pull hitters get fewer triples, spray hitters get more
+  const pull3bMod = (0.5 - pullT) * 0.04;
 
   let roll: number;
   [roll, gen] = nextFloat(gen);
@@ -212,39 +311,60 @@ function stage3(
         let hitRoll: number;
         [hitRoll, gen] = nextFloat(gen);
         const xbhBonus = parkFactor.doubleFactor - 1.0;
-        // LDs: ~75% singles, ~22% doubles, ~3% triples
-        if (hitRoll < 0.03 + parkFactor.tripleFactor * 0.01) return ['3B', gen];
-        if (hitRoll < 0.25 + xbhBonus * 0.2)                 return ['2B', gen];
+        // LDs: ~75% singles, ~22% doubles, ~3% triples (modified by spray)
+        if (hitRoll < 0.03 + parkFactor.tripleFactor * 0.01 + pull3bMod) return ['3B', gen];
+        if (hitRoll < 0.25 + xbhBonus * 0.2 + pullDblBonus)              return ['2B', gen];
         return ['1B', gen];
       }
+      // Out — but check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('LD', defenseRating)) return ['E', gen];
       return ['LD_OUT', gen];
     }
 
     case 'GB': {
-      if (roll < effectiveBabip * 0.85) { // GBs have slightly lower BABIP than average
+      const ifhBonus = getInfieldHitBonus(batter.hitterAttributes?.speed ?? 350);
+      if (roll < (effectiveBabip + ifhBonus) * 0.85) { // GBs have slightly lower BABIP than average
         return ['1B', gen];
       }
-      // Out — possible GDP?
+      // Out — check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('GB', defenseRating)) return ['E', gen];
+      // possible GDP?
       const runnerOn1st = (runners & 0b001) !== 0;
       if (runnerOn1st && outs < 2) {
         let dpRoll: number;
         [dpRoll, gen] = nextFloat(gen);
-        if (dpRoll < 0.42) return ['GDP', gen]; // ~42% of GB with runner on 1st + <2 outs = DP
+        // Base DP rate adjusted by batter speed (slow = more DP) and defense quality
+        const speedMod = 1.0 - ((batter.hitterAttributes?.speed ?? 350) - 350) / 400 * 0.10; // fast = -10% DP
+        // Better infield defense turns more double plays
+        const defDPMod = 1.0 + (defenseRating - 400) / 400 * 0.05; // elite defense = +5% DP, poor = -5%
+        let dpRate = 0.42 * speedMod * defDPMod;
+        if (infieldIn) dpRate *= 0.55; // Infield in makes DP harder to turn
+        if (dpRoll < dpRate) return ['GDP', gen];
       }
       return ['GB_OUT', gen];
     }
 
     case 'FB': {
       if (roll < effectiveBabip * 0.75) { // FBs have lower BABIP
-        // Hit — mostly extra base hits
+        // Hit — mostly extra base hits (modified by spray chart and power)
         let hitRoll: number;
         [hitRoll, gen] = nextFloat(gen);
         const xbhBonus = parkFactor.doubleFactor - 1.0;
-        if (hitRoll < 0.05 + parkFactor.tripleFactor * 0.015) return ['3B', gen];
-        if (hitRoll < 0.45 + xbhBonus * 0.25)                 return ['2B', gen];
+        // Power hitters drive FB hits harder → more XBH
+        const pwrXBH = Math.max(0, ((batter.hitterAttributes?.power ?? 400) - 400) / 550) * 0.04;
+        if (hitRoll < 0.05 + parkFactor.tripleFactor * 0.015 + pull3bMod) return ['3B', gen];
+        if (hitRoll < 0.45 + xbhBonus * 0.25 + pullDblBonus + pwrXBH)     return ['2B', gen];
         return ['1B', gen];
       }
-      // Out — possible sac fly?
+      // Out — check for error first
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('FB', defenseRating)) return ['E', gen];
+      // possible sac fly?
       const runnerOn3rd = (runners & 0b100) !== 0;
       if (runnerOn3rd && outs < 2) {
         let sfRoll: number;
@@ -257,6 +377,10 @@ function stage3(
     case 'PU': {
       // Popup: almost always out, very rarely hit
       if (roll < 0.02) return ['1B', gen];
+      // Error check
+      let errRoll: number;
+      [errRoll, gen] = nextFloat(gen);
+      if (errRoll < errorProbability('PU', defenseRating)) return ['E', gen];
       return ['PU_OUT', gen];
     }
 
@@ -290,7 +414,12 @@ export function resolvePlateAppearance(
 
   // Stage 1: Non-contact gate
   let stage1Result: string;
-  [stage1Result, gen] = stage1(gen, hRates, pRates, modifier, input.parkFactor);
+  [stage1Result, gen] = stage1(
+    gen, hRates, pRates, modifier, input.parkFactor,
+    input.protectionBBMod ?? 1.0,
+    input.countKMod ?? 1.0,
+    input.countBBMod ?? 1.0,
+  );
 
   if (stage1Result !== 'BIP') {
     const outcome = stage1Result as PAOutcome;
@@ -299,7 +428,7 @@ export function resolvePlateAppearance(
 
   // Stage 2: Batted ball type
   let battedBall: string;
-  [battedBall, gen] = stage2(gen, hRates, pRates);
+  [battedBall, gen] = stage2(gen, hRates, pRates, input.parkFactor.gbFactor ?? 1.0);
 
   // Stage 3: Hit/out resolution
   let finalOutcome: PAOutcome;
@@ -311,6 +440,9 @@ export function resolvePlateAppearance(
     input.parkFactor,
     input.runners,
     input.outs,
+    input.batter,
+    input.infieldIn,
+    (input.tempoBABIPMod ?? 0) + pRates.movementBABIP,
   );
 
   return [{ outcome: finalOutcome, runsScored: 0, runnersAdvanced: 0 }, gen];

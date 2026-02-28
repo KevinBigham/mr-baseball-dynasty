@@ -138,6 +138,14 @@ export function applyOutcome(
       break;
     }
 
+    case 'E': {
+      // Error: batter reaches like a single, runners advance
+      let runs: number;
+      [newRunners, runs, gen] = advanceOnHit(gen, state.runners, '1B', leadRunnerSpeedVal);
+      additionalRuns = runs;
+      break;
+    }
+
     case 'BB':
     case 'HBP': {
       const { newRunners: nr, runs } = forceWalk(state.runners);
@@ -156,7 +164,42 @@ export function applyOutcome(
 
     case 'GB_OUT': {
       newOuts += 1;
-      // No runner advancement on groundout
+      // Runner advancement on groundout:
+      // - Runner on 3rd can score on GB with < 2 outs (~45% of the time)
+      // - Runner on 2nd advances to 3rd on GB (~60% of the time)
+      if (newOuts < 3) {
+        if (state.runners & 0b100) {
+          // Runner on 3rd: may score on productive groundout (< 2 outs only)
+          if (state.outs < 2) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.35) {
+              additionalRuns++;
+              newRunners = newRunners & ~0b100;
+            }
+          }
+        }
+        if (state.runners & 0b010) {
+          // Runner on 2nd: advances to 3rd if 3rd isn't occupied
+          if (!(newRunners & 0b100)) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.50) {
+              newRunners = (newRunners & ~0b010) | 0b100;
+            }
+          }
+        }
+        if (state.runners & 0b001) {
+          // Runner on 1st: advances to 2nd if 2nd isn't occupied (~40%)
+          if (!(newRunners & 0b010)) {
+            let roll: number;
+            [roll, gen] = nextFloat(gen);
+            if (roll < 0.40) {
+              newRunners = (newRunners & ~0b001) | 0b010;
+            }
+          }
+        }
+      }
       break;
     }
 
@@ -178,6 +221,17 @@ export function applyOutcome(
         additionalRuns++;
         newRunners = state.runners & ~0b100;
       }
+      break;
+    }
+
+    case 'SAC_BUNT': {
+      // Sacrifice bunt: batter out, ALL runners advance exactly one base
+      newOuts += 1;
+      let r = 0;
+      if (state.runners & 0b100) { additionalRuns++; }      // 3rd scores
+      if (state.runners & 0b010) { r |= 0b100; }            // 2nd → 3rd
+      if (state.runners & 0b001) { r |= 0b010; }            // 1st → 2nd
+      newRunners = r;
       break;
     }
   }

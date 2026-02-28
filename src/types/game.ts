@@ -1,7 +1,7 @@
 import type { PlayerGameStats, PitcherGameStats } from './player';
 
 export type BattedBallType = 'GB' | 'FB' | 'LD' | 'PU';
-export type PAOutcome = 'BB' | 'HBP' | 'K' | 'HR' | '1B' | '2B' | '3B' | 'GB_OUT' | 'FB_OUT' | 'LD_OUT' | 'PU_OUT' | 'GDP' | 'SF';
+export type PAOutcome = 'BB' | 'HBP' | 'K' | 'HR' | '1B' | '2B' | '3B' | 'GB_OUT' | 'FB_OUT' | 'LD_OUT' | 'PU_OUT' | 'GDP' | 'SF' | 'SB' | 'CS' | 'E' | 'WP' | 'PB' | 'SAC_BUNT';
 
 export interface PAResult {
   outcome: PAOutcome;
@@ -29,11 +29,13 @@ export interface BoxScore {
   homeScore: number;
   awayScore: number;
   innings: number;
+  lineScore?: { away: number[]; home: number[] }; // Runs per inning
   homeBatting: PlayerGameStats[];
   awayBatting: PlayerGameStats[];
   homePitching: PitcherGameStats[];
   awayPitching: PitcherGameStats[];
   playLog?: PlayEvent[];  // Only for hot storage
+  weather?: { temperature: number; windDirection: string; windSpeed: number }; // Game weather
 }
 
 export interface GameResult {
@@ -43,6 +45,7 @@ export interface GameResult {
   homeScore: number;
   awayScore: number;
   innings: number;
+  walkOff?: boolean;
   boxScore: BoxScore;
 }
 
@@ -53,4 +56,19 @@ export interface ScheduleEntry {
   awayTeamId: number;
   isInterleague: boolean;
   isDivisional: boolean;
+}
+
+/** Lightweight game summary for recent games display (no full stat arrays) */
+export interface GameSummary {
+  gameId: number;
+  date: string;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeScore: number;
+  awayScore: number;
+  innings: number;
+  walkOff?: boolean;
+  lineScore?: { away: number[]; home: number[] };
+  homeHits: number;
+  awayHits: number;
 }

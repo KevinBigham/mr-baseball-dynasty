@@ -3,12 +3,48 @@ import type { Team, TeamSeasonStats } from './team';
 import type { ScheduleEntry, BoxScore } from './game';
 import type { SeasonAwards, DivisionChampion } from '../engine/player/awards';
 import type { DevelopmentEvent } from '../engine/player/development';
+import type { PlayoffBracket } from '../engine/sim/playoffs';
 
 export interface LeagueEnvironment {
   // Calibration factors (1.0 = neutral)
   pitcherBuffFactor: number;
   hitterBuffFactor: number;
   babipAdjustment: number;
+}
+
+// Auxiliary worker state that was previously lost on save/load
+export interface WorkerAuxState {
+  seasonResults: unknown[];
+  tradeHistory: unknown[];
+  lineups: Array<[number, unknown]>;
+  financialHistory: Array<[number, unknown[]]>;
+  teamCash: Array<[number, number]>;
+  luxuryTaxYears: Array<[number, number]>;
+  seasonInjuries: unknown[];
+  arbHistory: unknown[];
+  rule5History: unknown[];
+  deadlineDeals: unknown[];
+  intlProspects: unknown[];
+  coachingStaff: Array<[number, unknown[]]>;
+  coachingPool: unknown[];
+  extensionHistory: unknown[];
+  waiverHistory: unknown[];
+  ownerGoals: unknown | null;
+  playerSeasonStats: Array<[number, unknown]>;
+  careerRecords: Array<[number, unknown]>;
+  awardsHistory: {
+    awardHistory: unknown[];
+    championHistory: unknown[];
+    transactionLog: unknown[];
+    milestones: unknown[];
+  };
+  gamesPlayed: number;
+  simRotationIndex: Array<[number, number]>;
+  simBullpenOffset: Array<[number, number]>;
+  simTeamWins: Array<[number, number]>;
+  simTeamLosses: Array<[number, number]>;
+  simTeamRS: Array<[number, number]>;
+  simTeamRA: Array<[number, number]>;
 }
 
 export interface LeagueState {
@@ -19,6 +55,7 @@ export interface LeagueState {
   environment: LeagueEnvironment;
   prngState: number[];  // Serialized PRNG state
   userTeamId: number;
+  aux?: WorkerAuxState; // Persisted auxiliary state (coaching, finance, history, etc.)
 }
 
 export interface SeasonResult {
@@ -35,6 +72,8 @@ export interface SeasonResult {
   awards?: SeasonAwards;
   divisionChampions?: DivisionChampion[];
   developmentEvents?: DevelopmentEvent[];
+  playoffBracket?: PlayoffBracket;
+  freeAgencySignings?: number;
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────
@@ -105,6 +144,11 @@ export interface LeaderboardEntry {
   displayValue: string;
 }
 
+export interface SplitLine {
+  pa: number; ab: number; avg: number; obp: number; slg: number; ops: number;
+  hr: number; bb: number; k: number;
+}
+
 export interface PlayerProfileData {
   player: {
     playerId: number;
@@ -131,4 +175,21 @@ export interface PlayerProfileData {
     seasons: number;
     [key: string]: number;
   };
+  splits?: { vsLHP: SplitLine; vsRHP: SplitLine } | null;
+  pitchMix?: { fastball: number; breaking: number; offspeed: number } | null;
+  tradeValue?: number;        // 0-100 trade value
+  marketSalary?: number;      // Estimated market salary
+  seasonLog?: Array<{
+    season: number;
+    teamName: string;
+    age: number;
+    // Hitting
+    g: number; pa: number; ab: number; h: number; hr: number;
+    rbi: number; bb: number; k: number; sb: number;
+    avg: number;
+    // Pitching
+    w: number; l: number; sv: number; era: number; ip: number; ka: number;
+    gs: number; qs: number; cg: number; sho: number;
+    awards: string[];
+  }>;
 }

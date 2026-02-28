@@ -17,6 +17,8 @@ import { generateSeasonMoments } from '../../engine/moments';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
+import ParkFactorPanel   from './ParkFactorPanel';
+import RecentGamesPanel  from './RecentGamesPanel';
 import PressConference   from './PressConference';
 import RivalryPanel      from './RivalryPanel';
 import LegacyTimeline    from './LegacyTimeline';
@@ -27,6 +29,7 @@ import ReputationCard    from './ReputationCard';
 import StoryboardPanel   from './StoryboardPanel';
 import MomentsPanel      from './MomentsPanel';
 import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
+import PlayoffBracketView from './PlayoffBracket';
 import type { PressContext } from '../../data/pressConference';
 
 const TEAM_OPTIONS = [
@@ -366,17 +369,27 @@ export default function Dashboard() {
           className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
           ROSTER
         </button>
+        <button onClick={() => setActiveTab('simhub')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
+          SIM HUB
+        </button>
+        <button onClick={() => setActiveTab('playoffpicture')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
+          PLAYOFFS
+        </button>
       </div>
 
       {error && (
         <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{error}</div>
       )}
 
-      {/* ── Owner Patience + Team Morale ──────────────────────────────────────── */}
+      {/* ── Owner Patience + Team Morale + Park Factors ──────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <OwnerPatiencePanel />
         <MoralePanel />
       </div>
+      <ParkFactorPanel />
+      <RecentGamesPanel />
 
       {/* ── Pre-sim state: Storyboard arc + MFSN predictions + opening day ──────── */}
       {!lastResult && (
@@ -530,8 +543,21 @@ export default function Dashboard() {
               className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               YOUR ROSTER →
             </button>
+            <button onClick={() => setActiveTab('offseason')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
+              OFFSEASON HUB →
+            </button>
+            <button onClick={() => setActiveTab('awards')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
+              AWARD RACES →
+            </button>
           </div>
         </div>
+      )}
+
+      {/* ── Playoff Bracket ────────────────────────────────────────────────────── */}
+      {lastResult?.playoffBracket && (
+        <PlayoffBracketView bracket={lastResult.playoffBracket} />
       )}
 
       {/* ── Post-sim Storyboard arc resolution ────────────────────────────────── */}

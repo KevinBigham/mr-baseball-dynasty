@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
@@ -30,7 +30,6 @@ function TraitChip({ trait }: { trait: PlayerTrait }) {
 // ─── Prospect traits panel (shown in MINORS tab) ──────────────────────────────
 
 function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
-  // Only show eligible prospects (high potential gap)
   const prospects = players
     .filter(p => p.potential - p.overall >= 5 && p.age <= 28)
     .sort((a, b) => (b.potential - b.overall) - (a.potential - a.overall))
@@ -50,12 +49,10 @@ function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
               key={p.playerId}
               className="flex items-start gap-2 py-1.5 border-b border-gray-800 last:border-0"
             >
-              {/* OVR → POT */}
               <div className="shrink-0 text-right w-14">
                 <div className="text-orange-400 font-mono text-xs font-bold">{p.overall}</div>
-                <div className="text-gray-700 text-xs">→{p.potential}</div>
+                <div className="text-gray-700 text-xs">{'\u2192'}{p.potential}</div>
               </div>
-              {/* Name + traits */}
               <div className="flex-1 min-w-0">
                 <div className="text-gray-200 font-mono text-xs font-bold truncate">{p.name}</div>
                 <div className="text-gray-600 text-xs">{p.position} · Age {p.age}</div>
@@ -87,17 +84,74 @@ function formatServiceTime(days: number): string {
 }
 
 function StatCell({ value, label }: { value: number | undefined; label?: string }) {
-  if (value === undefined || value === null) return <td className="text-right px-2 py-1 text-gray-600">—</td>;
+  if (value === undefined || value === null) return <td className="text-right px-2 py-1 text-gray-600">{'\u2014'}</td>;
   return <td className="text-right px-2 py-1 tabular-nums" title={label}>{value}</td>;
 }
 
-function PitcherRow({ p, onClick }: { p: RosterPlayer; onClick: () => void }) {
+// ─── Action button component ────────────────────────────────────────────────────
+
+function ActionBtn({ label, color, onClick, disabled }: {
+  label: string;
+  color: string;
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+}) {
   return (
-    <tr className="bloomberg-row cursor-pointer text-xs" onClick={onClick}>
-      <td className="px-2 py-1 font-bold text-orange-300">{p.name}</td>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="text-xs font-bold px-1.5 py-0.5 rounded transition-colors disabled:opacity-40"
+      style={{
+        background: `${color}18`,
+        border: `1px solid ${color}50`,
+        color,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function levelBadge(rosterStatus: string): string | null {
+  const map: Record<string, string> = {
+    'MINORS_AAA':    'AAA',
+    'MINORS_AA':     'AA',
+    'MINORS_APLUS':  'A+',
+    'MINORS_AMINUS': 'A-',
+    'MINORS_ROOKIE': 'RK',
+    'MINORS_INTL':   'INT',
+    'MLB_ACTIVE':    'MLB',
+    'DFA':           'DFA',
+    'MLB_IL_10':     'IL10',
+    'MLB_IL_60':     'IL60',
+  };
+  return map[rosterStatus] ?? null;
+}
+
+// ─── Row components with actions ────────────────────────────────────────────────
+
+function PitcherRow({ p, onClick, isOwner, rosterTab, onAction }: {
+  p: RosterPlayer;
+  onClick: () => void;
+  isOwner: boolean;
+  rosterTab: RosterTab;
+  onAction: (playerId: number, action: string) => void;
+}) {
+  const badge = rosterTab === 'MINORS' ? levelBadge(p.rosterStatus) : null;
+  return (
+    <tr className="bloomberg-row cursor-pointer text-xs group" onClick={onClick}>
+      <td className="px-2 py-1 font-bold text-orange-300">
+        {p.name}
+        {badge && <span className="ml-1.5 text-gray-600 font-normal text-xs">{badge}</span>}
+        {p.isOn40Man && rosterTab === 'MINORS' && <span className="ml-1 text-blue-500 text-xs" title="40-man roster">40</span>}
+      </td>
       <td className="px-2 py-1 text-gray-500">{p.position}</td>
       <td className="px-2 py-1 tabular-nums">{p.age}</td>
       <td className="px-2 py-1 text-gray-500">{p.throws}</td>
+      <td className="px-2 py-1 tabular-nums text-right">
+        <span className={p.overall >= 400 ? 'text-green-400' : p.overall >= 300 ? 'text-gray-300' : 'text-gray-500'}>{p.overall}</span>
+      </td>
+      <td className="px-2 py-1 tabular-nums text-right text-gray-600">{p.potential}</td>
       <StatCell value={p.stats.w} />
       <StatCell value={p.stats.l} />
       <StatCell value={p.stats.sv} />
@@ -107,17 +161,53 @@ function PitcherRow({ p, onClick }: { p: RosterPlayer; onClick: () => void }) {
       <StatCell value={p.stats.whip} />
       <td className="px-2 py-1 text-gray-600">{formatSalary(p.salary)}</td>
       <td className="px-2 py-1 text-gray-600">{formatServiceTime(p.serviceTimeDays)}</td>
+      {isOwner && (
+        <td className="px-2 py-1">
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {rosterTab === 'ACTIVE' && (
+              <>
+                <ActionBtn label="OPT" color="#f59e0b" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'demote'); }} />
+                <ActionBtn label="DFA" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+              </>
+            )}
+            {rosterTab === 'MINORS' && (
+              <>
+                <ActionBtn label="CALL UP" color="#4ade80" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'promote'); }} />
+                <ActionBtn label="DFA" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+              </>
+            )}
+            {rosterTab === 'DFA' && (
+              <ActionBtn label="RELEASE" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
 
-function HitterRow({ p, onClick }: { p: RosterPlayer; onClick: () => void }) {
+function HitterRow({ p, onClick, isOwner, rosterTab, onAction }: {
+  p: RosterPlayer;
+  onClick: () => void;
+  isOwner: boolean;
+  rosterTab: RosterTab;
+  onAction: (playerId: number, action: string) => void;
+}) {
+  const badge = rosterTab === 'MINORS' ? levelBadge(p.rosterStatus) : null;
   return (
-    <tr className="bloomberg-row cursor-pointer text-xs" onClick={onClick}>
-      <td className="px-2 py-1 font-bold text-orange-300">{p.name}</td>
+    <tr className="bloomberg-row cursor-pointer text-xs group" onClick={onClick}>
+      <td className="px-2 py-1 font-bold text-orange-300">
+        {p.name}
+        {badge && <span className="ml-1.5 text-gray-600 font-normal text-xs">{badge}</span>}
+        {p.isOn40Man && rosterTab === 'MINORS' && <span className="ml-1 text-blue-500 text-xs" title="40-man roster">40</span>}
+      </td>
       <td className="px-2 py-1 text-gray-500">{p.position}</td>
       <td className="px-2 py-1 tabular-nums">{p.age}</td>
       <td className="px-2 py-1 text-gray-500">{p.bats}</td>
+      <td className="px-2 py-1 tabular-nums text-right">
+        <span className={p.overall >= 400 ? 'text-green-400' : p.overall >= 300 ? 'text-gray-300' : 'text-gray-500'}>{p.overall}</span>
+      </td>
+      <td className="px-2 py-1 tabular-nums text-right text-gray-600">{p.potential}</td>
       <StatCell value={p.stats.pa} />
       <StatCell value={p.stats.avg} />
       <StatCell value={p.stats.obp} />
@@ -127,6 +217,27 @@ function HitterRow({ p, onClick }: { p: RosterPlayer; onClick: () => void }) {
       <StatCell value={p.stats.sb} />
       <td className="px-2 py-1 text-gray-600">{formatSalary(p.salary)}</td>
       <td className="px-2 py-1 text-gray-600">{formatServiceTime(p.serviceTimeDays)}</td>
+      {isOwner && (
+        <td className="px-2 py-1">
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {rosterTab === 'ACTIVE' && (
+              <>
+                <ActionBtn label="OPT" color="#f59e0b" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'demote'); }} />
+                <ActionBtn label="DFA" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+              </>
+            )}
+            {rosterTab === 'MINORS' && (
+              <>
+                <ActionBtn label="CALL UP" color="#4ade80" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'promote'); }} />
+                <ActionBtn label="DFA" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+              </>
+            )}
+            {rosterTab === 'DFA' && (
+              <ActionBtn label="RELEASE" color="#ef4444" onClick={(e) => { e.stopPropagation(); onAction(p.playerId, 'dfa'); }} />
+            )}
+          </div>
+        </td>
+      )}
     </tr>
   );
 }
@@ -137,10 +248,12 @@ export default function RosterView() {
   const { selectedTeamId, setSelectedPlayer, setActiveTab } = useUIStore();
   const [activeTab, setRosterTab] = useState<RosterTab>('ACTIVE');
   const [loading, setLoading] = useState(false);
+  const [actionMsg, setActionMsg] = useState<{ text: string; color: string } | null>(null);
 
   const teamId = selectedTeamId ?? userTeamId;
+  const isOwnTeam = teamId === userTeamId;
 
-  useEffect(() => {
+  const refreshRoster = useCallback(() => {
     if (!gameStarted) return;
     setLoading(true);
     getEngine().getRoster(teamId)
@@ -148,13 +261,47 @@ export default function RosterView() {
       .finally(() => setLoading(false));
   }, [gameStarted, teamId, setRoster]);
 
+  useEffect(() => {
+    refreshRoster();
+  }, [refreshRoster]);
+
   const openPlayer = (id: number) => {
     setSelectedPlayer(id);
     setActiveTab('profile');
   };
 
+  const handleAction = useCallback(async (playerId: number, action: string) => {
+    setActionMsg(null);
+    const engine = getEngine();
+    let result: { ok: boolean; error?: string };
+
+    switch (action) {
+      case 'promote':
+        result = await engine.promotePlayer(playerId);
+        break;
+      case 'demote':
+        result = await engine.demotePlayer(playerId);
+        break;
+      case 'dfa':
+        result = await engine.dfaPlayer(playerId);
+        break;
+      default:
+        return;
+    }
+
+    if (result.ok) {
+      const labels: Record<string, string> = { promote: 'Called up', demote: 'Optioned', dfa: 'Designated for assignment' };
+      setActionMsg({ text: `${labels[action] ?? action} successfully.`, color: '#4ade80' });
+      refreshRoster();
+    } else {
+      setActionMsg({ text: result.error ?? 'Action failed.', color: '#ef4444' });
+    }
+
+    setTimeout(() => setActionMsg(null), 4000);
+  }, [refreshRoster]);
+
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
-  if (loading) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading roster…</div>;
+  if (loading && !roster) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading roster...</div>;
   if (!roster) return <div className="p-4 text-gray-500 text-xs">No roster data.</div>;
 
   const tabMap: Record<RosterTab, RosterPlayer[]> = {
@@ -171,22 +318,48 @@ export default function RosterView() {
   return (
     <div className="p-4">
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2 mb-4 flex items-center gap-4">
-        <span>ROSTER — TEAM {teamId}</span>
+        <span>ROSTER {'\u2014'} TEAM {teamId}</span>
         <span className="text-gray-500 font-normal">
-          {['ACTIVE', 'IL', 'MINORS', 'DFA'].map((tab) => (
+          {(['ACTIVE', 'IL', 'MINORS', 'DFA'] as RosterTab[]).map((tab) => (
             <button
               key={tab}
-              onClick={() => setRosterTab(tab as RosterTab)}
+              onClick={() => setRosterTab(tab)}
               className={[
                 'mr-4 hover:text-orange-400 transition-colors',
                 activeTab === tab ? 'text-orange-500' : 'text-gray-500',
               ].join(' ')}
             >
-              {tab} ({tabMap[tab as RosterTab]?.length ?? 0})
+              {tab} ({tabMap[tab]?.length ?? 0})
             </button>
           ))}
         </span>
       </div>
+
+      {/* Roster counts bar */}
+      {isOwnTeam && (
+        <div className="flex gap-4 mb-3 px-1">
+          <span className="text-gray-500 text-xs">
+            <span className="text-gray-400 font-bold">{roster.active.length}</span>/26 Active
+          </span>
+          <span className="text-gray-500 text-xs">
+            <span className="text-gray-400 font-bold">{roster.active.length + roster.il.length + roster.minors.length}</span>/40 Man
+          </span>
+          {isOwnTeam && (
+            <span className="text-gray-600 text-xs">Hover a row for roster actions</span>
+          )}
+        </div>
+      )}
+
+      {/* Action feedback */}
+      {actionMsg && (
+        <div className="mb-3 px-3 py-2 rounded text-xs font-bold" style={{
+          background: `${actionMsg.color}12`,
+          border: `1px solid ${actionMsg.color}40`,
+          color: actionMsg.color,
+        }}>
+          {actionMsg.text}
+        </div>
+      )}
 
       {/* Hitters table */}
       {hitters.length > 0 && (
@@ -199,6 +372,8 @@ export default function RosterView() {
                 <th className="text-left px-2 py-1">POS</th>
                 <th className="text-right px-2 py-1">AGE</th>
                 <th className="text-left px-2 py-1">B</th>
+                <th className="text-right px-2 py-1">OVR</th>
+                <th className="text-right px-2 py-1">POT</th>
                 <th className="text-right px-2 py-1">PA</th>
                 <th className="text-right px-2 py-1">AVG</th>
                 <th className="text-right px-2 py-1">OBP</th>
@@ -208,10 +383,20 @@ export default function RosterView() {
                 <th className="text-right px-2 py-1">SB</th>
                 <th className="text-right px-2 py-1">SAL</th>
                 <th className="text-right px-2 py-1">SVC</th>
+                {isOwnTeam && <th className="text-right px-2 py-1">ACTIONS</th>}
               </tr>
             </thead>
             <tbody>
-              {hitters.map(p => <HitterRow key={p.playerId} p={p} onClick={() => openPlayer(p.playerId)} />)}
+              {hitters.map(p => (
+                <HitterRow
+                  key={p.playerId}
+                  p={p}
+                  onClick={() => openPlayer(p.playerId)}
+                  isOwner={isOwnTeam}
+                  rosterTab={activeTab}
+                  onAction={handleAction}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -228,6 +413,8 @@ export default function RosterView() {
                 <th className="text-left px-2 py-1">POS</th>
                 <th className="text-right px-2 py-1">AGE</th>
                 <th className="text-left px-2 py-1">T</th>
+                <th className="text-right px-2 py-1">OVR</th>
+                <th className="text-right px-2 py-1">POT</th>
                 <th className="text-right px-2 py-1">W</th>
                 <th className="text-right px-2 py-1">L</th>
                 <th className="text-right px-2 py-1">SV</th>
@@ -237,10 +424,20 @@ export default function RosterView() {
                 <th className="text-right px-2 py-1">WHIP</th>
                 <th className="text-right px-2 py-1">SAL</th>
                 <th className="text-right px-2 py-1">SVC</th>
+                {isOwnTeam && <th className="text-right px-2 py-1">ACTIONS</th>}
               </tr>
             </thead>
             <tbody>
-              {pitchers.map(p => <PitcherRow key={p.playerId} p={p} onClick={() => openPlayer(p.playerId)} />)}
+              {pitchers.map(p => (
+                <PitcherRow
+                  key={p.playerId}
+                  p={p}
+                  onClick={() => openPlayer(p.playerId)}
+                  isOwner={isOwnTeam}
+                  rosterTab={activeTab}
+                  onAction={handleAction}
+                />
+              ))}
             </tbody>
           </table>
         </div>

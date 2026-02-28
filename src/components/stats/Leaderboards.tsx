@@ -6,18 +6,41 @@ import { useUIStore } from '../../store/uiStore';
 import type { LeaderboardEntry } from '../../types/league';
 
 const HITTING_STATS = [
+  { id: 'war_h', label: 'WAR' },
   { id: 'hr',  label: 'HOME RUNS' },
   { id: 'rbi', label: 'RBI' },
   { id: 'avg', label: 'BATTING AVG' },
   { id: 'obp', label: 'ON-BASE PCT' },
+  { id: 'slg', label: 'SLUGGING' },
+  { id: 'ops', label: 'OPS' },
   { id: 'sb',  label: 'STOLEN BASES' },
+  { id: 'h',   label: 'HITS' },
+  { id: 'r',   label: 'RUNS' },
+  { id: '2b',  label: 'DOUBLES' },
+  { id: '3b',  label: 'TRIPLES' },
+  { id: 'bb',  label: 'WALKS' },
+  { id: 'k_h', label: 'STRIKEOUTS' },
+  { id: 'wrc', label: 'wRC+' },
+  { id: 'ops_plus', label: 'OPS+' },
 ];
 
 const PITCHING_STATS = [
+  { id: 'war_p', label: 'WAR' },
   { id: 'era',  label: 'ERA' },
   { id: 'wins', label: 'WINS' },
   { id: 'k',    label: 'STRIKEOUTS' },
   { id: 'whip', label: 'WHIP' },
+  { id: 'sv',   label: 'SAVES' },
+  { id: 'qs',   label: 'QUALITY STARTS' },
+  { id: 'cg',   label: 'COMPLETE GAMES' },
+  { id: 'sho',  label: 'SHUTOUTS' },
+  { id: 'k9',   label: 'K/9' },
+  { id: 'bb9',  label: 'BB/9' },
+  { id: 'fip',  label: 'FIP' },
+  { id: 'gsc',  label: 'AVG GAME SCORE' },
+  { id: 'ip',   label: 'INNINGS PITCHED' },
+  { id: 'era_plus', label: 'ERA+' },
+  { id: 'kbb',  label: 'K/BB' },
 ];
 
 export default function Leaderboards() {
