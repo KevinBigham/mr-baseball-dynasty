@@ -74,6 +74,8 @@ export default function AdvancedStats() {
                     <tr className="text-gray-600 text-xs border-b border-gray-800 sticky top-0 bg-gray-950">
                       <th className="px-1 py-1 text-center w-6">#</th>
                       <th className="px-2 py-1 text-left">PLAYER</th>
+                      <th className="px-1 py-1">TM</th>
+                      <th className="px-1 py-1">POS</th>
                       <th className="px-1 py-1">PA</th>
                       <th className="px-1 py-1">AVG</th>
                       <th className="px-1 py-1">OBP</th>
@@ -93,6 +95,8 @@ export default function AdvancedStats() {
                       <tr key={h.playerId} className="text-xs hover:bg-gray-800/50 cursor-pointer" onClick={() => openPlayer(h.playerId)}>
                         <td className="px-1 py-1 text-gray-600 text-center">{idx + 1}</td>
                         <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{h.name}</td>
+                        <td className="px-1 py-1 text-center text-gray-500">{h.teamAbbr}</td>
+                        <td className="px-1 py-1 text-center text-gray-500">{h.position}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{h.pa}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{h.avg.toFixed(3).slice(1)}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{h.obp.toFixed(3).slice(1)}</td>
@@ -122,6 +126,7 @@ export default function AdvancedStats() {
                     <tr className="text-gray-600 text-xs border-b border-gray-800 sticky top-0 bg-gray-950">
                       <th className="px-1 py-1 text-center w-6">#</th>
                       <th className="px-2 py-1 text-left">PLAYER</th>
+                      <th className="px-1 py-1">TM</th>
                       <th className="px-1 py-1">IP</th>
                       <th className="px-1 py-1">W-L</th>
                       <th className="px-1 py-1">ERA</th>
@@ -141,6 +146,7 @@ export default function AdvancedStats() {
                       <tr key={p.playerId} className="text-xs hover:bg-gray-800/50 cursor-pointer" onClick={() => openPlayer(p.playerId)}>
                         <td className="px-1 py-1 text-gray-600 text-center">{idx + 1}</td>
                         <td className="px-2 py-1 font-bold text-orange-300 whitespace-nowrap">{p.name}</td>
+                        <td className="px-1 py-1 text-center text-gray-500">{p.teamAbbr}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{p.ip.toFixed(1)}</td>
                         <td className="px-1 py-1 tabular-nums text-center text-gray-400">{p.w}-{p.l}</td>
                         <td className="px-1 py-1 tabular-nums text-center">{p.era.toFixed(2)}</td>
