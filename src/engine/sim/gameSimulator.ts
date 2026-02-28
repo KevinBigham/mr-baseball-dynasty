@@ -16,7 +16,7 @@ import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
   type GameFSMContext,
 } from './fsm';
-import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
+import { isStarterAvailable, isRelieverAvailable, recordAppearance, getFatigueModifier, type PitcherRestMap } from './pitcherRest';
 import { selectDefensiveSub } from './defensiveSub';
 import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
 import { getProtectionModifier } from './lineupProtection';
@@ -690,8 +690,15 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const homeUsedPitchers = new Set<number>([homeSP.playerId]);
   const awayUsedPitchers = new Set<number>([awaySP.playerId]);
 
-  const homePitchCount = { value: 0 };
-  const awayPitchCount = { value: 0 };
+  // Fatigue carry-over: pitchers on short rest start with elevated effective pitch count
+  const homeFatigueCarry = input.pitcherRestMap && input.gameIndex != null
+    ? Math.round(getFatigueModifier(homeSP, input.gameIndex, input.pitcherRestMap) * 150)
+    : 0;
+  const awayFatigueCarry = input.pitcherRestMap && input.gameIndex != null
+    ? Math.round(getFatigueModifier(awaySP, input.gameIndex, input.pitcherRestMap) * 150)
+    : 0;
+  const homePitchCount = { value: homeFatigueCarry };
+  const awayPitchCount = { value: awayFatigueCarry };
   const homeTimesThrough = { value: 1 };
   const awayTimesThrough = { value: 1 };
   const homeMomentum = { value: initialMomentum() };
