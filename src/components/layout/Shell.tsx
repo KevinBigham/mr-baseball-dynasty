@@ -46,6 +46,8 @@ import SeasonTimeline from '../history/SeasonTimeline';
 import PayrollPlanner from '../finance/PayrollPlanner';
 import PitchingStaff from '../roster/PitchingStaff';
 import NewsFeed from '../dashboard/NewsFeed';
+import TripleCrownTracker from '../analytics/TripleCrownTracker';
+import TeamSnapshot from '../analytics/TeamSnapshot';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -95,9 +97,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'stats', label: 'LEADERBOARDS' },
       { id: 'analytics', label: 'ADVANCED STATS' },
       { id: 'awards', label: 'AWARD RACES' },
+      { id: 'triplecrown', label: 'TRIPLE CROWN' },
       { id: 'rankings', label: 'POWER RANKINGS' },
       { id: 'compare', label: 'PLAYER COMPARE' },
       { id: 'teamcompare', label: 'TEAM COMPARE' },
+      { id: 'teamsnapshot', label: 'TEAM SNAPSHOT' },
       { id: 'rostercompare', label: 'ROSTER COMPARE' },
       { id: 'chemistry', label: 'CHEMISTRY' },
       { id: 'parks', label: 'BALLPARKS' },
@@ -329,6 +333,8 @@ export default function Shell() {
       case 'payroll':      return <PayrollPlanner />;
       case 'pitching':     return <PitchingStaff />;
       case 'newsfeed':     return <NewsFeed />;
+      case 'triplecrown':  return <TripleCrownTracker />;
+      case 'teamsnapshot':  return <TeamSnapshot />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
