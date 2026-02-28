@@ -33,6 +33,7 @@ import { generateWeather, getWeatherHRModifier, getMonthFromDate } from './weath
 import { getStreakContactModifier } from './hitterStreaks';
 import { generateUmpire } from './umpire';
 import { getTempoModifier } from './pitchTempo';
+import { getHighFastballKMod } from './highFastball';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -513,7 +514,7 @@ function simulateHalfInning(
         defenseRating,
         protectionBBMod,
         infieldIn,
-        countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod,
+        countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod * getHighFastballKMod(pitcher, batter),
         countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod,
         tempoBABIPMod: getTempoModifier(pitcher),
       };
