@@ -33,7 +33,7 @@ import { simulateTradeDeadline, type DeadlineDeal } from './trade/tradeDeadline'
 import { generateIntlClass, runAIIntlSigning, type IntlProspect } from './offseason/intlSigning';
 import { optimizeLineup } from './sim/lineupOptimizer';
 import { recordSeasonAwards, recordChampion, recordTransaction, checkMilestones, getAwardHistory, getChampionHistory, getTransactionLog, getMilestones, restoreAwardsHistory, type AwardHistoryEntry, type ChampionHistoryEntry, type TransactionLog as TxnLog, type SeasonMilestone } from './history/awardsHistory';
-import { computeAllAdvancedStats, type AdvancedHitterStats, type AdvancedPitcherStats, type LeagueEnvironment } from './analytics/sabermetrics';
+import { computeAllAdvancedStats, computeAdvancedHitterStats, computeAdvancedPitcherStats, computeLeagueEnvironment, type AdvancedHitterStats, type AdvancedPitcherStats, type LeagueEnvironment } from './analytics/sabermetrics';
 import { generateInitialStaff, generateCoachingPool, getCoachingStaffData, computeCoachingEffects, advanceCoachContracts, type Coach, type CoachingStaffData } from './coaching/coachingStaff';
 import { getExtensionCandidates, evaluateExtension, runAIExtensions, type ExtensionOffer, type ExtensionResult, type ExtensionCandidate } from './contracts/extensions';
 import { processWaivers, getWaiverPlayers, claimWaiverPlayer, type WaiverPlayer, type WaiverClaim } from './waivers/waiverWire';
@@ -621,8 +621,25 @@ const api = {
 
   // ── Leaderboard ────────────────────────────────────────────────────────────
   async getLeaderboard(stat: string, limit = 50): Promise<LeaderboardEntry[]> {
-    requireState();
+    const state = requireState();
     const results: Array<{ player: Player; value: number }> = [];
+
+    // Pre-compute WAR if needed
+    let warMap: Map<number, number> | null = null;
+    if (stat === 'war_h' || stat === 'war_p') {
+      const isPitcherMap = new Map(state.players.map(p => [p.playerId, p.isPitcher]));
+      const playerMeta = new Map(state.players.map(p => {
+        const team = _teamMap.get(p.teamId);
+        return [p.playerId, { name: p.name, teamAbbr: team?.abbreviation ?? '---', position: p.position }] as const;
+      }));
+      const adv = computeAllAdvancedStats(_playerSeasonStats, isPitcherMap, playerMeta);
+      warMap = new Map<number, number>();
+      if (stat === 'war_h') {
+        for (const h of adv.hitters) warMap.set(h.playerId, h.war);
+      } else {
+        for (const p of adv.pitchers) warMap.set(p.playerId, p.war);
+      }
+    }
 
     for (const [playerId, s] of _playerSeasonStats) {
       const player = _playerMap.get(playerId);
@@ -692,6 +709,11 @@ const api = {
           value = gs2 / s.gs; // per-start average
           break;
         }
+        case 'war_h':
+        case 'war_p': {
+          value = warMap?.get(playerId) ?? 0;
+          break;
+        }
         default:     value = 0;
       }
       if (value !== 0 || stat === 'avg') results.push({ player, value });
@@ -705,7 +727,7 @@ const api = {
       const isRateStat = ['avg', 'obp', 'slg', 'ops'].includes(stat);
       let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
       if (stat === 'era' || stat === 'whip' || stat === 'fip') displayValue = (-r.value).toFixed(2);
-      if (stat === 'k9' || stat === 'gsc' || stat === 'ip') displayValue = r.value.toFixed(1);
+      if (stat === 'k9' || stat === 'gsc' || stat === 'ip' || stat === 'war_h' || stat === 'war_p') displayValue = r.value.toFixed(1);
       if (stat === 'bb9') displayValue = (-r.value).toFixed(1);
       return {
         rank: i + 1,
@@ -758,6 +780,16 @@ const api = {
       const era = ip > 0 ? (s.er / ip) * 9 : 0;
       const whip = ip > 0 ? (s.bba + s.ha) / ip : 0;
       const fip = ip > 0 ? (13 * s.hra + 3 * s.bba - 2 * s.ka) / ip + 3.10 : 0;
+
+      // Compute WAR for this player
+      const isPitcherMap = new Map(state.players.map(p => [p.playerId, p.isPitcher]));
+      const env = computeLeagueEnvironment(_playerSeasonStats, isPitcherMap);
+      const team = _teamMap.get(player.teamId);
+      const meta = { name: player.name, teamAbbr: team?.abbreviation ?? '---', position: player.position };
+      const adv = player.isPitcher
+        ? computeAdvancedPitcherStats(s, env, meta)
+        : computeAdvancedHitterStats(s, env, meta);
+
       return {
         season: state.season - 1,
         pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
@@ -775,6 +807,9 @@ const api = {
         gs: s.gs, gp: s.gp,
         pitchCount: s.pitchCount,
         avgPitches: s.gs > 0 ? Number((s.pitchCount / s.gs).toFixed(0)) : 0,
+        war: adv.war,
+        wrcPlus: !player.isPitcher ? (adv as AdvancedHitterStats).wrcPlus : 0,
+        eraPlus: player.isPitcher ? (adv as AdvancedPitcherStats).eraPlus : 0,
       };
     })() : null;
 

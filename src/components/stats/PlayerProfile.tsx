@@ -134,6 +134,47 @@ export default function PlayerProfile() {
         </div>
       )}
 
+      {/* WAR headline (if season stats exist) */}
+      {seasonStats && (seasonStats as Record<string, number>).war !== undefined && (
+        <div className="bloomberg-border mb-4">
+          <div className="grid grid-cols-3 gap-0 divide-x divide-gray-800">
+            <div className="px-4 py-3 text-center">
+              <div className="text-gray-500 text-xs">WAR</div>
+              <div className={`text-2xl font-bold tabular-nums ${
+                (seasonStats as Record<string, number>).war >= 5 ? 'text-green-400' :
+                (seasonStats as Record<string, number>).war >= 2 ? 'text-orange-400' :
+                (seasonStats as Record<string, number>).war >= 0 ? 'text-gray-200' :
+                'text-red-400'
+              }`}>
+                {(seasonStats as Record<string, number>).war.toFixed(1)}
+              </div>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <div className="text-gray-500 text-xs">{isPitcher ? 'ERA+' : 'wRC+'}</div>
+              <div className={`text-2xl font-bold tabular-nums ${
+                (isPitcher ? (seasonStats as Record<string, number>).eraPlus : (seasonStats as Record<string, number>).wrcPlus) >= 130 ? 'text-green-400' :
+                (isPitcher ? (seasonStats as Record<string, number>).eraPlus : (seasonStats as Record<string, number>).wrcPlus) >= 100 ? 'text-orange-400' :
+                'text-gray-400'
+              }`}>
+                {isPitcher
+                  ? (seasonStats as Record<string, number>).eraPlus
+                  : (seasonStats as Record<string, number>).wrcPlus
+                }
+              </div>
+            </div>
+            <div className="px-4 py-3 text-center">
+              <div className="text-gray-500 text-xs">{isPitcher ? 'FIP' : 'OPS'}</div>
+              <div className="text-2xl font-bold tabular-nums text-gray-200">
+                {isPitcher
+                  ? (seasonStats as Record<string, number>).fip?.toFixed(2)
+                  : (seasonStats as Record<string, number>).ops?.toFixed(3)
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Season stats */}
       {seasonStats && (
         <div className="bloomberg-border">

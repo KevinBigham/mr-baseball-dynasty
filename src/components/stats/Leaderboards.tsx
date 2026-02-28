@@ -6,6 +6,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { LeaderboardEntry } from '../../types/league';
 
 const HITTING_STATS = [
+  { id: 'war_h', label: 'WAR' },
   { id: 'hr',  label: 'HOME RUNS' },
   { id: 'rbi', label: 'RBI' },
   { id: 'avg', label: 'BATTING AVG' },
@@ -22,6 +23,7 @@ const HITTING_STATS = [
 ];
 
 const PITCHING_STATS = [
+  { id: 'war_p', label: 'WAR' },
   { id: 'era',  label: 'ERA' },
   { id: 'wins', label: 'WINS' },
   { id: 'k',    label: 'STRIKEOUTS' },

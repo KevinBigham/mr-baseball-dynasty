@@ -98,6 +98,24 @@ const WOBA_WEIGHTS = {
   hr:     2.010,
 };
 
+// ─── Positional adjustments (runs per 162 games, FanGraphs-style) ───────────────
+// Positive = harder position (bonus), negative = easier position (penalty)
+const POSITIONAL_ADJ: Record<string, number> = {
+  'C':   12.5,
+  'SS':   7.5,
+  'CF':   2.5,
+  '2B':   2.5,
+  '3B':   2.5,
+  'RF':  -7.5,
+  'LF':  -7.5,
+  '1B': -12.5,
+  'DH': -17.5,
+};
+
+// Baserunning runs per stolen base / caught stealing
+const SB_RUNS = 0.2;
+const CS_RUNS = -0.41;
+
 // ─── Compute league environment from all player stats ───────────────────────────
 
 export function computeLeagueEnvironment(
@@ -203,14 +221,24 @@ export function computeAdvancedHitterStats(
     ? Math.round((obp / env.lgOBP + slg / env.lgSLG - 1) * 100)
     : 100;
 
-  // WAR (simplified position-player WAR)
-  // WAR ≈ (wRC+ based runs above avg + positional adj + replacement adj) / RPW
+  // WAR (enhanced position-player WAR, FanGraphs-style)
   const runsPerWin = 10; // ~10 runs per win
+
+  // Offensive runs above average (wRC-based)
   const wrcRuns = s.pa > 0
     ? ((woba - lgWoba) / WOBA_SCALE) * s.pa
     : 0;
-  const replacementRuns = s.pa * 0.03; // ~3% of PA as replacement level
-  const war = (wrcRuns + replacementRuns) / runsPerWin;
+
+  // Positional adjustment (pro-rated to PA, assuming 600 PA = full season)
+  const posAdj = (POSITIONAL_ADJ[meta?.position ?? 'DH'] ?? -17.5) * (s.pa / 600);
+
+  // Baserunning value from SB/CS
+  const bsrRuns = s.sb * SB_RUNS + s.cs * CS_RUNS;
+
+  // Replacement level: ~20 runs per 600 PA
+  const replacementRuns = 20 * (s.pa / 600);
+
+  const war = (wrcRuns + posAdj + bsrRuns + replacementRuns) / runsPerWin;
 
   return {
     playerId: s.playerId,
@@ -258,13 +286,26 @@ export function computeAdvancedPitcherStats(
   // FIP- = (FIP / lgFIP) * 100 (lower = better)
   const fipMinus = env.lgFIP > 0 ? Math.round((fip / env.lgFIP) * 100) : 100;
 
-  // Pitcher WAR (simplified)
-  // WAR ≈ ((lgR9 - playerR9) / RPW) * (IP / 9) + replacement
+  // Pitcher WAR (FIP-based, FanGraphs-style)
+  // Uses FIP instead of ERA to isolate pitcher performance from defense
   const runsPerWin = 10;
-  const playerR9 = ip > 0 ? (s.er * 1.1 / ip) * 9 : env.lgR9; // Include unearned
-  const war = ip > 0
-    ? ((env.lgR9 - playerR9) / runsPerWin) * (ip / 9) + (ip / 9) * 0.03
+
+  // FIP-based RA/9 (scaled to match league run environment)
+  const fipRA9 = fip * (env.lgR9 / env.lgERA); // Scale FIP to run context
+
+  // Replacement level: ~5.5 RA/9 for starters, ~4.5 for relievers
+  const isStarter = s.gs > s.gp * 0.4;
+  const replacementRA9 = isStarter ? 5.5 : 4.5;
+
+  // Runs prevented above replacement
+  const runsPrevented = ip > 0
+    ? ((replacementRA9 - fipRA9) / 9) * ip
     : 0;
+
+  // Leverage multiplier for relievers (~1.0 for starters, ~1.4 for high-leverage RPs)
+  const leverageMult = isStarter ? 1.0 : 1.1;
+
+  const war = runsPrevented * leverageMult / runsPerWin;
 
   return {
     playerId: s.playerId,
