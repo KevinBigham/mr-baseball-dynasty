@@ -89,6 +89,9 @@ import BracketView from '../playoffs/BracketView';
 import BullpenView from '../pitching/BullpenView';
 import StadiumUpgradesView from '../stadium/StadiumUpgradesView';
 import ScoutNetworkView from '../scouting/ScoutNetworkView';
+import UmpireView from '../game/UmpireView';
+import WeatherView from '../game/WeatherView';
+import RivalryView from '../team/RivalryView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -114,6 +117,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'seasongoals', label: 'SEASON GOALS' },
       { id: 'grudges', label: 'GRUDGE & REVENGE' },
       { id: 'headlines', label: 'STAT HEADLINES' },
+      { id: 'umpires', label: 'UMPIRE INTEL' },
+      { id: 'weather', label: 'WEATHER' },
+      { id: 'rivalries', label: 'RIVALRIES' },
     ],
   },
   {
@@ -458,6 +464,9 @@ export default function Shell() {
       case 'bullpen':  return <BullpenView />;
       case 'stadium':  return <StadiumUpgradesView />;
       case 'scoutnetwork': return <ScoutNetworkView />;
+      case 'umpires':  return <UmpireView />;
+      case 'weather':  return <WeatherView />;
+      case 'rivalries': return <RivalryView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
