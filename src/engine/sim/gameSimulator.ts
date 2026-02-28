@@ -45,6 +45,7 @@ import { getDeceptionBBMod } from './pitcherDeception';
 import { getLateGameDefenseBonus } from './lateGameDefense';
 import { getPatiencePitchBonus } from './batterPatience';
 import { getWorkEthicPitchReduction } from './workEthicEndurance';
+import { getLeadRunnerEffectiveSpeed } from './baserunningAdvancement';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -564,9 +565,12 @@ function simulateHalfInning(
       allRunsUnearned = true;
     }
 
-    // Update Markov state
+    // Update Markov state — use actual lead runner speed + baserunningIQ
     const runsBefore2 = markov.runsScored;
-    [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, 350);
+    const runnersForAdvance = getRunnersOnBase(markov.runners, lineup, pos);
+    const leadRunner = runnersForAdvance[2] ?? runnersForAdvance[1] ?? runnersForAdvance[0];
+    const leadRunnerSpeed = getLeadRunnerEffectiveSpeed(leadRunner);
+    [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, leadRunnerSpeed);
 
     // H&R extra advance: on a single, runner on 2nd (from 1st) goes to 3rd
     if (isHitAndRun && outcome === '1B' && (markov.runners & 0b010) && !(markov.runners & 0b100)) {
