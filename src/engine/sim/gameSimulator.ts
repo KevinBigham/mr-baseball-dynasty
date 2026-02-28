@@ -41,6 +41,7 @@ import { getSituationalContactMod } from './situationalHitting';
 import { getGameCallingMod } from './catcherGameCalling';
 import { getCloserIntensityKMod } from './closerIntensity';
 import { getArsenalKMod } from './pitchArsenal';
+import { getDeceptionBBMod } from './pitcherDeception';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -529,7 +530,8 @@ function simulateHalfInning(
           * getRunSupportBBMod(
             ctx.isTop ? ctx.homeScore : ctx.awayScore,
             ctx.isTop ? ctx.awayScore : ctx.homeScore,
-          ),
+          )
+          * getDeceptionBBMod(pitcher),
         tempoBABIPMod: getTempoModifier(pitcher) + getGameCallingMod(catcher),
       };
       let paResult: import('../../types/game').PAResult;
