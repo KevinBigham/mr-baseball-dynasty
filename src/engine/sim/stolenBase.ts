@@ -42,19 +42,30 @@ function stealAttemptProbability(
   return Math.min(0.20, baseRate * speedFactor * iqFactor);
 }
 
+// Catcher pop time: composite of arm strength, fielding mechanics, and reaction time.
+// In real baseball, pop time (catcher release → ball at bag) averages ~2.0s.
+// Elite catchers are ~1.85s, poor catchers ~2.15s. This translates to SB success reduction.
+function catcherPopTimeRating(catcher: Player | null): number {
+  if (!catcher) return 350; // Average if no catcher data
+  const h = catcher.hitterAttributes;
+  if (!h) return 350;
+  // Pop time = 55% arm strength (throw velocity) + 30% fielding (transfer/footwork) + 15% defensiveIQ (anticipation)
+  return h.armStrength * 0.55 + h.fielding * 0.30 + (h.defensiveIQ ?? 400) * 0.15;
+}
+
 // Success probability given an attempt
 function stealSuccessProbability(
   runnerSpeed: number,
   runnerBRIQ: number,
   pitcherHoldRunners: number,
-  catcherArm: number,
+  catcherPopTime: number,
   fromBase: 1 | 2,
 ): number {
   // MLB average SB success rate: ~75%
-  // Speed is primary factor, pitcher hold and catcher arm are defensive
+  // Speed is primary factor, pitcher hold and catcher pop time are defensive
   const speedPct = runnerSpeed / 550;          // 0-1
   const holdPct = pitcherHoldRunners / 550;    // 0-1 (higher = better at holding)
-  const armPct = catcherArm / 550;             // 0-1 (higher = stronger arm)
+  const popPct = catcherPopTime / 550;         // 0-1 (higher = better pop time)
   const iqBonus = (runnerBRIQ - 300) / 500 * 0.05; // small IQ bonus
 
   // Base success rate scales with speed
@@ -63,8 +74,8 @@ function stealSuccessProbability(
   // Pitcher holding reduces success
   successRate -= holdPct * 0.12;
 
-  // Catcher arm reduces success
-  successRate -= armPct * 0.10;
+  // Catcher pop time reduces success (composite is stronger than arm alone)
+  successRate -= popPct * 0.12;
 
   // Stealing 3rd is slightly harder
   if (fromBase === 2) successRate -= 0.05;
@@ -87,7 +98,7 @@ export function attemptSteals(
   let newRunners = state.runners;
   let newOuts = state.outs;
 
-  const catcherArm = catcher?.hitterAttributes?.armStrength ?? 350;
+  const catcherPop = catcherPopTimeRating(catcher);
   const pitcherHold = pitcher.pitcherAttributes?.holdRunners ?? 300;
 
   // Check runner on 2nd first (stealing 3rd)
@@ -105,7 +116,7 @@ export function attemptSteals(
       if (roll < attemptProb) {
         let successRoll: number;
         [successRoll, gen] = nextFloat(gen);
-        const successProb = stealSuccessProbability(speed, briq, pitcherHold, catcherArm, 2);
+        const successProb = stealSuccessProbability(speed, briq, pitcherHold, catcherPop, 2);
 
         if (successRoll < successProb) {
           // Success: 2nd → 3rd
@@ -136,7 +147,7 @@ export function attemptSteals(
       if (roll < attemptProb) {
         let successRoll: number;
         [successRoll, gen] = nextFloat(gen);
-        const successProb = stealSuccessProbability(speed, briq, pitcherHold, catcherArm, 1);
+        const successProb = stealSuccessProbability(speed, briq, pitcherHold, catcherPop, 1);
 
         if (successRoll < successProb) {
           // Success: 1st → 2nd
