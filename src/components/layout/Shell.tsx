@@ -329,6 +329,15 @@ import RunnerAdvancementView from '../analytics/RunnerAdvancementView';
 import PitchTipDetectorView from '../pitching/PitchTipDetectorView';
 import SalaryArbPredictorView from '../contracts/SalaryArbPredictorView';
 import TeamTrendView from '../analytics/TeamTrendView';
+import HitterApproachView from '../analytics/HitterApproachView';
+import StarterGamePlanView from '../pitching/StarterGamePlanView';
+import ParkAdjustedView from '../analytics/ParkAdjustedView';
+import RunScoringView from '../analytics/RunScoringView';
+import ProspectToolGraderView from '../prospects/ProspectToolGraderView';
+import WinStreakAnalyzerView from '../analytics/WinStreakAnalyzerView';
+import DefShiftAnalyzerView from '../analytics/DefShiftAnalyzerView';
+import OptionYearView from '../contracts/OptionYearView';
+import RelieverMatchupView from '../pitching/RelieverMatchupView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -438,6 +447,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitcharsenalcomp', label: 'ARSENAL COMPARE' },
       { id: 'bpusageopt', label: 'BP USAGE OPT' },
       { id: 'pitchtipdetector', label: 'PITCH TIP DETECT' },
+      { id: 'startergameplan', label: 'GAME PLAN' },
+      { id: 'relievermatchup', label: 'RELIEVER MATCHUP' },
     ],
   },
   {
@@ -489,6 +500,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'contractneg', label: 'CONTRACT NEG' },
       { id: 'salaryarbpredictor', label: 'ARB PREDICTOR' },
       { id: 'offseasonplan', label: 'OFFSEASON PLAN' },
+      { id: 'optionyear', label: 'OPTION YEARS' },
     ],
   },
   {
@@ -587,6 +599,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'clutchperf2', label: 'CLUTCH INDEX+2' },
       { id: 'runneradvancement', label: 'RUNNER ADV' },
       { id: 'teamtrend', label: 'TEAM TRENDS' },
+      { id: 'hitterapproach', label: 'HITTER APPROACH' },
+      { id: 'parkadjusted', label: 'PARK ADJUSTED' },
+      { id: 'runscoring', label: 'RUN SCORING' },
+      { id: 'winstreakanalyzer', label: 'STREAK ANALYSIS' },
+      { id: 'defshiftanalyzer', label: 'SHIFT ANALYZER' },
     ],
   },
   {
@@ -665,6 +682,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'milbdevplan', label: 'MILB DEV PLAN' },
       { id: 'prospectscoutdash', label: 'SCOUT DASHBOARD' },
       { id: 'farmsystemgrader', label: 'FARM GRADER' },
+      { id: 'prospecttoolgrader', label: 'TOOL GRADES' },
     ],
   },
   {
@@ -1178,6 +1196,15 @@ export default function Shell() {
       case 'pitchtipdetector': return <PitchTipDetectorView />;
       case 'salaryarbpredictor': return <SalaryArbPredictorView />;
       case 'teamtrend': return <TeamTrendView />;
+      case 'hitterapproach': return <HitterApproachView />;
+      case 'startergameplan': return <StarterGamePlanView />;
+      case 'parkadjusted': return <ParkAdjustedView />;
+      case 'runscoring': return <RunScoringView />;
+      case 'prospecttoolgrader': return <ProspectToolGraderView />;
+      case 'winstreakanalyzer': return <WinStreakAnalyzerView />;
+      case 'defshiftanalyzer': return <DefShiftAnalyzerView />;
+      case 'optionyear': return <OptionYearView />;
+      case 'relievermatchup': return <RelieverMatchupView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
