@@ -131,6 +131,9 @@ import RotationPlannerView from '../pitching/RotationPlannerView';
 import SprayChartView from '../analytics/SprayChartView';
 import CareerProgressionView from '../player/CareerProgressionView';
 import PitchMixView from '../pitching/PitchMixView';
+import DefensiveMetricsView from '../analytics/DefensiveMetricsView';
+import ContractProjectionsView from '../contracts/ContractProjectionsView';
+import TeamMomentumView from '../analytics/TeamMomentumView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -166,6 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'doubleheader', label: 'DOUBLEHEADERS' },
       { id: 'pinchhit', label: 'PINCH HIT/RUN' },
       { id: 'sbanalytics', label: 'STOLEN BASE' },
+      { id: 'momentum', label: 'MOMENTUM' },
     ],
   },
   {
@@ -246,6 +250,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'clutchindex', label: 'CLUTCH INDEX' },
       { id: 'rundiff', label: 'RUN DIFFERENTIAL' },
       { id: 'spraychart', label: 'SPRAY CHARTS' },
+      { id: 'defmetrics', label: 'DEF METRICS' },
     ],
   },
   {
@@ -277,6 +282,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'staffpoaching', label: 'STAFF POACHING' },
       { id: 'unlocks', label: 'UNLOCKS' },
       { id: 'servicetime', label: 'SERVICE TIME' },
+      { id: 'contractproj', label: 'CONTRACT PROJ' },
     ],
   },
   {
@@ -584,6 +590,9 @@ export default function Shell() {
       case 'spraychart': return <SprayChartView />;
       case 'careerprog': return <CareerProgressionView />;
       case 'pitchmix': return <PitchMixView />;
+      case 'defmetrics': return <DefensiveMetricsView />;
+      case 'contractproj': return <ContractProjectionsView />;
+      case 'momentum': return <TeamMomentumView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
