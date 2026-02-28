@@ -16,6 +16,8 @@ const HITTING_STATS = [
   { id: 'h',   label: 'HITS' },
   { id: 'r',   label: 'RUNS' },
   { id: '2b',  label: 'DOUBLES' },
+  { id: 'bb',  label: 'WALKS' },
+  { id: 'k_h', label: 'STRIKEOUTS' },
 ];
 
 const PITCHING_STATS = [

@@ -672,6 +672,8 @@ const api = {
         }
         case 'r':    value = s.r; break;
         case '2b':   value = s.doubles; break;
+        case 'bb':   value = s.bb; break;
+        case 'k_h':  value = s.k; break;
         case 'cg':   value = s.cg; break;
         case 'sho':  value = s.sho; break;
         case 'gsc': {
