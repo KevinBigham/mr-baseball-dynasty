@@ -146,6 +146,9 @@ import ChemistryDynamicsView from '../clubhouse/ChemistryDynamicsView';
 import PitchSequenceView from '../pitching/PitchSequenceView';
 import InjuryRiskView from '../medical/InjuryRiskView';
 import MarketValueView from '../trade/MarketValueView';
+import SituationalHittingView from '../analytics/SituationalHittingView';
+import RelieverRolesView from '../pitching/RelieverRolesView';
+import DevelopmentPathView from '../prospects/DevelopmentPathView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -214,6 +217,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'chemdynamics', label: 'CHEM DYNAMICS' },
       { id: 'pitchsequence', label: 'PITCH SEQUENCE' },
       { id: 'injuryrisk', label: 'INJURY RISK' },
+      { id: 'relieverroles', label: 'RELIEVER ROLES' },
     ],
   },
   {
@@ -271,6 +275,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'defmetrics', label: 'DEF METRICS' },
       { id: 'platediscipline', label: 'PLATE DISCIPLINE' },
       { id: 'matchupexplorer', label: 'MATCHUP EXPLORER' },
+      { id: 'situational', label: 'SITUATIONAL' },
     ],
   },
   {
@@ -307,6 +312,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectpipeline', label: 'PROSPECT PIPELINE' },
       { id: 'payrollflex', label: 'PAYROLL FLEX' },
       { id: 'draftcapital', label: 'DRAFT CAPITAL' },
+      { id: 'devpath', label: 'DEV PATHS' },
     ],
   },
   {
@@ -629,6 +635,9 @@ export default function Shell() {
       case 'pitchsequence': return <PitchSequenceView />;
       case 'injuryrisk': return <InjuryRiskView />;
       case 'marketvalue': return <MarketValueView />;
+      case 'situational': return <SituationalHittingView />;
+      case 'relieverroles': return <RelieverRolesView />;
+      case 'devpath': return <DevelopmentPathView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
