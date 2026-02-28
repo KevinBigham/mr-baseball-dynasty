@@ -243,6 +243,8 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
       gameIndex: i,
       pitcherRestMap,
       hitterStreaks,
+      teamWins,
+      teamLosses,
     });
 
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);

@@ -34,6 +34,7 @@ import { getStreakContactModifier } from './hitterStreaks';
 import { generateUmpire } from './umpire';
 import { getTempoModifier } from './pitchTempo';
 import { getHighFastballKMod } from './highFastball';
+import { getTeamChemistryModifier, chemistryDefenseAdjustment } from './teamChemistry';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -610,6 +611,8 @@ export interface SimulateGameInput {
   gameIndex?: number;              // Index in the season schedule (for rest tracking)
   pitcherRestMap?: PitcherRestMap; // Pitcher rest state (mutated after game)
   hitterStreaks?: Map<number, import('./hitterStreaks').HitterStreakState>; // Rolling streak state
+  teamWins?: Map<number, number>;   // Current season W for chemistry
+  teamLosses?: Map<number, number>; // Current season L for chemistry
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -715,15 +718,27 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   let homeLineupPos = 0;
   let awayLineupPos = 0;
 
+  // Team chemistry: derived from win/loss record, affects defense
+  const homeChemMod = getTeamChemistryModifier(
+    input.teamWins?.get(input.homeTeam.teamId) ?? 0,
+    input.teamLosses?.get(input.homeTeam.teamId) ?? 0,
+  );
+  const awayChemMod = getTeamChemistryModifier(
+    input.teamWins?.get(input.awayTeam.teamId) ?? 0,
+    input.teamLosses?.get(input.awayTeam.teamId) ?? 0,
+  );
+
   const homeDefRating = input.players
     .filter(p => p.teamId === input.homeTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
     .slice(0, 9)
-    .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9;
+    .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
+    + chemistryDefenseAdjustment(homeChemMod);
 
   const awayDefRating = input.players
     .filter(p => p.teamId === input.awayTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
     .slice(0, 9)
-    .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9;
+    .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
+    + chemistryDefenseAdjustment(awayChemMod);
 
   const MAX_INNINGS = 25;
   const playLog: PlayEvent[] | undefined = input.recordPlayLog ? [] : undefined;
