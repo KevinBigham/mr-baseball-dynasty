@@ -988,6 +988,21 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   markPitcherAchievements(homePitcherStats, homeSP.playerId, homeUsedPitchers);
   markPitcherAchievements(awayPitcherStats, awaySP.playerId, awayUsedPitchers);
 
+  // Compute Bill James Game Score for all pitchers
+  const computeGameScore = (s: PitcherGameStats): number => {
+    let gs = 50;
+    gs += s.outs;                                       // +1 per out
+    gs += Math.max(0, Math.floor((s.outs - 12) / 3)) * 2; // +2 per complete inning after 4th
+    gs += s.k;                                          // +1 per K
+    gs -= s.h * 2;                                      // -2 per hit
+    gs -= s.er * 4;                                     // -4 per ER
+    gs -= (s.r - s.er) * 2;                             // -2 per unearned run
+    gs -= s.bb;                                         // -1 per BB
+    return gs;
+  };
+  for (const ps of homePitcherStats.values()) ps.gameScore = computeGameScore(ps);
+  for (const ps of awayPitcherStats.values()) ps.gameScore = computeGameScore(ps);
+
   const finalInnings = ctx.inning || 9;
   const boxScore: BoxScore = {
     gameId: input.gameId,

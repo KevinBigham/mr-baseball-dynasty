@@ -135,6 +135,7 @@ export interface PitcherGameStats {
   qualityStart?: boolean; // 6+ IP, 3 or fewer ER
   completeGame?: boolean; // Pitched the entire game
   shutout?: boolean;      // Complete game with 0 runs allowed
+  gameScore?: number;     // Bill James Game Score metric
 }
 
 // ─── Platoon split stats (vs LHP / vs RHP) ──────────────────────────────────
