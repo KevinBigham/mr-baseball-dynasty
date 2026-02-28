@@ -248,6 +248,9 @@ import ParkFactorView from '../analytics/ParkFactorView';
 import ExitVeloView from '../analytics/ExitVeloView';
 import ScoutBudgetView from '../management/ScoutBudgetView';
 import PostseasonHistoryView from '../history/PostseasonHistoryView';
+import BvPHistoryView from '../analytics/BvPHistoryView';
+import DraftClassStrengthView from '../draft/DraftClassStrengthView';
+import TeamRecordBreakdownView from '../analytics/TeamRecordBreakdownView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -379,6 +382,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectvalue', label: 'PROSPECT VALUE' },
       { id: 'arbprojector', label: 'ARB PROJECTOR' },
       { id: 'tradepackage', label: 'TRADE PACKAGES' },
+      { id: 'draftclassstrength', label: 'DRAFT CLASS' },
     ],
   },
   {
@@ -442,6 +446,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'seasonpace', label: 'SEASON PACE' },
       { id: 'parkfactors', label: 'PARK FACTORS' },
       { id: 'exitvelo', label: 'EXIT VELOCITY' },
+      { id: 'bvphistory', label: 'BvP HISTORY' },
+      { id: 'recordbreakdown', label: 'RECORD SPLITS' },
     ],
   },
   {
@@ -935,6 +941,9 @@ export default function Shell() {
       case 'exitvelo': return <ExitVeloView />;
       case 'scoutbudget': return <ScoutBudgetView />;
       case 'postseasonhistory': return <PostseasonHistoryView />;
+      case 'bvphistory': return <BvPHistoryView />;
+      case 'draftclassstrength': return <DraftClassStrengthView />;
+      case 'recordbreakdown': return <TeamRecordBreakdownView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
