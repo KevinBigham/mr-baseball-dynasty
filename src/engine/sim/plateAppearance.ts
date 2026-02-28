@@ -33,9 +33,25 @@ function computeFatigue(attrs: PitcherAttributes, pitchCount: number): number {
   const fbStress = 1.0 + (attrs.pitchTypeMix.fastball - 0.50) * 0.3;
   const adjustedVeloLoss = veloLoss * fbStress;
 
-  if (adjustedVeloLoss < 1.0) return adjustedVeloLoss * 0.03;
-  if (adjustedVeloLoss < 2.0) return 0.03 + (adjustedVeloLoss - 1.0) * 0.06;
-  return 0.09 + (adjustedVeloLoss - 2.0) * 0.10;
+  // Stamina gates the onset of fatigue — high stamina delays the cliff
+  const staminaFactor = 1.0 - (attrs.stamina - 350) / 400; // 0.5 for elite, 1.0 for low
+
+  let baseFatigue: number;
+  if (adjustedVeloLoss < 1.0) baseFatigue = adjustedVeloLoss * 0.03;
+  else if (adjustedVeloLoss < 2.0) baseFatigue = 0.03 + (adjustedVeloLoss - 1.0) * 0.06;
+  else baseFatigue = 0.09 + (adjustedVeloLoss - 2.0) * 0.10;
+
+  // High pitch count cliff: sharp penalty past 90 pitches, severe past 110
+  let cliffPenalty = 0;
+  if (pitchCount > 90) {
+    const overPitches = pitchCount - 90;
+    cliffPenalty = overPitches * 0.002 * staminaFactor;
+  }
+  if (pitchCount > 110) {
+    cliffPenalty += (pitchCount - 110) * 0.004 * staminaFactor;
+  }
+
+  return baseFatigue + cliffPenalty;
 }
 
 function computePlatoon(batter: Player, pitcher: Player): number {
