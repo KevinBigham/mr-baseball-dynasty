@@ -171,6 +171,8 @@ export default function PlayerProfile() {
                     {statRow('BB',  (seasonStats as Record<string, number>).bba)}
                     {statRow('HR',  (seasonStats as Record<string, number>).hra)}
                     {statRow('QS',  (seasonStats as Record<string, number>).qs)}
+                    {statRow('WHIP', (seasonStats as Record<string, number>).whip, 2)}
+                    {statRow('FIP', (seasonStats as Record<string, number>).fip, 2)}
                   </>
                 ) : (
                   <>
@@ -220,6 +222,8 @@ export default function PlayerProfile() {
                   <>
                     {statRow('K', data.careerStats.ka)}
                     {statRow('BB', data.careerStats.bba)}
+                    {statRow('QS', data.careerStats.qs)}
+                    {statRow('CG', data.careerStats.cg)}
                   </>
                 ) : (
                   <>
