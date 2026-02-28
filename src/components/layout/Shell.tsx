@@ -158,6 +158,9 @@ import DefPositioningView from '../analytics/DefPositioningView';
 import BaserunningIQView from '../analytics/BaserunningIQView';
 import OptionChainView from '../contracts/OptionChainView';
 import ContactQualityView from '../analytics/ContactQualityView';
+import BullpenFatigueView from '../pitching/BullpenFatigueView';
+import TradeLeverageView from '../trade/TradeLeverageView';
+import PitchDesignLabView from '../pitching/PitchDesignLabView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -230,6 +233,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'injuryrisk', label: 'INJURY RISK' },
       { id: 'relieverroles', label: 'RELIEVER ROLES' },
       { id: 'pitcharsenal', label: 'PITCH ARSENAL' },
+      { id: 'bpfatigue', label: 'BP FATIGUE' },
+      { id: 'pitchdesign', label: 'PITCH DESIGN' },
     ],
   },
   {
@@ -259,6 +264,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'waiverclaims', label: 'WAIVER CLAIMS' },
       { id: 'arbprojections', label: 'ARB PROJECTIONS' },
       { id: 'optionchain', label: 'OPTION CHAIN' },
+      { id: 'tradeleverage', label: 'TRADE LEVERAGE' },
     ],
   },
   {
@@ -665,6 +671,9 @@ export default function Shell() {
       case 'baseruniq': return <BaserunningIQView />;
       case 'optionchain': return <OptionChainView />;
       case 'contactquality': return <ContactQualityView />;
+      case 'bpfatigue': return <BullpenFatigueView />;
+      case 'tradeleverage': return <TradeLeverageView />;
+      case 'pitchdesign': return <PitchDesignLabView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
