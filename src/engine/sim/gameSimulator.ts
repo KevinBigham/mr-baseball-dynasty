@@ -36,6 +36,7 @@ import { getTempoModifier } from './pitchTempo';
 import { getHighFastballKMod } from './highFastball';
 import { getTeamChemistryModifier, chemistryDefenseAdjustment } from './teamChemistry';
 import { getHomeFieldAdvantage } from './homeFieldAdvantage';
+import { getRunSupportBBMod } from './runSupport';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -517,7 +518,11 @@ function simulateHalfInning(
         protectionBBMod,
         infieldIn,
         countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod * getHighFastballKMod(pitcher, batter),
-        countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod,
+        countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod
+          * getRunSupportBBMod(
+            ctx.isTop ? ctx.homeScore : ctx.awayScore,
+            ctx.isTop ? ctx.awayScore : ctx.homeScore,
+          ),
         tempoBABIPMod: getTempoModifier(pitcher),
       };
       let paResult: import('../../types/game').PAResult;
