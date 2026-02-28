@@ -214,8 +214,10 @@ export default function PlayerProfile() {
                     {statRow('K',       (seasonStats as Record<string, number>).ka)}
                     {statRow('BB',      (seasonStats as Record<string, number>).bba)}
                     {statRow('HR',      (seasonStats as Record<string, number>).hra)}
+                    {statRow('K/9',     (seasonStats as Record<string, number>).k9, 1)}
+                    {statRow('BB/9',    (seasonStats as Record<string, number>).bb9, 1)}
+                    {statRow('K/BB',    (seasonStats as Record<string, number>).kbb, 2)}
                     {statRow('QS',      (seasonStats as Record<string, number>).qs)}
-                    {statRow('CG',      (seasonStats as Record<string, number>).cg)}
                     {statRow('P/GS',    (seasonStats as Record<string, number>).avgPitches)}
                   </>
                 ) : (
@@ -224,6 +226,8 @@ export default function PlayerProfile() {
                     {statRow('OBP', (seasonStats as Record<string, number>).obp, 3)}
                     {statRow('SLG', (seasonStats as Record<string, number>).slg, 3)}
                     {statRow('OPS', (seasonStats as Record<string, number>).ops, 3)}
+                    {statRow('ISO', (seasonStats as Record<string, number>).iso, 3)}
+                    {statRow('BABIP', (seasonStats as Record<string, number>).babip, 3)}
                     {statRow('BB',  (seasonStats as Record<string, number>).bb)}
                     {statRow('K',   (seasonStats as Record<string, number>).k)}
                   </>
@@ -248,6 +252,7 @@ export default function PlayerProfile() {
                     {statRow('SV', data.careerStats.sv)}
                     {statRow('IP', data.careerStats.ip, 1)}
                     {statRow('ERA', data.careerStats.era, 2)}
+                    {statRow('WHIP', data.careerStats.whip, 2)}
                   </>
                 ) : (
                   <>
@@ -266,6 +271,7 @@ export default function PlayerProfile() {
                   <>
                     {statRow('K', data.careerStats.ka)}
                     {statRow('BB', data.careerStats.bba)}
+                    {statRow('HR', data.careerStats.hra)}
                     {statRow('QS', data.careerStats.qs)}
                     {statRow('CG', data.careerStats.cg)}
                     {statRow('SHO', data.careerStats.sho)}
@@ -274,8 +280,8 @@ export default function PlayerProfile() {
                   <>
                     {statRow('AVG', data.careerStats.avg, 3)}
                     {statRow('OBP', data.careerStats.obp, 3)}
-                    {statRow('BB', data.careerStats.bb)}
-                    {statRow('K', data.careerStats.k)}
+                    {statRow('SLG', data.careerStats.slg, 3)}
+                    {statRow('OPS', data.careerStats.ops, 3)}
                   </>
                 )}
               </tbody>

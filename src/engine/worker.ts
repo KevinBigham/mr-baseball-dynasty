@@ -808,8 +808,19 @@ const api = {
         pitchCount: s.pitchCount,
         avgPitches: s.gs > 0 ? Number((s.pitchCount / s.gs).toFixed(0)) : 0,
         war: adv.war,
+        // Hitter advanced
         wrcPlus: !player.isPitcher ? (adv as AdvancedHitterStats).wrcPlus : 0,
+        opsPlus: !player.isPitcher ? (adv as AdvancedHitterStats).opsPlus : 0,
+        iso: !player.isPitcher ? (adv as AdvancedHitterStats).iso : 0,
+        babip: !player.isPitcher ? (adv as AdvancedHitterStats).babip : 0,
+        kPct: adv.kPct !== undefined ? (adv as AdvancedHitterStats).kPct : 0,
+        bbPct: adv.bbPct !== undefined ? (adv as AdvancedHitterStats).bbPct : 0,
+        // Pitcher advanced
         eraPlus: player.isPitcher ? (adv as AdvancedPitcherStats).eraPlus : 0,
+        k9: player.isPitcher ? (adv as AdvancedPitcherStats).k9 : 0,
+        bb9: player.isPitcher ? (adv as AdvancedPitcherStats).bb9 : 0,
+        kbb: player.isPitcher ? (adv as AdvancedPitcherStats).kbb : 0,
+        hr9: player.isPitcher ? (adv as AdvancedPitcherStats).hr9 : 0,
       };
     })() : null;
 
@@ -856,14 +867,17 @@ const api = {
         if (career) {
           const cAvg = career.ab > 0 ? Number((career.h / career.ab).toFixed(3)) : 0;
           const cObp = career.pa > 0 ? Number(((career.h + career.bb + career.hbp) / career.pa).toFixed(3)) : 0;
+          const cTB = (career.h - career.doubles - career.triples - career.hr) + career.doubles * 2 + career.triples * 3 + career.hr * 4;
+          const cSlg = career.ab > 0 ? Number((cTB / career.ab).toFixed(3)) : 0;
           const cEra = career.outs > 0 ? Number(((career.er / career.outs) * 27).toFixed(2)) : 0;
+          const cWhip = career.outs > 0 ? Number(((career.bba + career.ha) / (career.outs / 3)).toFixed(2)) : 0;
           return {
             seasons: career.seasons,
             pa: career.pa, ab: career.ab, h: career.h, hr: career.hr,
             rbi: career.rbi, bb: career.bb, k: career.k, sb: career.sb,
-            avg: cAvg, obp: cObp,
-            w: career.w, l: career.l, sv: career.sv, era: cEra,
-            ip: Number((career.outs / 3).toFixed(1)), ka: career.ka, bba: career.bba,
+            avg: cAvg, obp: cObp, slg: cSlg, ops: Number((cObp + cSlg).toFixed(3)),
+            w: career.w, l: career.l, sv: career.sv, era: cEra, whip: cWhip,
+            ip: Number((career.outs / 3).toFixed(1)), ka: career.ka, bba: career.bba, hra: career.hra,
             gs: career.gs, qs: career.qs, cg: career.cg, sho: career.sho,
           };
         }
