@@ -37,6 +37,7 @@ import { getHighFastballKMod } from './highFastball';
 import { getTeamChemistryModifier, chemistryDefenseAdjustment } from './teamChemistry';
 import { getHomeFieldAdvantage } from './homeFieldAdvantage';
 import { getRunSupportBBMod } from './runSupport';
+import { getSituationalContactMod } from './situationalHitting';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -458,7 +459,8 @@ function simulateHalfInning(
     let clutchBatter = hitAndRunBatter;
     const clutchMod = getClutchModifier(batter.hitterAttributes?.mentalToughness ?? 50, li);
     const streakMod = getStreakContactModifier(hitterStreaks?.get(batter.playerId));
-    const totalContactMod = clutchMod + streakMod;
+    const situationalMod = getSituationalContactMod(batter.hitterAttributes?.offensiveIQ ?? 50, markov.runners);
+    const totalContactMod = clutchMod + streakMod + situationalMod;
     if (totalContactMod !== 0 && clutchBatter.hitterAttributes) {
       clutchBatter = {
         ...clutchBatter,
