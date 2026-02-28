@@ -19,6 +19,10 @@ import {
 import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
 import { selectDefensiveSub } from './defensiveSub';
 import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
+import {
+  initialMomentum, updateMomentum, resetInningMomentum, getMomentumModifier,
+  type MomentumState,
+} from './momentum';
 import { leverageIndex } from './winProbability';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
@@ -269,6 +273,7 @@ function simulateHalfInning(
   allPlayers: Player[],
   fieldingTeamId: number,
   bench: Player[],
+  momentumRef: { value: MomentumState },
   playLog?: PlayEvent[],
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
@@ -435,13 +440,19 @@ function simulateHalfInning(
       // Bunt resolved: use the bunt outcome directly
       outcome = buntOutcome;
     } else {
+      // Apply momentum to pitch count (momentum modifier piggybacks on fatigue curve)
+      // Positive momentum (pitcher locked in) → effective fewer pitches thrown
+      // Negative momentum (pitcher rattled) → effective more pitches thrown
+      const momentumMod = getMomentumModifier(momentumRef.value);
+      const effectivePitchCount = Math.max(0, pitchCountRef.value + Math.round(momentumMod * 200));
+
       // Normal PA resolution (with H&R modified batter if applicable)
       const paInput = {
         batter: hitAndRunBatter,
         pitcher,
         runners: markov.runners,
         outs: markov.outs,
-        pitchCount: pitchCountRef.value,
+        pitchCount: effectivePitchCount,
         timesThrough: timesThroughRef.value,
         parkFactor,
         defenseRating,
@@ -491,6 +502,15 @@ function simulateHalfInning(
     // Accumulate stats (with platoon split tracking)
     accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false, pitcher.throws);
     accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, unearnedThisPA, pitchesThisPA);
+
+    // Update pitcher momentum
+    const isOut = outcome === 'K' || outcome === 'GB_OUT' || outcome === 'FB_OUT'
+      || outcome === 'LD_OUT' || outcome === 'PU_OUT' || outcome === 'GDP'
+      || outcome === 'SF' || outcome === 'SAC_BUNT';
+    momentumRef.value = updateMomentum(
+      momentumRef.value, isOut, runsThisPA,
+      pitcher.pitcherAttributes?.mentalToughness ?? 50,
+    );
 
     // Add to play log
     if (playLog) {
@@ -608,6 +628,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const awayPitchCount = { value: 0 };
   const homeTimesThrough = { value: 1 };
   const awayTimesThrough = { value: 1 };
+  const homeMomentum = { value: initialMomentum() };
+  const awayMomentum = { value: initialMomentum() };
 
   let homeLineupPos = 0;
   let awayLineupPos = 0;
@@ -654,10 +676,14 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.players,
       input.homeTeam.teamId,
       awayBench,
+      homeMomentum,
       playLog,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
     awayLineScore.push(awayRuns);
+
+    // Reset home pitcher momentum between innings
+    homeMomentum.value = resetInningMomentum(homeMomentum.value);
 
     // Defensive substitution: home team fields during top half
     const homeDefSub = selectDefensiveSub(
@@ -671,6 +697,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
 
     // Pitcher management: pull home starter? (home team pitches in top half)
     const homeSave = isSaveSituation(inning, ctx.homeScore, ctx.awayScore);
+    const prevHomePitcher = homePitcher;
     homePitcher = managePitcher(
       gen,
       homePitcher,
@@ -689,6 +716,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.gameIndex,
       input.pitcherRestMap,
     );
+    // New pitcher starts with fresh momentum
+    if (homePitcher !== prevHomePitcher) {
+      homeMomentum.value = initialMomentum();
+    }
 
     // ── Skip bottom half if home already leads in 9th+ ──────────────────
     if (inning >= 9 && ctx.homeScore > ctx.awayScore) break;
@@ -713,10 +744,14 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.players,
       input.awayTeam.teamId,
       homeBench,
+      awayMomentum,
       playLog,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
     homeLineScore.push(homeRuns);
+
+    // Reset away pitcher momentum between innings
+    awayMomentum.value = resetInningMomentum(awayMomentum.value);
 
     // Defensive substitution: away team fields during bottom half
     const awayDefSub = selectDefensiveSub(
@@ -730,6 +765,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
 
     // Pitcher management: pull away starter? (away team pitches in bottom half)
     const awaySave = isSaveSituation(inning, ctx.awayScore, ctx.homeScore);
+    const prevAwayPitcher = awayPitcher;
     awayPitcher = managePitcher(
       gen,
       awayPitcher,
@@ -748,6 +784,10 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.gameIndex,
       input.pitcherRestMap,
     );
+    // New pitcher starts with fresh momentum
+    if (awayPitcher !== prevAwayPitcher) {
+      awayMomentum.value = initialMomentum();
+    }
 
     // ── Game over? ─────────────────────────────────────────────────────────
     if (inning >= 9 && ctx.homeScore !== ctx.awayScore) {
