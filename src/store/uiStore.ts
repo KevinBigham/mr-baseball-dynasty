@@ -29,7 +29,10 @@ export type NavTab = 'dashboard' | 'standings' | 'roster' | 'stats' | 'profile' 
 | 'pitchtipdetector' | 'salaryarbpredictor' | 'teamtrend'
 | 'hitterapproach' | 'startergameplan' | 'parkadjusted'
 | 'runscoring' | 'prospecttoolgrader' | 'winstreakanalyzer'
-| 'defshiftanalyzer' | 'optionyear' | 'relievermatchup';
+| 'defshiftanalyzer' | 'optionyear' | 'relievermatchup'
+| 'doubleplayanalyzer' | 'pitchefftracker' | 'catcherdefense'
+| 'rostergrader' | 'tradevaluecalc' | 'milbstandingstracker'
+| 'powerrankingsengine' | 'baserunningeff' | 'seasonprojmodel';
 
 interface UIStore {
   activeTab: NavTab;
