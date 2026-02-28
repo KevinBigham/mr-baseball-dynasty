@@ -42,6 +42,7 @@ import { getGameCallingMod } from './catcherGameCalling';
 import { getCloserIntensityKMod } from './closerIntensity';
 import { getArsenalKMod } from './pitchArsenal';
 import { getDeceptionBBMod } from './pitcherDeception';
+import { getLateGameDefenseBonus } from './lateGameDefense';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -743,18 +744,24 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     input.teamLosses?.get(input.awayTeam.teamId) ?? 0,
   );
 
-  const homeDefRating = input.players
+  const homeDefPlayers = input.players
     .filter(p => p.teamId === input.homeTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
-    .slice(0, 9)
+    .slice(0, 9);
+  const homeDefRating = homeDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
     + chemistryDefenseAdjustment(homeChemMod)
     + getHomeFieldAdvantage().defenseBonus; // Home team defense boost
+  const homeAvgDefIQ = homeDefPlayers
+    .reduce((sum, p) => sum + (p.hitterAttributes?.defensiveIQ ?? 400), 0) / Math.max(1, homeDefPlayers.length);
 
-  const awayDefRating = input.players
+  const awayDefPlayers = input.players
     .filter(p => p.teamId === input.awayTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
-    .slice(0, 9)
+    .slice(0, 9);
+  const awayDefRating = awayDefPlayers
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
     + chemistryDefenseAdjustment(awayChemMod);
+  const awayAvgDefIQ = awayDefPlayers
+    .reduce((sum, p) => sum + (p.hitterAttributes?.defensiveIQ ?? 400), 0) / Math.max(1, awayDefPlayers.length);
 
   const MAX_INNINGS = 25;
   const playLog: PlayEvent[] | undefined = input.recordPlayLog ? [] : undefined;
@@ -771,6 +778,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
     const topManned = shouldUseMannedRunner({ ...ctx, inning, isTop: true });
+    const topDefBonus = getLateGameDefenseBonus(inning, ctx.homeScore - ctx.awayScore, homeAvgDefIQ);
     let awayRuns: number;
     [awayRuns, awayLineupPos, gen] = simulateHalfInning(
       gen,
@@ -783,7 +791,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       awayBatterStats,
       homePitcherStats,
       parkFactor,
-      homeDefRating,
+      homeDefRating + topDefBonus,
       topManned,
       input.players,
       input.homeTeam.teamId,
@@ -841,6 +849,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
     lastHomeScoreBeforeBottom = ctx.homeScore;
     const bottomManned = shouldUseMannedRunner({ ...ctx, inning, isTop: false });
+    const botDefBonus = getLateGameDefenseBonus(inning, ctx.awayScore - ctx.homeScore, awayAvgDefIQ);
     let homeRuns: number;
     [homeRuns, homeLineupPos, gen] = simulateHalfInning(
       gen,
@@ -853,7 +862,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       homeBatterStats,
       awayPitcherStats,
       parkFactor,
-      awayDefRating,
+      awayDefRating + botDefBonus,
       bottomManned,
       input.players,
       input.awayTeam.teamId,
