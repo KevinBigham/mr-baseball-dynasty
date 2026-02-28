@@ -164,6 +164,9 @@ import PitchDesignLabView from '../pitching/PitchDesignLabView';
 import DefAlignmentView from '../analytics/DefAlignmentView';
 import LuxuryTaxView from '../finance/LuxuryTaxView';
 import ZoneHeatmapView from '../analytics/ZoneHeatmapView';
+import ProspectGradesView from '../scouting/ProspectGradesView';
+import RevenueSharingView from '../finance/RevenueSharingView';
+import TunnelMatrixView from '../pitching/TunnelMatrixView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -238,6 +241,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitcharsenal', label: 'PITCH ARSENAL' },
       { id: 'bpfatigue', label: 'BP FATIGUE' },
       { id: 'pitchdesign', label: 'PITCH DESIGN' },
+      { id: 'tunnelmatrix', label: 'TUNNEL MATRIX' },
     ],
   },
   {
@@ -343,6 +347,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'draftcapital', label: 'DRAFT CAPITAL' },
       { id: 'devpath', label: 'DEV PATHS' },
       { id: 'luxurytax', label: 'LUXURY TAX' },
+      { id: 'prospectgrades', label: 'PROSPECT GRADES' },
+      { id: 'revsharing', label: 'REVENUE SHARING' },
     ],
   },
   {
@@ -683,6 +689,9 @@ export default function Shell() {
       case 'defalignment': return <DefAlignmentView />;
       case 'luxurytax': return <LuxuryTaxView />;
       case 'zoneheatmap': return <ZoneHeatmapView />;
+      case 'prospectgrades': return <ProspectGradesView />;
+      case 'revsharing': return <RevenueSharingView />;
+      case 'tunnelmatrix': return <TunnelMatrixView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
