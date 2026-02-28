@@ -77,6 +77,9 @@ import DraftScoutBoardView from '../scouting/DraftScoutBoardView';
 import PlatoonMatchupsView from '../analytics/PlatoonMatchupsView';
 import AllTimeRecordsView from '../history/AllTimeRecordsView';
 import CoachCarouselView from '../coaching/CoachCarouselView';
+import AwardPredictions from '../analytics/AwardPredictions';
+import FanEngagementView from '../team/FanEngagementView';
+import InjuryTrackerView from '../medical/InjuryTrackerView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -112,6 +115,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'clubhouse', label: 'CLUBHOUSE' },
       { id: 'mentors', label: 'MENTOR HUB' },
       { id: 'repertoire', label: 'PITCH REPERTOIRE' },
+      { id: 'fanengagement', label: 'FAN ENGAGEMENT' },
+      { id: 'injuries', label: 'INJURY TRACKER' },
     ],
   },
   {
@@ -147,6 +152,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'chemistry', label: 'CHEMISTRY' },
       { id: 'dynasty', label: 'DYNASTY ANALYTICS' },
       { id: 'platoons', label: 'PLATOON SPLITS' },
+      { id: 'awardpredictions', label: 'AWARD PREDICTIONS' },
       { id: 'parks', label: 'BALLPARKS' },
     ],
   },
@@ -422,6 +428,9 @@ export default function Shell() {
       case 'platoons':   return <PlatoonMatchupsView />;
       case 'alltimerecords': return <AllTimeRecordsView />;
       case 'carousel':   return <CoachCarouselView />;
+      case 'awardpredictions': return <AwardPredictions />;
+      case 'fanengagement': return <FanEngagementView />;
+      case 'injuries':   return <InjuryTrackerView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
