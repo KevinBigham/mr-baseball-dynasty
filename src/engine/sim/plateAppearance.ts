@@ -19,6 +19,8 @@ export interface PAInput {
   defenseRating: number; // 0–550 team defense quality
   protectionBBMod?: number; // Lineup protection BB rate multiplier (< 1 = fewer walks)
   infieldIn?: boolean;       // Infield drawn in (runner on 3rd, close game)
+  countKMod?: number;        // Count leverage K rate modifier (< 1 = fewer Ks)
+  countBBMod?: number;       // Count leverage BB rate modifier (> 1 = more walks)
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -123,6 +125,8 @@ function stage1(
   modifier: number,
   parkFactor: ParkFactor,
   bbProtection: number,
+  countKMod: number,
+  countBBMod: number,
 ): [string, RandomGenerator] {
   // Apply asymmetric pitcher/batter weights
   const kBlend   = weightedRates(hRates.kRate,   pRates.kRate,   LEAGUE_RATES.kRate,         PITCHER_WEIGHTS.strikeout);
@@ -158,6 +162,14 @@ function stage1(
   // Lineup protection: adjust BB rate based on on-deck batter threat
   if (bbProtection !== 1.0) {
     adjustedProbs['BB'] = Math.min(0.30, Math.max(0.02, adjustedProbs['BB']! * bbProtection));
+    const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
+    adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
+  }
+
+  // Count leverage: adjust K and BB rates based on simulated count context
+  if (countKMod !== 1.0 || countBBMod !== 1.0) {
+    adjustedProbs['K']  = Math.max(0.001, adjustedProbs['K']! * countKMod);
+    adjustedProbs['BB'] = Math.min(0.30, Math.max(0.02, adjustedProbs['BB']! * countBBMod));
     const nonBip = adjustedProbs['K']! + adjustedProbs['BB']! + adjustedProbs['HBP']! + adjustedProbs['HR']!;
     adjustedProbs['BIP'] = Math.max(0.01, 1 - nonBip);
   }
@@ -362,7 +374,12 @@ export function resolvePlateAppearance(
 
   // Stage 1: Non-contact gate
   let stage1Result: string;
-  [stage1Result, gen] = stage1(gen, hRates, pRates, modifier, input.parkFactor, input.protectionBBMod ?? 1.0);
+  [stage1Result, gen] = stage1(
+    gen, hRates, pRates, modifier, input.parkFactor,
+    input.protectionBBMod ?? 1.0,
+    input.countKMod ?? 1.0,
+    input.countBBMod ?? 1.0,
+  );
 
   if (stage1Result !== 'BIP') {
     const outcome = stage1Result as PAOutcome;

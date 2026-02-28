@@ -22,6 +22,7 @@ import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
 import { getProtectionModifier } from './lineupProtection';
 import { getClutchModifier } from './clutch';
 import { shouldInfieldIn } from './infieldIn';
+import { simulateCountContext } from './countLeverage';
 import {
   initialMomentum, updateMomentum, resetInningMomentum, getMomentumModifier,
   type MomentumState,
@@ -475,6 +476,14 @@ function simulateHalfInning(
         : ctx.awayScore - ctx.homeScore;
       const infieldIn = shouldInfieldIn(markov.runners, markov.outs, fieldingRunDiff, ctx.inning);
 
+      // Count leverage: simulate count context for this PA
+      let countMod: import('./countLeverage').CountModifier;
+      [countMod, gen] = simulateCountContext(
+        gen,
+        pitcher.pitcherAttributes?.command ?? 400,
+        clutchBatter.hitterAttributes?.eye ?? 400,
+      );
+
       // Normal PA resolution (with clutch + H&R modified batter if applicable)
       const paInput = {
         batter: clutchBatter,
@@ -487,6 +496,8 @@ function simulateHalfInning(
         defenseRating,
         protectionBBMod,
         infieldIn,
+        countKMod: countMod.kRateMod,
+        countBBMod: countMod.bbRateMod,
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
