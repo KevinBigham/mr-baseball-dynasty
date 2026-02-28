@@ -48,14 +48,18 @@ function computeFatigue(attrs: PitcherAttributes, pitchCount: number): number {
   else if (adjustedVeloLoss < 2.0) baseFatigue = 0.03 + (adjustedVeloLoss - 1.0) * 0.06;
   else baseFatigue = 0.09 + (adjustedVeloLoss - 2.0) * 0.10;
 
+  // Durability affects how quickly a pitcher wears down
+  // Low durability = faster fatigue accumulation, high = more resilient
+  const durabilityFactor = 1.0 + (350 - (attrs.durability ?? 350)) / 350 * 0.3; // 0.7–1.3
+
   // High pitch count cliff: sharp penalty past 90 pitches, severe past 110
   let cliffPenalty = 0;
   if (pitchCount > 90) {
     const overPitches = pitchCount - 90;
-    cliffPenalty = overPitches * 0.002 * staminaFactor;
+    cliffPenalty = overPitches * 0.002 * staminaFactor * durabilityFactor;
   }
   if (pitchCount > 110) {
-    cliffPenalty += (pitchCount - 110) * 0.004 * staminaFactor;
+    cliffPenalty += (pitchCount - 110) * 0.004 * staminaFactor * durabilityFactor;
   }
 
   return baseFatigue + cliffPenalty;
