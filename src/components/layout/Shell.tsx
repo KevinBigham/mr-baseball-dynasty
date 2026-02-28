@@ -161,6 +161,9 @@ import ContactQualityView from '../analytics/ContactQualityView';
 import BullpenFatigueView from '../pitching/BullpenFatigueView';
 import TradeLeverageView from '../trade/TradeLeverageView';
 import PitchDesignLabView from '../pitching/PitchDesignLabView';
+import DefAlignmentView from '../analytics/DefAlignmentView';
+import LuxuryTaxView from '../finance/LuxuryTaxView';
+import ZoneHeatmapView from '../analytics/ZoneHeatmapView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -300,6 +303,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gamescore', label: 'GAME SCORE' },
       { id: 'defpositioning', label: 'DEF POSITIONING' },
       { id: 'contactquality', label: 'CONTACT QUALITY' },
+      { id: 'defalignment', label: 'DEF ALIGNMENT' },
+      { id: 'zoneheatmap', label: 'ZONE HEATMAP' },
     ],
   },
   {
@@ -337,6 +342,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'payrollflex', label: 'PAYROLL FLEX' },
       { id: 'draftcapital', label: 'DRAFT CAPITAL' },
       { id: 'devpath', label: 'DEV PATHS' },
+      { id: 'luxurytax', label: 'LUXURY TAX' },
     ],
   },
   {
@@ -674,6 +680,9 @@ export default function Shell() {
       case 'bpfatigue': return <BullpenFatigueView />;
       case 'tradeleverage': return <TradeLeverageView />;
       case 'pitchdesign': return <PitchDesignLabView />;
+      case 'defalignment': return <DefAlignmentView />;
+      case 'luxurytax': return <LuxuryTaxView />;
+      case 'zoneheatmap': return <ZoneHeatmapView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
