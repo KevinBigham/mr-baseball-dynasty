@@ -26,6 +26,8 @@ export interface CareerRecord {
   // Cumulative pitching
   w: number; l: number; sv: number; outs: number;
   ha: number; er: number; bba: number; ka: number; hra: number;
+  gs: number; qs: number; cg: number; sho: number;
+  pitchCount: number;   // cumulative pitch count
   // Derived (computed on read)
   avg?: number;
   obp?: number;
@@ -52,6 +54,7 @@ export interface SeasonLogEntry {
   avg: number;
   // Pitching
   w: number; l: number; sv: number; era: number; ip: number; ka: number;
+  gs: number; qs: number; cg: number; sho: number;
   // Awards
   awards: string[];
 }
@@ -122,6 +125,7 @@ export function recordSeasonStats(
         rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0,
         w: 0, l: 0, sv: 0, outs: 0,
         ha: 0, er: 0, bba: 0, ka: 0, hra: 0,
+        gs: 0, qs: 0, cg: 0, sho: 0, pitchCount: 0,
         seasonLog: [],
         hofEligible: false,
         hofInducted: false,
@@ -153,6 +157,11 @@ export function recordSeasonStats(
     career.bba += s.bba;
     career.ka += s.ka;
     career.hra += s.hra;
+    career.gs += s.gs;
+    career.qs += s.qs ?? 0;
+    career.cg += s.cg ?? 0;
+    career.sho += s.sho ?? 0;
+    career.pitchCount += s.pitchCount ?? 0;
 
     // Season log entry
     const ip = s.outs / 3;
@@ -171,6 +180,7 @@ export function recordSeasonStats(
       era: Number(era.toFixed(2)),
       ip: Number(ip.toFixed(1)),
       ka: s.ka,
+      gs: s.gs, qs: s.qs ?? 0, cg: s.cg ?? 0, sho: s.sho ?? 0,
       awards: awardMap.get(s.playerId) ?? [],
     });
   }

@@ -146,6 +146,7 @@ export default function PlayerProfile() {
                     {statRow('W',    (seasonStats as Record<string, number>).w)}
                     {statRow('L',    (seasonStats as Record<string, number>).l)}
                     {statRow('SV',   (seasonStats as Record<string, number>).sv)}
+                    {statRow('GS',   (seasonStats as Record<string, number>).gs)}
                     {statRow('IP',   (seasonStats as Record<string, number>).ip, 1)}
                     {statRow('ERA',  (seasonStats as Record<string, number>).era, 2)}
                     {statRow('FIP',  (seasonStats as Record<string, number>).fip, 2)}
@@ -156,6 +157,8 @@ export default function PlayerProfile() {
                     {statRow('PA',  (seasonStats as Record<string, number>).pa)}
                     {statRow('AB',  (seasonStats as Record<string, number>).ab)}
                     {statRow('H',   (seasonStats as Record<string, number>).h)}
+                    {statRow('2B',  (seasonStats as Record<string, number>).doubles)}
+                    {statRow('3B',  (seasonStats as Record<string, number>).triples)}
                     {statRow('HR',  (seasonStats as Record<string, number>).hr)}
                     {statRow('RBI', (seasonStats as Record<string, number>).rbi)}
                     {statRow('SB',  (seasonStats as Record<string, number>).sb)}
@@ -167,12 +170,12 @@ export default function PlayerProfile() {
               <tbody>
                 {isPitcher ? (
                   <>
-                    {statRow('K',   (seasonStats as Record<string, number>).ka)}
-                    {statRow('BB',  (seasonStats as Record<string, number>).bba)}
-                    {statRow('HR',  (seasonStats as Record<string, number>).hra)}
-                    {statRow('QS',  (seasonStats as Record<string, number>).qs)}
-                    {statRow('WHIP', (seasonStats as Record<string, number>).whip, 2)}
-                    {statRow('FIP', (seasonStats as Record<string, number>).fip, 2)}
+                    {statRow('K',       (seasonStats as Record<string, number>).ka)}
+                    {statRow('BB',      (seasonStats as Record<string, number>).bba)}
+                    {statRow('HR',      (seasonStats as Record<string, number>).hra)}
+                    {statRow('QS',      (seasonStats as Record<string, number>).qs)}
+                    {statRow('CG',      (seasonStats as Record<string, number>).cg)}
+                    {statRow('P/GS',    (seasonStats as Record<string, number>).avgPitches)}
                   </>
                 ) : (
                   <>
@@ -224,6 +227,7 @@ export default function PlayerProfile() {
                     {statRow('BB', data.careerStats.bba)}
                     {statRow('QS', data.careerStats.qs)}
                     {statRow('CG', data.careerStats.cg)}
+                    {statRow('SHO', data.careerStats.sho)}
                   </>
                 ) : (
                   <>
@@ -277,6 +281,79 @@ export default function PlayerProfile() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Season-by-season career log */}
+      {data.seasonLog && data.seasonLog.length > 1 && (
+        <div className="bloomberg-border mt-4">
+          <div className="bloomberg-header">YEAR-BY-YEAR LOG</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-800">
+                  <th className="px-2 py-1 text-left">YR</th>
+                  <th className="px-2 py-1 text-left">TEAM</th>
+                  <th className="px-2 py-1 text-right">AGE</th>
+                  {isPitcher ? (
+                    <>
+                      <th className="px-2 py-1 text-right">W</th>
+                      <th className="px-2 py-1 text-right">L</th>
+                      <th className="px-2 py-1 text-right">SV</th>
+                      <th className="px-2 py-1 text-right">IP</th>
+                      <th className="px-2 py-1 text-right">ERA</th>
+                      <th className="px-2 py-1 text-right">K</th>
+                      <th className="px-2 py-1 text-right">QS</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-2 py-1 text-right">G</th>
+                      <th className="px-2 py-1 text-right">PA</th>
+                      <th className="px-2 py-1 text-right">H</th>
+                      <th className="px-2 py-1 text-right">HR</th>
+                      <th className="px-2 py-1 text-right">RBI</th>
+                      <th className="px-2 py-1 text-right">SB</th>
+                      <th className="px-2 py-1 text-right">AVG</th>
+                    </>
+                  )}
+                  <th className="px-2 py-1 text-left"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.seasonLog.map(entry => (
+                  <tr key={entry.season} className="bloomberg-row">
+                    <td className="px-2 py-1 text-gray-400 tabular-nums">{entry.season}</td>
+                    <td className="px-2 py-1 text-gray-500">{entry.teamName}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-500">{entry.age}</td>
+                    {isPitcher ? (
+                      <>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.w}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.l}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.sv}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.ip.toFixed(1)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums font-bold text-orange-400">{entry.era.toFixed(2)}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.ka}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.qs}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.g}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.pa}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.h}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.hr}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.rbi}</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-gray-200">{entry.sb}</td>
+                        <td className="px-2 py-1 text-right tabular-nums font-bold text-orange-400">{entry.avg.toFixed(3)}</td>
+                      </>
+                    )}
+                    <td className="px-2 py-1 text-yellow-500 text-xs">
+                      {entry.awards.length > 0 ? entry.awards.join(', ') : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

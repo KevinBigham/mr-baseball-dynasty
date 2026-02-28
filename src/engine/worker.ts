@@ -772,6 +772,9 @@ const api = {
         fip: Number(fip.toFixed(2)),
         qs: s.qs,
         ip: Number(ip.toFixed(1)), ka: s.ka, bba: s.bba, hra: s.hra,
+        gs: s.gs, gp: s.gp,
+        pitchCount: s.pitchCount,
+        avgPitches: s.gs > 0 ? Number((s.pitchCount / s.gs).toFixed(0)) : 0,
       };
     })() : null;
 
@@ -826,6 +829,7 @@ const api = {
             avg: cAvg, obp: cObp,
             w: career.w, l: career.l, sv: career.sv, era: cEra,
             ip: Number((career.outs / 3).toFixed(1)), ka: career.ka, bba: career.bba,
+            gs: career.gs, qs: career.qs, cg: career.cg, sho: career.sho,
           };
         }
         // Fallback: first season — use current season stats or zeros
@@ -835,6 +839,11 @@ const api = {
           if (typeof v === 'number') base[k] = v;
         }
         return base as { seasons: number; [key: string]: number };
+      })(),
+      seasonLog: (() => {
+        const career = getCareerRecords().get(playerId);
+        if (!career || career.seasonLog.length === 0) return undefined;
+        return career.seasonLog;
       })(),
     };
   },

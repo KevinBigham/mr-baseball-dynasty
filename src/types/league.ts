@@ -177,4 +177,17 @@ export interface PlayerProfileData {
   };
   splits?: { vsLHP: SplitLine; vsRHP: SplitLine } | null;
   pitchMix?: { fastball: number; breaking: number; offspeed: number } | null;
+  seasonLog?: Array<{
+    season: number;
+    teamName: string;
+    age: number;
+    // Hitting
+    g: number; pa: number; ab: number; h: number; hr: number;
+    rbi: number; bb: number; k: number; sb: number;
+    avg: number;
+    // Pitching
+    w: number; l: number; sv: number; era: number; ip: number; ka: number;
+    gs: number; qs: number; cg: number; sho: number;
+    awards: string[];
+  }>;
 }
