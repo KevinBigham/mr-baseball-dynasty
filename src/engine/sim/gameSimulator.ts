@@ -43,6 +43,7 @@ import { getCloserIntensityKMod } from './closerIntensity';
 import { getArsenalKMod } from './pitchArsenal';
 import { getDeceptionBBMod } from './pitcherDeception';
 import { getLateGameDefenseBonus } from './lateGameDefense';
+import { getPatiencePitchBonus } from './batterPatience';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -552,7 +553,8 @@ function simulateHalfInning(
       }
     }
 
-    const pitchesThisPA = isIBB ? 0 : estimatePitches(outcome);
+    const patienceBonus = isIBB ? 0 : getPatiencePitchBonus(batter.hitterAttributes?.eye ?? 400);
+    const pitchesThisPA = isIBB ? 0 : estimatePitches(outcome) + Math.round(patienceBonus);
     pitchCountRef.value += pitchesThisPA;
 
     // Handle error: if error at 2 outs, all subsequent runs become unearned
