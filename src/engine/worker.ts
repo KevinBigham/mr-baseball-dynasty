@@ -672,6 +672,22 @@ const api = {
         }
         case 'r':    value = s.r; break;
         case '2b':   value = s.doubles; break;
+        case 'cg':   value = s.cg; break;
+        case 'sho':  value = s.sho; break;
+        case 'gsc': {
+          // Average Game Score: compute from season totals (starters only)
+          if (s.gs < 5) { value = 0; break; }
+          let gs2 = 50;
+          gs2 += s.outs;
+          gs2 += Math.max(0, Math.floor((s.outs - 12) / 3)) * 2;
+          gs2 += s.ka;
+          gs2 -= s.ha * 2;
+          gs2 -= s.er * 4;
+          gs2 -= (s.ra - s.er) * 2;
+          gs2 -= s.bba;
+          value = gs2 / s.gs; // per-start average
+          break;
+        }
         default:     value = 0;
       }
       if (value !== 0 || stat === 'avg') results.push({ player, value });
@@ -685,7 +701,7 @@ const api = {
       const isRateStat = ['avg', 'obp', 'slg', 'ops'].includes(stat);
       let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
       if (stat === 'era' || stat === 'whip' || stat === 'fip') displayValue = (-r.value).toFixed(2);
-      if (stat === 'k9') displayValue = r.value.toFixed(1);
+      if (stat === 'k9' || stat === 'gsc') displayValue = r.value.toFixed(1);
       if (stat === 'bb9') displayValue = (-r.value).toFixed(1);
       return {
         rank: i + 1,

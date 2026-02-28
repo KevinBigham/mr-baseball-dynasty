@@ -25,9 +25,12 @@ const PITCHING_STATS = [
   { id: 'whip', label: 'WHIP' },
   { id: 'sv',   label: 'SAVES' },
   { id: 'qs',   label: 'QUALITY STARTS' },
+  { id: 'cg',   label: 'COMPLETE GAMES' },
+  { id: 'sho',  label: 'SHUTOUTS' },
   { id: 'k9',   label: 'K/9' },
   { id: 'bb9',  label: 'BB/9' },
   { id: 'fip',  label: 'FIP' },
+  { id: 'gsc',  label: 'AVG GAME SCORE' },
 ];
 
 export default function Leaderboards() {
