@@ -1663,6 +1663,78 @@ const api = {
     return races;
   },
 
+  // ── Triple Crown Races ─────────────────────────────────────────────────────
+  async getTripleCrownRaces(): Promise<{
+    hitting: Array<{ playerId: number; name: string; teamAbbr: string; avg: number; hr: number; rbi: number; leadsAvg: boolean; leadsHr: boolean; leadsRbi: boolean }>;
+    pitching: Array<{ playerId: number; name: string; teamAbbr: string; era: number; wins: number; k: number; leadsEra: boolean; leadsW: boolean; leadsK: boolean }>;
+  }> {
+    const state = requireState();
+    type HitterEntry = { playerId: number; name: string; teamAbbr: string; avg: number; hr: number; rbi: number; leadsAvg: boolean; leadsHr: boolean; leadsRbi: boolean };
+    type PitcherEntry = { playerId: number; name: string; teamAbbr: string; era: number; wins: number; k: number; leadsEra: boolean; leadsW: boolean; leadsK: boolean };
+
+    const hitters: HitterEntry[] = [];
+    const pitchers: PitcherEntry[] = [];
+
+    for (const [pid, s] of _playerSeasonStats) {
+      const player = _playerMap.get(pid);
+      if (!player) continue;
+      const team = _teamMap.get(player.teamId);
+      if (!team) continue;
+
+      if (!player.isPitcher && s.ab >= 200) {
+        const avg = s.h / s.ab;
+        hitters.push({ playerId: pid, name: player.name, teamAbbr: team.abbreviation, avg, hr: s.hr, rbi: s.rbi, leadsAvg: false, leadsHr: false, leadsRbi: false });
+      }
+      if (player.isPitcher && s.outs >= 100) {
+        const era = (s.er / s.outs) * 27;
+        pitchers.push({ playerId: pid, name: player.name, teamAbbr: team.abbreviation, era, wins: s.w, k: s.ka, leadsEra: false, leadsW: false, leadsK: false });
+      }
+    }
+
+    // Find leaders
+    const bestAvg = hitters.reduce((b, h) => h.avg > b ? h.avg : b, 0);
+    const bestHr = hitters.reduce((b, h) => h.hr > b ? h.hr : b, 0);
+    const bestRbi = hitters.reduce((b, h) => h.rbi > b ? h.rbi : b, 0);
+    for (const h of hitters) {
+      h.leadsAvg = h.avg === bestAvg;
+      h.leadsHr = h.hr === bestHr;
+      h.leadsRbi = h.rbi === bestRbi;
+    }
+
+    const bestEra = pitchers.reduce((b, p) => p.era < b ? p.era : b, 99);
+    const bestW = pitchers.reduce((b, p) => p.wins > b ? p.wins : b, 0);
+    const bestK = pitchers.reduce((b, p) => p.k > b ? p.k : b, 0);
+    for (const p of pitchers) {
+      p.leadsEra = p.era === bestEra;
+      p.leadsW = p.wins === bestW;
+      p.leadsK = p.k === bestK;
+    }
+
+    // Score by how close to triple crown: count leads + proximity
+    const hitterScore = (h: HitterEntry) => {
+      let s = 0;
+      s += (h.leadsAvg ? 10 : 0) + (h.avg / (bestAvg || 1)) * 3;
+      s += (h.leadsHr ? 10 : 0) + (h.hr / (bestHr || 1)) * 3;
+      s += (h.leadsRbi ? 10 : 0) + (h.rbi / (bestRbi || 1)) * 3;
+      return s;
+    };
+    const pitcherScore = (p: PitcherEntry) => {
+      let s = 0;
+      s += (p.leadsEra ? 10 : 0) + (bestEra / (p.era || 1)) * 3;
+      s += (p.leadsW ? 10 : 0) + (p.wins / (bestW || 1)) * 3;
+      s += (p.leadsK ? 10 : 0) + (p.k / (bestK || 1)) * 3;
+      return s;
+    };
+
+    hitters.sort((a, b) => hitterScore(b) - hitterScore(a));
+    pitchers.sort((a, b) => pitcherScore(b) - pitcherScore(a));
+
+    return {
+      hitting: hitters.slice(0, 10),
+      pitching: pitchers.slice(0, 10),
+    };
+  },
+
   // ── Utility ────────────────────────────────────────────────────────────────
   async ping(): Promise<string> {
     return 'pong';
