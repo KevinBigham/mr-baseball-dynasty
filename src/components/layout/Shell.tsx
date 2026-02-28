@@ -185,6 +185,9 @@ import PitcherWorkloadView from '../pitching/PitcherWorkloadView';
 import RunExpectancyView from '../analytics/RunExpectancyView';
 import FrontOfficeView from '../management/FrontOfficeView';
 import PIVIndexView from '../pitching/PIVIndexView';
+import SprayDirectionView from '../analytics/SprayDirectionView';
+import GMTradeHistoryView from '../management/GMTradeHistoryView';
+import PitchVelocityView from '../pitching/PitchVelocityView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -265,6 +268,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'clutchpitching', label: 'CLUTCH PITCHING' },
       { id: 'pitcherworkload', label: 'WORKLOAD MONITOR' },
       { id: 'pivindex', label: 'PIV INDEX' },
+      { id: 'velobands', label: 'VELO BANDS' },
     ],
   },
   {
@@ -341,6 +345,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'catchercalling', label: 'CATCHER CALLING' },
       { id: 'gbfb', label: 'GB/FB TENDENCY' },
       { id: 'runexpectancy', label: 'RUN EXPECTANCY' },
+      { id: 'spraydirection', label: 'SPRAY DIRECTION' },
     ],
   },
   {
@@ -385,6 +390,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'intlscoutboard', label: 'INTL SCOUT BOARD' },
       { id: 'milbaffiliates', label: 'MILB AFFILIATES' },
       { id: 'frontoffice2', label: 'FRONT OFFICE' },
+      { id: 'gmtradehistory', label: 'GM TRADE LOG' },
     ],
   },
   {
@@ -746,6 +752,9 @@ export default function Shell() {
       case 'runexpectancy': return <RunExpectancyView />;
       case 'frontoffice2': return <FrontOfficeView />;
       case 'pivindex': return <PIVIndexView />;
+      case 'spraydirection': return <SprayDirectionView />;
+      case 'gmtradehistory': return <GMTradeHistoryView />;
+      case 'velobands': return <PitchVelocityView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
