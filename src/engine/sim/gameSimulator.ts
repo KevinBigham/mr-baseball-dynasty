@@ -20,6 +20,7 @@ import { isStarterAvailable, isRelieverAvailable, recordAppearance, type Pitcher
 import { selectDefensiveSub } from './defensiveSub';
 import { shouldHitAndRun, getHitAndRunModifiers } from './hitAndRun';
 import { getProtectionModifier } from './lineupProtection';
+import { getClutchModifier } from './clutch';
 import {
   initialMomentum, updateMomentum, resetInningMomentum, getMomentumModifier,
   type MomentumState,
@@ -433,6 +434,23 @@ function simulateHalfInning(
       };
     }
 
+    // ── Clutch modifier: mental toughness in high-leverage PAs ──
+    const li = leverageIndex(
+      ctx.homeScore - ctx.awayScore,
+      ctx.inning, ctx.isTop, markov.outs, markov.runners,
+    );
+    let clutchBatter = hitAndRunBatter;
+    const clutchMod = getClutchModifier(batter.hitterAttributes?.mentalToughness ?? 50, li);
+    if (clutchMod !== 0 && clutchBatter.hitterAttributes) {
+      clutchBatter = {
+        ...clutchBatter,
+        hitterAttributes: {
+          ...clutchBatter.hitterAttributes,
+          contact: Math.max(100, Math.min(550, clutchBatter.hitterAttributes.contact + clutchMod)),
+        },
+      };
+    }
+
     let outcome: PAOutcome;
     if (isIBB) {
       // Intentional walk: automatic BB, no PA resolution needed
@@ -450,9 +468,9 @@ function simulateHalfInning(
       // Lineup protection: on-deck batter influences pitcher approach
       const protectionBBMod = getProtectionModifier(onDeckBatter);
 
-      // Normal PA resolution (with H&R modified batter if applicable)
+      // Normal PA resolution (with clutch + H&R modified batter if applicable)
       const paInput = {
-        batter: hitAndRunBatter,
+        batter: clutchBatter,
         pitcher,
         runners: markov.runners,
         outs: markov.outs,
