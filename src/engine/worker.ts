@@ -655,6 +655,23 @@ const api = {
         case 'whip': value = s.outs > 10 ? -((s.bba + s.ha) / (s.outs / 3)) : -99; break;
         case 'sv':   value = s.sv; break;
         case 'qs':   value = s.qs; break;
+        case 'k9': {
+          const ip = s.outs / 3;
+          value = ip > 20 ? (s.ka / ip) * 9 : 0;
+          break;
+        }
+        case 'bb9': {
+          const ip2 = s.outs / 3;
+          value = ip2 > 20 ? -((s.bba / ip2) * 9) : -99; // negative for ascending sort (lower = better)
+          break;
+        }
+        case 'fip': {
+          const ip3 = s.outs / 3;
+          value = ip3 > 20 ? -((13 * s.hra + 3 * s.bba - 2 * s.ka) / ip3 + 3.10) : -99;
+          break;
+        }
+        case 'r':    value = s.r; break;
+        case '2b':   value = s.doubles; break;
         default:     value = 0;
       }
       if (value !== 0 || stat === 'avg') results.push({ player, value });
@@ -667,7 +684,9 @@ const api = {
       const team = _teamMap.get(r.player.teamId);
       const isRateStat = ['avg', 'obp', 'slg', 'ops'].includes(stat);
       let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
-      if (stat === 'era' || stat === 'whip') displayValue = (-r.value).toFixed(2);
+      if (stat === 'era' || stat === 'whip' || stat === 'fip') displayValue = (-r.value).toFixed(2);
+      if (stat === 'k9') displayValue = r.value.toFixed(1);
+      if (stat === 'bb9') displayValue = (-r.value).toFixed(1);
       return {
         rank: i + 1,
         playerId: r.player.playerId,

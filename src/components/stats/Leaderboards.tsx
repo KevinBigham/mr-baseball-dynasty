@@ -14,6 +14,8 @@ const HITTING_STATS = [
   { id: 'ops', label: 'OPS' },
   { id: 'sb',  label: 'STOLEN BASES' },
   { id: 'h',   label: 'HITS' },
+  { id: 'r',   label: 'RUNS' },
+  { id: '2b',  label: 'DOUBLES' },
 ];
 
 const PITCHING_STATS = [
@@ -23,6 +25,9 @@ const PITCHING_STATS = [
   { id: 'whip', label: 'WHIP' },
   { id: 'sv',   label: 'SAVES' },
   { id: 'qs',   label: 'QUALITY STARTS' },
+  { id: 'k9',   label: 'K/9' },
+  { id: 'bb9',  label: 'BB/9' },
+  { id: 'fip',  label: 'FIP' },
 ];
 
 export default function Leaderboards() {
