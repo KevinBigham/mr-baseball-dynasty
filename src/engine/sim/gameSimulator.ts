@@ -29,6 +29,7 @@ import {
 } from './momentum';
 import { leverageIndex } from './winProbability';
 import { getFramingModifier } from './catcherFraming';
+import { generateWeather, getWeatherHRModifier, getMonthFromDate } from './weather';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -599,8 +600,17 @@ export interface SimulateGameInput {
 export function simulateGame(input: SimulateGameInput): GameResult {
   let gen = createPRNG(input.seed);
 
-  const parkFactor = PARK_FACTORS[input.homeTeam.parkFactorId]
+  const baseParkFactor = PARK_FACTORS[input.homeTeam.parkFactorId]
     ?? PARK_FACTORS[4]!; // fallback to neutral
+
+  // Generate weather (deterministic from seed, no PRNG consumption)
+  const month = getMonthFromDate(input.date);
+  const weather = generateWeather(input.seed, month, !!baseParkFactor.isDome);
+  const weatherHRMod = getWeatherHRModifier(weather);
+  const parkFactor = {
+    ...baseParkFactor,
+    hrFactor: baseParkFactor.hrFactor * weatherHRMod,
+  };
 
   // Build lineups (use saved order if available)
   const homeLineup = buildLineup(input.players, input.homeTeam.teamId, input.lineups?.get(input.homeTeam.teamId));

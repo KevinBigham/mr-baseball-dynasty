@@ -13,6 +13,7 @@ export interface ParkFactor {
   doubleFactor: number;
   kFactor: number;      // Some parks affect K rate (visibility, altitude)
   elevation: number;    // Feet above sea level (high altitude = more fly ball carry)
+  isDome?: boolean;     // Retractable roof / dome (no weather effects)
 }
 
 export const PARK_FACTORS: ParkFactor[] = [
@@ -29,10 +30,10 @@ export const PARK_FACTORS: ParkFactor[] = [
   { id: 6,  name: 'Lake Front Park',  city: 'Lake City',         hrFactor: 1.08, babipFactor: 0.99, tripleFactor: 0.94, doubleFactor: 1.00, kFactor: 1.00, elevation: 590 },
   { id: 7,  name: 'Green Monster',    city: 'Boston Bay',        hrFactor: 0.96, babipFactor: 1.02, tripleFactor: 0.85, doubleFactor: 1.12, kFactor: 0.99, elevation: 20 },
   { id: 8,  name: 'Canyon Field',     city: 'Sun Valley',        hrFactor: 1.06, babipFactor: 1.01, tripleFactor: 1.08, doubleFactor: 1.04, kFactor: 0.99, elevation: 1100 },
-  { id: 9,  name: 'Dome Stadium',     city: 'Twin Peaks',        hrFactor: 0.94, babipFactor: 0.98, tripleFactor: 0.88, doubleFactor: 0.97, kFactor: 1.01, elevation: 830 },
+  { id: 9,  name: 'Dome Stadium',     city: 'Twin Peaks',        hrFactor: 0.94, babipFactor: 0.98, tripleFactor: 0.88, doubleFactor: 0.97, kFactor: 1.01, elevation: 830, isDome: true },
   { id: 10, name: 'South Side Park',  city: 'South City',        hrFactor: 1.10, babipFactor: 1.00, tripleFactor: 0.93, doubleFactor: 0.99, kFactor: 0.99, elevation: 600 },
   { id: 11, name: 'Angel Field',      city: 'Anaheim Hills',     hrFactor: 1.00, babipFactor: 1.00, tripleFactor: 1.00, doubleFactor: 1.00, kFactor: 1.00, elevation: 160 },
-  { id: 12, name: 'Tropics Dome',     city: 'Bay Harbor',        hrFactor: 0.91, babipFactor: 0.98, tripleFactor: 0.90, doubleFactor: 0.96, kFactor: 1.01, elevation: 50 },
+  { id: 12, name: 'Tropics Dome',     city: 'Bay Harbor',        hrFactor: 0.91, babipFactor: 0.98, tripleFactor: 0.90, doubleFactor: 0.96, kFactor: 1.01, elevation: 50, isDome: true },
   { id: 13, name: 'Great Plains Park',city: 'Prairie City',      hrFactor: 1.04, babipFactor: 1.01, tripleFactor: 1.06, doubleFactor: 1.02, kFactor: 1.00, elevation: 900 },
   { id: 14, name: 'Steel City Park',  city: 'Steel City',        hrFactor: 0.93, babipFactor: 0.99, tripleFactor: 1.05, doubleFactor: 1.02, kFactor: 1.00, elevation: 720 },
   { id: 15, name: 'Gateway Arch',     city: 'Gateway City',      hrFactor: 1.02, babipFactor: 1.00, tripleFactor: 0.96, doubleFactor: 1.01, kFactor: 1.00, elevation: 465 },
