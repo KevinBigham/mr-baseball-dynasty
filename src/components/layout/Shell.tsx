@@ -206,6 +206,9 @@ import IntlScoutingBudgetView from '../scouting/IntlScoutingBudgetView';
 import SwingDecisionView from '../analytics/SwingDecisionView';
 import FrontOfficeBudgetView from '../management/FrontOfficeBudgetView';
 import CareerMilestonesView from '../history/CareerMilestonesView';
+import PitchingMatchupView from '../pitching/PitchingMatchupView';
+import FranchiseValueView from '../finance/FranchiseValueView';
+import MiLBStandingsView from '../minors/MiLBStandingsView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -291,6 +294,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'bpleverageroles', label: 'BP LEVERAGE' },
       { id: 'arsenalheatmap', label: 'ARSENAL HEATMAP' },
       { id: 'pitchgrading', label: 'PITCH GRADING' },
+      { id: 'pitchmatchup', label: 'PITCH MATCHUP' },
     ],
   },
   {
@@ -426,6 +430,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectcomp', label: 'PROSPECT COMP' },
       { id: 'intlbudget', label: 'INTL BUDGET' },
       { id: 'fobudget', label: 'FO BUDGET' },
+      { id: 'franchisevalue', label: 'FRANCHISE VALUE' },
+      { id: 'milbstandings', label: 'MILB STANDINGS' },
     ],
   },
   {
@@ -809,6 +815,9 @@ export default function Shell() {
       case 'swingdecision': return <SwingDecisionView />;
       case 'fobudget': return <FrontOfficeBudgetView />;
       case 'careermilestones': return <CareerMilestonesView />;
+      case 'pitchmatchup': return <PitchingMatchupView />;
+      case 'franchisevalue': return <FranchiseValueView />;
+      case 'milbstandings': return <MiLBStandingsView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
