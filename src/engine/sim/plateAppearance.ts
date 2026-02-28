@@ -337,9 +337,11 @@ function stage3(
       if (runnerOn1st && outs < 2) {
         let dpRoll: number;
         [dpRoll, gen] = nextFloat(gen);
-        // Base DP rate adjusted by batter speed (slow = more DP) and pitcher GB tendency
+        // Base DP rate adjusted by batter speed (slow = more DP) and defense quality
         const speedMod = 1.0 - ((batter.hitterAttributes?.speed ?? 350) - 350) / 400 * 0.10; // fast = -10% DP
-        let dpRate = 0.42 * speedMod;
+        // Better infield defense turns more double plays
+        const defDPMod = 1.0 + (defenseRating - 400) / 400 * 0.05; // elite defense = +5% DP, poor = -5%
+        let dpRate = 0.42 * speedMod * defDPMod;
         if (infieldIn) dpRate *= 0.55; // Infield in makes DP harder to turn
         if (dpRoll < dpRate) return ['GDP', gen];
       }
