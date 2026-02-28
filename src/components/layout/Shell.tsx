@@ -122,6 +122,9 @@ import PlayerConditioningView from '../player/PlayerConditioningView';
 import StolenBaseAnalyticsView from '../analytics/StolenBaseAnalyticsView';
 import BullpenUsageView from '../pitching/BullpenUsageView';
 import PlatoonAdvantageView from '../analytics/PlatoonAdvantageView';
+import BatProfileView from '../analytics/BatProfileView';
+import ClutchIndexView from '../analytics/ClutchIndexView';
+import PitchTunnelingView from '../pitching/PitchTunnelingView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -180,6 +183,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchcount', label: 'PITCH COUNT' },
       { id: 'conditioning', label: 'CONDITIONING' },
       { id: 'bullpenusage', label: 'BULLPEN USAGE' },
+      { id: 'tunneling', label: 'PITCH TUNNELING' },
     ],
   },
   {
@@ -228,6 +232,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'defshifts', label: 'DEF POSITIONING' },
       { id: 'lineupopt', label: 'LINEUP OPTIMIZER' },
       { id: 'platoonadv', label: 'PLATOON MATRIX' },
+      { id: 'batprofile', label: 'BATTED BALL' },
+      { id: 'clutchindex', label: 'CLUTCH INDEX' },
     ],
   },
   {
@@ -557,6 +563,9 @@ export default function Shell() {
       case 'sbanalytics': return <StolenBaseAnalyticsView />;
       case 'bullpenusage': return <BullpenUsageView />;
       case 'platoonadv': return <PlatoonAdvantageView />;
+      case 'batprofile': return <BatProfileView />;
+      case 'clutchindex': return <ClutchIndexView />;
+      case 'tunneling': return <PitchTunnelingView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
