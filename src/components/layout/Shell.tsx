@@ -212,6 +212,9 @@ import MiLBStandingsView from '../minors/MiLBStandingsView';
 import PlatoonMatrixView from '../analytics/PlatoonMatrixView';
 import ProspectReportView from '../scouting/ProspectReportView';
 import StadiumRevenueView from '../finance/StadiumRevenueView';
+import SpinRateView from '../pitching/SpinRateView';
+import DraftBoardView from '../draft/DraftBoardView';
+import PlayerCompView from '../analytics/PlayerCompView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -298,6 +301,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'arsenalheatmap', label: 'ARSENAL HEATMAP' },
       { id: 'pitchgrading', label: 'PITCH GRADING' },
       { id: 'pitchmatchup', label: 'PITCH MATCHUP' },
+      { id: 'spinrate', label: 'SPIN RATE' },
     ],
   },
   {
@@ -331,6 +335,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fatracker', label: 'FA TRACKER' },
       { id: 'buyoutcalc', label: 'BUYOUT CALC' },
       { id: 'deadlinewarroom', label: 'WAR ROOM' },
+      { id: 'draftboard', label: 'DRAFT BOARD' },
     ],
   },
   {
@@ -384,6 +389,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'defwar', label: 'DEF WAR' },
       { id: 'swingdecision', label: 'SWING DECISION' },
       { id: 'platoonmatrix', label: 'PLATOON MATRIX' },
+      { id: 'playercomp', label: 'PLAYER COMP' },
     ],
   },
   {
@@ -827,6 +833,9 @@ export default function Shell() {
       case 'platoonmatrix': return <PlatoonMatrixView />;
       case 'prospectreport': return <ProspectReportView />;
       case 'stadiumrevenue': return <StadiumRevenueView />;
+      case 'spinrate': return <SpinRateView />;
+      case 'draftboard': return <DraftBoardView />;
+      case 'playercomp': return <PlayerCompView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
