@@ -143,6 +143,9 @@ import PayrollFlexibilityView from '../finance/PayrollFlexibilityView';
 import MatchupExplorerView from '../analytics/MatchupExplorerView';
 import DraftCapitalView from '../draft/DraftCapitalView';
 import ChemistryDynamicsView from '../clubhouse/ChemistryDynamicsView';
+import PitchSequenceView from '../pitching/PitchSequenceView';
+import InjuryRiskView from '../medical/InjuryRiskView';
+import MarketValueView from '../trade/MarketValueView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -209,6 +212,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchmix', label: 'PITCH MIX' },
       { id: 'pitchcommand', label: 'PITCH COMMAND' },
       { id: 'chemdynamics', label: 'CHEM DYNAMICS' },
+      { id: 'pitchsequence', label: 'PITCH SEQUENCE' },
+      { id: 'injuryrisk', label: 'INJURY RISK' },
     ],
   },
   {
@@ -234,6 +239,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'qualifyingoffer', label: 'QUALIFYING OFFER' },
       { id: 'tradecalc', label: 'TRADE CALCULATOR' },
       { id: 'deadlinecountdown', label: 'DEADLINE COUNTDOWN' },
+      { id: 'marketvalue', label: 'MARKET VALUE' },
     ],
   },
   {
@@ -620,6 +626,9 @@ export default function Shell() {
       case 'matchupexplorer': return <MatchupExplorerView />;
       case 'draftcapital': return <DraftCapitalView />;
       case 'chemdynamics': return <ChemistryDynamicsView />;
+      case 'pitchsequence': return <PitchSequenceView />;
+      case 'injuryrisk': return <InjuryRiskView />;
+      case 'marketvalue': return <MarketValueView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
