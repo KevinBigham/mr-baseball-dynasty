@@ -110,6 +110,9 @@ import BattingPracticeView from '../game/BattingPracticeView';
 import SeptemberCallupsView from '../roster/SeptemberCallupsView';
 import ServiceTimeView from '../player/ServiceTimeView';
 import HotColdStreaksView from '../player/HotColdStreaksView';
+import WARBreakdownView from '../analytics/WARBreakdownView';
+import PitchCountView from '../pitching/PitchCountView';
+import DoubleHeaderView from '../game/DoubleHeaderView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -142,6 +145,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'mediapersona', label: 'MEDIA PERSONA' },
       { id: 'filmstudy', label: 'FILM STUDY' },
       { id: 'pregame', label: 'PRE-GAME PREP' },
+      { id: 'doubleheader', label: 'DOUBLEHEADERS' },
     ],
   },
   {
@@ -162,6 +166,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'chemmatrix', label: 'CHEMISTRY MATRIX' },
       { id: 'septcallups', label: 'SEPT CALL-UPS' },
       { id: 'streaks', label: 'HOT/COLD STREAKS' },
+      { id: 'pitchcount', label: 'PITCH COUNT' },
     ],
   },
   {
@@ -204,6 +209,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platoons', label: 'PLATOON SPLITS' },
       { id: 'awardpredictions', label: 'AWARD PREDICTIONS' },
       { id: 'parks', label: 'BALLPARKS' },
+      { id: 'warbreakdown', label: 'WAR BREAKDOWN' },
     ],
   },
   {
@@ -521,6 +527,9 @@ export default function Shell() {
       case 'septcallups': return <SeptemberCallupsView />;
       case 'servicetime': return <ServiceTimeView />;
       case 'streaks': return <HotColdStreaksView />;
+      case 'warbreakdown': return <WARBreakdownView />;
+      case 'pitchcount': return <PitchCountView />;
+      case 'doubleheader': return <DoubleHeaderView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
