@@ -149,6 +149,9 @@ import MarketValueView from '../trade/MarketValueView';
 import SituationalHittingView from '../analytics/SituationalHittingView';
 import RelieverRolesView from '../pitching/RelieverRolesView';
 import DevelopmentPathView from '../prospects/DevelopmentPathView';
+import PitchArsenalView from '../pitching/PitchArsenalView';
+import WaiverClaimsView from '../roster/WaiverClaimsView';
+import GameScoreView from '../analytics/GameScoreView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -218,6 +221,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchsequence', label: 'PITCH SEQUENCE' },
       { id: 'injuryrisk', label: 'INJURY RISK' },
       { id: 'relieverroles', label: 'RELIEVER ROLES' },
+      { id: 'pitcharsenal', label: 'PITCH ARSENAL' },
     ],
   },
   {
@@ -244,6 +248,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'tradecalc', label: 'TRADE CALCULATOR' },
       { id: 'deadlinecountdown', label: 'DEADLINE COUNTDOWN' },
       { id: 'marketvalue', label: 'MARKET VALUE' },
+      { id: 'waiverclaims', label: 'WAIVER CLAIMS' },
     ],
   },
   {
@@ -276,6 +281,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platediscipline', label: 'PLATE DISCIPLINE' },
       { id: 'matchupexplorer', label: 'MATCHUP EXPLORER' },
       { id: 'situational', label: 'SITUATIONAL' },
+      { id: 'gamescore', label: 'GAME SCORE' },
     ],
   },
   {
@@ -638,6 +644,9 @@ export default function Shell() {
       case 'situational': return <SituationalHittingView />;
       case 'relieverroles': return <RelieverRolesView />;
       case 'devpath': return <DevelopmentPathView />;
+      case 'pitcharsenal': return <PitchArsenalView />;
+      case 'waiverclaims': return <WaiverClaimsView />;
+      case 'gamescore': return <GameScoreView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
