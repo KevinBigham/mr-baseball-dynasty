@@ -197,6 +197,9 @@ import PowerRankHistoryView from '../analytics/PowerRankHistoryView';
 import ArsenalHeatmapView from '../pitching/ArsenalHeatmapView';
 import TeamDepthScoreView from '../analytics/TeamDepthScoreView';
 import SalaryCapSimView from '../finance/SalaryCapSimView';
+import ExpectedBAView from '../analytics/ExpectedBAView';
+import DeadlineWarRoomView from '../trade/DeadlineWarRoomView';
+import ProspectCompMatrixView from '../scouting/ProspectCompMatrixView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -313,6 +316,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'tradeleverage', label: 'TRADE LEVERAGE' },
       { id: 'fatracker', label: 'FA TRACKER' },
       { id: 'buyoutcalc', label: 'BUYOUT CALC' },
+      { id: 'deadlinewarroom', label: 'WAR ROOM' },
     ],
   },
   {
@@ -362,6 +366,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'agingcurves', label: 'AGING CURVES' },
       { id: 'rankhistory', label: 'RANK HISTORY' },
       { id: 'teamdepth', label: 'TEAM DEPTH' },
+      { id: 'expectedba', label: 'EXPECTED BA' },
     ],
   },
   {
@@ -409,6 +414,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gmtradehistory', label: 'GM TRADE LOG' },
       { id: 'draftclassscouting', label: 'DRAFT REPORTS' },
       { id: 'salarycapsim', label: 'SALARY CAP SIM' },
+      { id: 'prospectcomp', label: 'PROSPECT COMP' },
     ],
   },
   {
@@ -782,6 +788,9 @@ export default function Shell() {
       case 'arsenalheatmap': return <ArsenalHeatmapView />;
       case 'teamdepth': return <TeamDepthScoreView />;
       case 'salarycapsim': return <SalaryCapSimView />;
+      case 'expectedba': return <ExpectedBAView />;
+      case 'deadlinewarroom': return <DeadlineWarRoomView />;
+      case 'prospectcomp': return <ProspectCompMatrixView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
