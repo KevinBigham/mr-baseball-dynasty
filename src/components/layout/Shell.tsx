@@ -56,6 +56,9 @@ import DynastyDashboard from '../analytics/DynastyDashboard';
 import PostGameReport from '../analytics/PostGameReport';
 import GMStrategyPanel from '../strategy/GMStrategyPanel';
 import CoachSkillTree from '../coaching/CoachSkillTree';
+import BreakoutTracker from '../prospects/BreakoutTracker';
+import OpponentScouting from '../scouting/OpponentScouting';
+import StoryArcViewer from '../narrative/StoryArcViewer';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -131,6 +134,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scoutingboard', label: 'SCOUTING BOARD' },
       { id: 'pipeline', label: 'FARM PIPELINE' },
       { id: 'devtracker', label: 'DEVELOPMENT' },
+      { id: 'breakouts', label: 'BREAKOUT WATCH' },
+      { id: 'scouting', label: 'OPPONENT INTEL' },
       { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
     ],
@@ -142,6 +147,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'recap', label: 'SEASON RECAP' },
       { id: 'timeline', label: 'TIMELINE' },
       { id: 'newsfeed', label: 'NEWS FEED' },
+      { id: 'storyarcs', label: 'STORY ARCS' },
       { id: 'awardsgallery', label: 'AWARDS GALLERY' },
       { id: 'milestones', label: 'MILESTONES' },
       { id: 'history', label: 'TRANSACTIONS' },
@@ -359,6 +365,9 @@ export default function Shell() {
       case 'postgame':     return <PostGameReport report={null} />;
       case 'gmstrategy':   return <GMStrategyPanel />;
       case 'skilltree':    return <CoachSkillTree />;
+      case 'breakouts':    return <BreakoutTracker />;
+      case 'scouting':     return <OpponentScouting />;
+      case 'storyarcs':    return <StoryArcViewer />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
