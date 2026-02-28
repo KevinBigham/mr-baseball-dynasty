@@ -68,6 +68,9 @@ import GMReputationView from '../management/GMReputationView';
 import HoldoutCenter from '../contracts/HoldoutCenter';
 import OffseasonEventsView from '../offseason/OffseasonEventsView';
 import FranchiseLegacyView from '../history/FranchiseLegacyView';
+import PressRoom from '../media/PressRoom';
+import SeasonGoalsView from '../goals/SeasonGoalsView';
+import SalaryBreakdown from '../finance/SalaryBreakdown';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -88,6 +91,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'standings', label: 'STANDINGS' },
       { id: 'playoffpicture', label: 'PLAYOFF PICTURE' },
       { id: 'challenges', label: 'SERIES CHALLENGES' },
+      { id: 'pressroom', label: 'PRESS ROOM' },
+      { id: 'seasongoals', label: 'SEASON GOALS' },
     ],
   },
   {
@@ -154,6 +159,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
       { id: 'gmrep', label: 'GM REPUTATION' },
+      { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
     ],
   },
   {
@@ -395,6 +401,9 @@ export default function Shell() {
       case 'holdouts':     return <HoldoutCenter />;
       case 'offseasonevents': return <OffseasonEventsView />;
       case 'legacy':       return <FranchiseLegacyView />;
+      case 'pressroom':    return <PressRoom />;
+      case 'seasongoals':  return <SeasonGoalsView />;
+      case 'salarybreakdown': return <SalaryBreakdown />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
