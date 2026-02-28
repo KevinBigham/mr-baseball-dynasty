@@ -831,9 +831,14 @@ function managePitcher(
   // Pitch limit: secondary gate
   const pitchLimit = Math.round(55 + staminaAttr / 14);
 
+  // Times through order: only pull on 4th+ TTO (very rare — 27+ batters faced)
+  // This prevents "going around again" in games where starters go deep
+  const tto = timesThroughRef.value;
+
   const shouldPull =
     pc > pitchLimit ||
     (currentPitcher.position === 'SP' && inning >= maxSPInnings) ||
+    (currentPitcher.position === 'SP' && tto >= 4) ||
     (currentPitcher.position !== 'SP' && inning >= 8);
 
   if (!shouldPull) return currentPitcher;
