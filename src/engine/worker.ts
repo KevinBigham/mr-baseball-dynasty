@@ -1087,6 +1087,44 @@ const api = {
     };
   },
 
+  // ── Development Events & Season Highlights ─────────────────────────────────
+  async getDevelopmentEvents(): Promise<Array<{
+    season: number;
+    events: Array<{ playerId: number; playerName: string; type: string; overallDelta?: number }>;
+  }>> {
+    return _seasonResults.map(sr => ({
+      season: sr.season,
+      events: (sr.developmentEvents ?? []).map(e => ({
+        playerId: e.playerId,
+        playerName: e.playerName,
+        type: e.type,
+        overallDelta: e.overallDelta,
+      })),
+    }));
+  },
+
+  async getSeasonHighlights(): Promise<Array<{
+    season: number;
+    leagueBA: number;
+    leagueERA: number;
+    leagueRPG: number;
+    freeAgencySignings: number;
+    breakouts: number;
+    busts: number;
+    retirements: number;
+  }>> {
+    return _seasonResults.map(sr => ({
+      season: sr.season,
+      leagueBA: sr.leagueBA,
+      leagueERA: sr.leagueERA,
+      leagueRPG: sr.leagueRPG,
+      freeAgencySignings: sr.freeAgencySignings ?? 0,
+      breakouts: (sr.developmentEvents ?? []).filter(e => e.type === 'breakout').length,
+      busts: (sr.developmentEvents ?? []).filter(e => e.type === 'bust').length,
+      retirements: (sr.developmentEvents ?? []).filter(e => e.type === 'retirement').length,
+    }));
+  },
+
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
     if (!_state) return null;
