@@ -7,6 +7,7 @@ import { LEAGUE_RATES } from '../../data/positionalPriors';
 import type { ParkFactor } from '../../data/parkFactors';
 import { computeShiftDecision } from './defensiveShift';
 import { getInfieldHitBonus } from './infieldHit';
+import { getGBPitcherBABIPMod } from './gbPitcherAdvantage';
 
 // ─── Inputs to a single plate appearance ──────────────────────────────────────
 export interface PAInput {
@@ -125,7 +126,8 @@ function pitcherToRates(p: PitcherAttributes): {
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),
     gbPercent: p.gbFbTendency / 100,
     // Movement quality: high movement → weaker contact, lower BABIP (±0.01)
-    movementBABIP: -(movementFactor - 1.0) * 0.01,
+    // Plus GB pitcher advantage: extreme GB pitchers get lower BABIP
+    movementBABIP: -(movementFactor - 1.0) * 0.01 + getGBPitcherBABIPMod(p.gbFbTendency),
   };
 }
 
