@@ -6,6 +6,7 @@ import type { Player, PlayerSeasonStats, PlayerGameStats, PitcherGameStats } fro
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
 import type { PitcherRestMap } from './pitcherRest';
+import { updateAllStreaks, type HitterStreakState } from './hitterStreaks';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -198,6 +199,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
   const rotationIndex = input.rotationIndex ?? new Map<number, number>();
   const bullpenOffset = input.bullpenOffset ?? new Map<number, number>();
   const pitcherRestMap: PitcherRestMap = input.pitcherRestMap ?? new Map();
+  const hitterStreaks = new Map<number, import('./hitterStreaks').HitterStreakState>();
 
   for (const t of teams) {
     if (!rotationIndex.has(t.teamId)) rotationIndex.set(t.teamId, 0);
@@ -240,6 +242,7 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
       lineups: input.lineups,
       gameIndex: i,
       pitcherRestMap,
+      hitterStreaks,
     });
 
     rotationIndex.set(entry.homeTeamId, (rotationIndex.get(entry.homeTeamId) ?? 0) + 1);
@@ -264,6 +267,10 @@ export async function simulateGamesRange(input: PartialSimInput): Promise<{
     accumulateBatting(playerStatsMap, box.awayBatting, playerTeamMap, season);
     accumulatePitching(playerStatsMap, box.homePitching, playerTeamMap, playerPositionMap, season);
     accumulatePitching(playerStatsMap, box.awayPitching, playerTeamMap, playerPositionMap, season);
+
+    // Update hitter streaks from this game's batting stats
+    updateAllStreaks(hitterStreaks, box.homeBatting);
+    updateAllStreaks(hitterStreaks, box.awayBatting);
 
     // Collect recent games for the user's team
     if (input.userTeamId !== undefined &&

@@ -30,6 +30,7 @@ import {
 import { leverageIndex } from './winProbability';
 import { getFramingModifier } from './catcherFraming';
 import { generateWeather, getWeatherHRModifier, getMonthFromDate } from './weather';
+import { getStreakContactModifier } from './hitterStreaks';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -280,6 +281,7 @@ function simulateHalfInning(
   fieldingTeamId: number,
   bench: Player[],
   momentumRef: { value: MomentumState },
+  hitterStreaks?: Map<number, import('./hitterStreaks').HitterStreakState>,
   playLog?: PlayEvent[],
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
@@ -448,12 +450,14 @@ function simulateHalfInning(
     );
     let clutchBatter = hitAndRunBatter;
     const clutchMod = getClutchModifier(batter.hitterAttributes?.mentalToughness ?? 50, li);
-    if (clutchMod !== 0 && clutchBatter.hitterAttributes) {
+    const streakMod = getStreakContactModifier(hitterStreaks?.get(batter.playerId));
+    const totalContactMod = clutchMod + streakMod;
+    if (totalContactMod !== 0 && clutchBatter.hitterAttributes) {
       clutchBatter = {
         ...clutchBatter,
         hitterAttributes: {
           ...clutchBatter.hitterAttributes,
-          contact: Math.max(100, Math.min(550, clutchBatter.hitterAttributes.contact + clutchMod)),
+          contact: Math.max(100, Math.min(550, clutchBatter.hitterAttributes.contact + totalContactMod)),
         },
       };
     }
@@ -600,6 +604,7 @@ export interface SimulateGameInput {
   lineups?: Map<number, number[]>; // teamId → saved batting order (9 player IDs)
   gameIndex?: number;              // Index in the season schedule (for rest tracking)
   pitcherRestMap?: PitcherRestMap; // Pitcher rest state (mutated after game)
+  hitterStreaks?: Map<number, import('./hitterStreaks').HitterStreakState>; // Rolling streak state
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -738,6 +743,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.homeTeam.teamId,
       awayBench,
       homeMomentum,
+      input.hitterStreaks,
       playLog,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
@@ -806,6 +812,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.awayTeam.teamId,
       homeBench,
       awayMomentum,
+      input.hitterStreaks,
       playLog,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
