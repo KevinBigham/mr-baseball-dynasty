@@ -106,19 +106,25 @@ function hitterToRates(h: HitterAttributes): {
 
 function pitcherToRates(p: PitcherAttributes): {
   kRate: number; bbRate: number; hrRate: number; hbpRate: number;
-  gbPercent: number;
+  gbPercent: number; movementBABIP: number;
 } {
   const stuffFactor   = p.stuff   / 400;
   const commandFactor = p.command / 400;
+  const movementFactor = (p.movement ?? 400) / 400;
+
+  // Movement reduces hard contact quality (lower BABIP) and HR rate
+  const movementHRSuppression = 1.0 - (movementFactor - 1.0) * 0.15; // High movement suppresses HR
 
   return {
     // exponent=1.3: elite stuff generates 200+K seasons (gate ≥ 15); avg pitchers unchanged
     // since 1.0^1.3=1.0; at stuffFactor=1.30→kRate≈0.316, producing realistic K distributions
     kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 1.3))),
     bbRate:    Math.max(0.03, LEAGUE_RATES.pitcherBBRate * (2 - commandFactor)),
-    hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor)),
+    hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor) * movementHRSuppression),
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),
     gbPercent: p.gbFbTendency / 100,
+    // Movement quality: high movement → weaker contact, lower BABIP (±0.01)
+    movementBABIP: -(movementFactor - 1.0) * 0.01,
   };
 }
 
@@ -425,7 +431,7 @@ export function resolvePlateAppearance(
     input.outs,
     input.batter,
     input.infieldIn,
-    input.tempoBABIPMod,
+    (input.tempoBABIPMod ?? 0) + pRates.movementBABIP,
   );
 
   return [{ outcome: finalOutcome, runsScored: 0, runnersAdvanced: 0 }, gen];
