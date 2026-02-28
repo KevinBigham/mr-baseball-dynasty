@@ -128,6 +128,9 @@ import PitchTunnelingView from '../pitching/PitchTunnelingView';
 import RunDifferentialView from '../analytics/RunDifferentialView';
 import RosterCrunchView from '../roster/RosterCrunchView';
 import RotationPlannerView from '../pitching/RotationPlannerView';
+import SprayChartView from '../analytics/SprayChartView';
+import CareerProgressionView from '../player/CareerProgressionView';
+import PitchMixView from '../pitching/PitchMixView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -189,6 +192,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'tunneling', label: 'PITCH TUNNELING' },
       { id: 'rostercrunch', label: 'ROSTER CRUNCH' },
       { id: 'rotationplan', label: 'ROTATION PLAN' },
+      { id: 'careerprog', label: 'CAREER CURVES' },
+      { id: 'pitchmix', label: 'PITCH MIX' },
     ],
   },
   {
@@ -240,6 +245,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'batprofile', label: 'BATTED BALL' },
       { id: 'clutchindex', label: 'CLUTCH INDEX' },
       { id: 'rundiff', label: 'RUN DIFFERENTIAL' },
+      { id: 'spraychart', label: 'SPRAY CHARTS' },
     ],
   },
   {
@@ -575,6 +581,9 @@ export default function Shell() {
       case 'rundiff': return <RunDifferentialView />;
       case 'rostercrunch': return <RosterCrunchView />;
       case 'rotationplan': return <RotationPlannerView />;
+      case 'spraychart': return <SprayChartView />;
+      case 'careerprog': return <CareerProgressionView />;
+      case 'pitchmix': return <PitchMixView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
