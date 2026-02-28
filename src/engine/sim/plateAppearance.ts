@@ -273,6 +273,17 @@ function stage3(
     hRates.babip - defMod + parkBabipMod + shiftMod + infieldInMod,
   ));
 
+  // Spray chart: pull tendency shifts XBH distribution
+  // Pull hitters: more doubles (down-the-line), fewer triples
+  // Spray hitters: more triples (gap-to-gap), slightly fewer doubles
+  const h = batter.hitterAttributes;
+  const pullRaw = h ? (h.power / 550) * 0.55 + (1 - h.speed / 550) * 0.25 + (1 - h.contact / 550) * 0.20 : 0.5;
+  const pullT = Math.max(0.1, Math.min(0.9, pullRaw));
+  // pullDblBonus: pull hitters get +4% doubles on XBH, spray hitters get -2%
+  const pullDblBonus = (pullT - 0.5) * 0.08;
+  // pull3bPenalty: pull hitters get fewer triples, spray hitters get more
+  const pull3bMod = (0.5 - pullT) * 0.04;
+
   let roll: number;
   [roll, gen] = nextFloat(gen);
 
@@ -285,9 +296,9 @@ function stage3(
         let hitRoll: number;
         [hitRoll, gen] = nextFloat(gen);
         const xbhBonus = parkFactor.doubleFactor - 1.0;
-        // LDs: ~75% singles, ~22% doubles, ~3% triples
-        if (hitRoll < 0.03 + parkFactor.tripleFactor * 0.01) return ['3B', gen];
-        if (hitRoll < 0.25 + xbhBonus * 0.2)                 return ['2B', gen];
+        // LDs: ~75% singles, ~22% doubles, ~3% triples (modified by spray)
+        if (hitRoll < 0.03 + parkFactor.tripleFactor * 0.01 + pull3bMod) return ['3B', gen];
+        if (hitRoll < 0.25 + xbhBonus * 0.2 + pullDblBonus)              return ['2B', gen];
         return ['1B', gen];
       }
       // Out — but check for error first
@@ -318,12 +329,12 @@ function stage3(
 
     case 'FB': {
       if (roll < effectiveBabip * 0.75) { // FBs have lower BABIP
-        // Hit — mostly extra base hits
+        // Hit — mostly extra base hits (modified by spray chart)
         let hitRoll: number;
         [hitRoll, gen] = nextFloat(gen);
         const xbhBonus = parkFactor.doubleFactor - 1.0;
-        if (hitRoll < 0.05 + parkFactor.tripleFactor * 0.015) return ['3B', gen];
-        if (hitRoll < 0.45 + xbhBonus * 0.25)                 return ['2B', gen];
+        if (hitRoll < 0.05 + parkFactor.tripleFactor * 0.015 + pull3bMod) return ['3B', gen];
+        if (hitRoll < 0.45 + xbhBonus * 0.25 + pullDblBonus)              return ['2B', gen];
         return ['1B', gen];
       }
       // Out — check for error first
