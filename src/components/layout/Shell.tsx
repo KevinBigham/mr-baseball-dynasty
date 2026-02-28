@@ -98,6 +98,9 @@ import ArbitrationView from '../contracts/ArbitrationView';
 import TradeRumorBoard from '../trade/TradeRumorBoard';
 import RetirementWatchView from '../player/RetirementWatchView';
 import ProspectGraduationView from '../prospects/ProspectGraduationView';
+import WinExpectancyView from '../game/WinExpectancyView';
+import StaffPoachingView from '../management/StaffPoachingView';
+import MediaPersonaView from '../narrative/MediaPersonaView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -126,6 +129,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'umpires', label: 'UMPIRE INTEL' },
       { id: 'weather', label: 'WEATHER' },
       { id: 'rivalries', label: 'RIVALRIES' },
+      { id: 'winexpectancy', label: 'WIN EXPECTANCY' },
+      { id: 'mediapersona', label: 'MEDIA PERSONA' },
     ],
   },
   {
@@ -212,6 +217,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'stadium', label: 'STADIUM UPGRADES' },
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
       { id: 'prospectgrad', label: 'PROSPECT GRAD' },
+      { id: 'staffpoaching', label: 'STAFF POACHING' },
     ],
   },
   {
@@ -485,6 +491,9 @@ export default function Shell() {
       case 'traderumors': return <TradeRumorBoard />;
       case 'retirement': return <RetirementWatchView />;
       case 'prospectgrad': return <ProspectGraduationView />;
+      case 'winexpectancy': return <WinExpectancyView />;
+      case 'staffpoaching': return <StaffPoachingView />;
+      case 'mediapersona': return <MediaPersonaView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
