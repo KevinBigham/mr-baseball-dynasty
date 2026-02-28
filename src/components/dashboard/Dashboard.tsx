@@ -369,6 +369,14 @@ export default function Dashboard() {
           className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
           ROSTER
         </button>
+        <button onClick={() => setActiveTab('simhub')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
+          SIM HUB
+        </button>
+        <button onClick={() => setActiveTab('playoffpicture')}
+          className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors">
+          PLAYOFFS
+        </button>
       </div>
 
       {error && (
@@ -534,6 +542,14 @@ export default function Dashboard() {
             <button onClick={() => setActiveTab('roster')}
               className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               YOUR ROSTER →
+            </button>
+            <button onClick={() => setActiveTab('offseason')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
+              OFFSEASON HUB →
+            </button>
+            <button onClick={() => setActiveTab('awards')}
+              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
+              AWARD RACES →
             </button>
           </div>
         </div>
