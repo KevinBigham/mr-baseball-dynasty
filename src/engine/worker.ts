@@ -765,6 +765,11 @@ const api = {
         };
         return { vsLHP: buildSplit(s.vsLHP), vsRHP: buildSplit(s.vsRHP) };
       })() : null,
+      pitchMix: player.pitcherAttributes?.pitchTypeMix ? {
+        fastball: Math.round(player.pitcherAttributes.pitchTypeMix.fastball * 100),
+        breaking: Math.round(player.pitcherAttributes.pitchTypeMix.breaking * 100),
+        offspeed: Math.round(player.pitcherAttributes.pitchTypeMix.offspeed * 100),
+      } : null,
       careerStats: (() => {
         const career = getCareerRecords().get(playerId);
         if (career) {

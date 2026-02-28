@@ -110,6 +110,30 @@ export default function PlayerProfile() {
         </div>
       </div>
 
+      {/* Pitch repertoire (pitchers only) */}
+      {isPitcher && data.pitchMix && (
+        <div className="bloomberg-border mb-4">
+          <div className="bloomberg-header">PITCH REPERTOIRE</div>
+          <div className="flex gap-4 p-3">
+            {[
+              { label: 'FB', pct: data.pitchMix.fastball, color: 'bg-red-500' },
+              { label: 'BRK', pct: data.pitchMix.breaking, color: 'bg-blue-500' },
+              { label: 'OFF', pct: data.pitchMix.offspeed, color: 'bg-green-500' },
+            ].filter(p => p.pct > 0).map(p => (
+              <div key={p.label} className="flex-1">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-gray-500">{p.label}</span>
+                  <span className="text-gray-200 tabular-nums font-bold">{p.pct}%</span>
+                </div>
+                <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className={`h-full ${p.color} rounded-full`} style={{ width: `${p.pct}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Season stats */}
       {seasonStats && (
         <div className="bloomberg-border">

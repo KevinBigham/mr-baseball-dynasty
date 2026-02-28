@@ -176,4 +176,5 @@ export interface PlayerProfileData {
     [key: string]: number;
   };
   splits?: { vsLHP: SplitLine; vsRHP: SplitLine } | null;
+  pitchMix?: { fastball: number; breaking: number; offspeed: number } | null;
 }
