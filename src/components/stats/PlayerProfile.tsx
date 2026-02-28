@@ -201,8 +201,10 @@ export default function PlayerProfile() {
                     {statRow('2B',  (seasonStats as Record<string, number>).doubles)}
                     {statRow('3B',  (seasonStats as Record<string, number>).triples)}
                     {statRow('HR',  (seasonStats as Record<string, number>).hr)}
+                    {statRow('R',   (seasonStats as Record<string, number>).r)}
                     {statRow('RBI', (seasonStats as Record<string, number>).rbi)}
                     {statRow('SB',  (seasonStats as Record<string, number>).sb)}
+                    {statRow('CS',  (seasonStats as Record<string, number>).cs)}
                   </>
                 )}
               </tbody>

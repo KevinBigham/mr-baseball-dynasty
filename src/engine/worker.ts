@@ -809,7 +809,8 @@ const api = {
 
       return {
         season: state.season - 1,
-        pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
+        g: s.g, pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, r: s.r, rbi: s.rbi,
+        bb: s.bb, k: s.k, sb: s.sb, cs: s.cs,
         doubles: s.doubles, triples: s.triples,
         avg: Number(avg.toFixed(3)),
         obp: Number(obp.toFixed(3)),
