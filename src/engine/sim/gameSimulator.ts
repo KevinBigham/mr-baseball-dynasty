@@ -18,6 +18,7 @@ import {
 } from './fsm';
 import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
 import { selectDefensiveSub } from './defensiveSub';
+import { leverageIndex } from './winProbability';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -873,7 +874,12 @@ function managePitcher(
     : undefined;
 
   // Pull and bring in reliever (with rest awareness)
-  const wantCloser = saveSituation && inning >= 9;
+  // Use closer in save situations (9th+) or high-leverage 8th-inning spots
+  const li = leverageIndex(
+    currentLead ?? 0, inning, false, 0, 0,
+  );
+  const wantCloser = saveSituation && inning >= 9
+    || (inning >= 8 && (currentLead ?? 0) > 0 && (currentLead ?? 0) <= 2 && li >= 1.5);
   const counter = (bullpenOffset + usedIds.size) % 100;
   const next = pickReliever(
     players, teamId, counter, usedIds, wantCloser, preferredHand,
