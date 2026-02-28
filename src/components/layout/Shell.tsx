@@ -21,6 +21,7 @@ import TeamComparison from '../analytics/TeamComparison';
 import HallOfFame from '../history/HallOfFame';
 import DepthChart from '../roster/DepthChart';
 import Scoreboard from '../game/Scoreboard';
+import AwardRaces from '../analytics/AwardRaces';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',    label: 'HOME' },
@@ -35,6 +36,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'prospects',    label: 'PROSPECTS' },
   { id: 'finance',      label: 'FINANCE' },
   { id: 'analytics',    label: 'ANALYTICS' },
+  { id: 'awards',       label: 'AWARDS' },
   { id: 'frontoffice',  label: 'FRONT OFFICE' },
   { id: 'history',      label: 'HISTORY' },
   { id: 'records',      label: 'RECORDS' },
@@ -68,6 +70,7 @@ export default function Shell() {
       case 'stats':        return <Leaderboards />;
       case 'compare':    return <PlayerComparison allPlayers={[]} />;
       case 'rankings':     return <PowerRankings />;
+      case 'awards':       return <AwardRaces />;
       case 'teamcompare': return <TeamComparison />;
       case 'records':      return <HallOfFame />;
       case 'depth':        return <DepthChart />;

@@ -1591,6 +1591,78 @@ const api = {
     return _ownerGoals;
   },
 
+  // ── Award Races ─────────────────────────────────────────────────────────
+  async getAwardRaces(): Promise<{
+    mvpAL: Array<{ playerId: number; name: string; teamAbbr: string; position: string; score: number; statLine: string }>;
+    mvpNL: Array<{ playerId: number; name: string; teamAbbr: string; position: string; score: number; statLine: string }>;
+    cyAL: Array<{ playerId: number; name: string; teamAbbr: string; position: string; score: number; statLine: string }>;
+    cyNL: Array<{ playerId: number; name: string; teamAbbr: string; position: string; score: number; statLine: string }>;
+  }> {
+    const state = requireState();
+    type RaceEntry = { playerId: number; name: string; teamAbbr: string; position: string; score: number; statLine: string };
+
+    const buildHitterLine = (s: import('../types/player').PlayerSeasonStats) => {
+      const avg = s.ab > 0 ? (s.h / s.ab).toFixed(3) : '.000';
+      const obp = s.pa > 0 ? ((s.h + s.bb + s.hbp) / s.pa).toFixed(3) : '.000';
+      const slg = s.ab > 0 ? ((s.h - s.doubles - s.triples - s.hr + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab).toFixed(3) : '.000';
+      return `${s.hr} HR, .${avg.slice(1)} AVG, .${obp.slice(1)}/.${slg.slice(1)} OBP/SLG`;
+    };
+    const buildPitcherLine = (s: import('../types/player').PlayerSeasonStats) => {
+      const ip = (s.outs / 3).toFixed(1);
+      const era = s.outs > 0 ? ((s.er / s.outs) * 27).toFixed(2) : '-.--';
+      return `${s.w}-${s.l}, ${era} ERA, ${s.ka} K, ${ip} IP`;
+    };
+
+    const mvpScore = (s: import('../types/player').PlayerSeasonStats) => {
+      if (s.pa < 100) return -Infinity;
+      const avg = s.ab > 0 ? s.h / s.ab : 0;
+      const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
+      const slg = s.ab > 0 ? (s.h - s.doubles - s.triples - s.hr + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab : 0;
+      return (obp + slg) * 80 + s.hr * 0.25 + s.rbi * 0.08 + avg * 10;
+    };
+    const cyScore = (s: import('../types/player').PlayerSeasonStats) => {
+      if (s.outs < 30) return -Infinity;
+      const ip = s.outs / 3;
+      const era = s.outs > 0 ? (s.er / s.outs) * 27 : 99;
+      const k9 = ip > 0 ? (s.ka / ip) * 9 : 0;
+      const whip = ip > 0 ? (s.bba + s.ha) / ip : 99;
+      return -era * 6 + s.w * 2.5 + k9 * 1.5 - whip * 8 + ip * 0.04;
+    };
+
+    const races = { mvpAL: [] as RaceEntry[], mvpNL: [] as RaceEntry[], cyAL: [] as RaceEntry[], cyNL: [] as RaceEntry[] };
+
+    for (const [pid, s] of _playerSeasonStats) {
+      const player = _playerMap.get(pid);
+      if (!player) continue;
+      const team = _teamMap.get(player.teamId);
+      if (!team) continue;
+      const league = team.league;
+      const entry = { playerId: pid, name: player.name, teamAbbr: team.abbreviation, position: player.position };
+
+      if (!player.isPitcher) {
+        const score = mvpScore(s);
+        if (isFinite(score)) {
+          const target = league === 'AL' ? races.mvpAL : races.mvpNL;
+          target.push({ ...entry, score, statLine: buildHitterLine(s) });
+        }
+      } else {
+        const score = cyScore(s);
+        if (isFinite(score)) {
+          const target = league === 'AL' ? races.cyAL : races.cyNL;
+          target.push({ ...entry, score, statLine: buildPitcherLine(s) });
+        }
+      }
+    }
+
+    // Sort and take top 10
+    for (const key of Object.keys(races) as (keyof typeof races)[]) {
+      races[key].sort((a, b) => b.score - a.score);
+      races[key] = races[key].slice(0, 10);
+    }
+
+    return races;
+  },
+
   // ── Utility ────────────────────────────────────────────────────────────────
   async ping(): Promise<string> {
     return 'pong';
