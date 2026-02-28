@@ -42,6 +42,8 @@ import FarmPipeline from '../prospects/FarmPipeline';
 import TradeFinder from '../trade/TradeFinder';
 import DevelopmentTracker from '../prospects/DevelopmentTracker';
 import PlayoffPicture from '../dashboard/PlayoffPicture';
+import SeasonTimeline from '../history/SeasonTimeline';
+import PayrollPlanner from '../finance/PayrollPlanner';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -102,6 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'ORG',
     items: [
       { id: 'finance', label: 'FINANCE' },
+      { id: 'payroll', label: 'PAYROLL PLANNER' },
       { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
       { id: 'prospects', label: 'PROSPECTS' },
@@ -116,6 +119,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'franchise', label: 'FRANCHISE' },
       { id: 'recap', label: 'SEASON RECAP' },
+      { id: 'timeline', label: 'TIMELINE' },
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
     ],
@@ -317,6 +321,8 @@ export default function Shell() {
       case 'tradefinder':  return <TradeFinder />;
       case 'devtracker':   return <DevelopmentTracker />;
       case 'playoffpicture': return <PlayoffPicture />;
+      case 'timeline':     return <SeasonTimeline />;
+      case 'payroll':      return <PayrollPlanner />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
