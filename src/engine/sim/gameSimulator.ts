@@ -51,6 +51,7 @@ import { getOutfieldArmBonus } from './outfieldArms';
 import { getExperienceBBMod } from './experienceModifier';
 import { getHitterApproachKMod } from './hitterApproach';
 import { getGBFBKMod } from './gbPitcherKPenalty';
+import { getBatterEyeBBMod } from './batterEyeResistance';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -544,7 +545,8 @@ function simulateHalfInning(
             ctx.isTop ? ctx.awayScore : ctx.homeScore,
           )
           * getDeceptionBBMod(pitcher)
-          * getExperienceBBMod(pitcher, li),
+          * getExperienceBBMod(pitcher, li)
+          * getBatterEyeBBMod(batter),
         tempoBABIPMod: getTempoModifier(pitcher) + getGameCallingMod(catcher),
       };
       let paResult: import('../../types/game').PAResult;
