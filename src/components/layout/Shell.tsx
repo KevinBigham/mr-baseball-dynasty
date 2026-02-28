@@ -20,9 +20,11 @@ import PowerRankings from '../analytics/PowerRankings';
 import TeamComparison from '../analytics/TeamComparison';
 import HallOfFame from '../history/HallOfFame';
 import DepthChart from '../roster/DepthChart';
+import Scoreboard from '../game/Scoreboard';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',    label: 'HOME' },
+  { id: 'scoreboard',   label: 'SCORES' },
   { id: 'standings',    label: 'STANDINGS' },
   { id: 'roster',       label: 'ROSTER' },
   { id: 'depth',        label: 'DEPTH' },
@@ -50,8 +52,9 @@ export default function Shell() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':  return <Dashboard />;
-      case 'standings':  return <StandingsView />;
+      case 'dashboard':    return <Dashboard />;
+      case 'scoreboard':   return <Scoreboard />;
+      case 'standings':    return <StandingsView />;
       case 'roster':     return <RosterView />;
       case 'trades':     return <TradeCenter />;
       case 'freeagents': return <FreeAgentMarket />;
@@ -106,7 +109,7 @@ export default function Shell() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={[
-              'px-4 py-2 text-xs font-bold tracking-wider uppercase transition-colors border-r border-gray-800 last:border-r-0',
+              'px-4 py-2 text-xs font-bold tracking-wider uppercase transition-colors border-r border-gray-800 last:border-r-0 whitespace-nowrap',
               activeTab === tab.id
                 ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
                 : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
