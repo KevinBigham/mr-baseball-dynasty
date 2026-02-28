@@ -52,6 +52,10 @@ import ProspectScoutingBoard from '../prospects/ProspectScoutingBoard';
 import OffseasonHub from '../offseason/OffseasonHub';
 import MilestoneTracker from '../history/MilestoneTracker';
 import AwardsGallery from '../analytics/AwardsGallery';
+import DynastyDashboard from '../analytics/DynastyDashboard';
+import PostGameReport from '../analytics/PostGameReport';
+import GMStrategyPanel from '../strategy/GMStrategyPanel';
+import CoachSkillTree from '../coaching/CoachSkillTree';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -67,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'dashboard', label: 'HOME' },
       { id: 'simhub', label: 'SIM HUB' },
       { id: 'scoreboard', label: 'SCOREBOARD' },
+      { id: 'postgame', label: 'POST-GAME REPORT' },
       { id: 'schedule', label: 'SCHEDULE' },
       { id: 'standings', label: 'STANDINGS' },
       { id: 'playoffpicture', label: 'PLAYOFF PICTURE' },
@@ -109,6 +114,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'teamsnapshot', label: 'TEAM SNAPSHOT' },
       { id: 'rostercompare', label: 'ROSTER COMPARE' },
       { id: 'chemistry', label: 'CHEMISTRY' },
+      { id: 'dynasty', label: 'DYNASTY ANALYTICS' },
       { id: 'parks', label: 'BALLPARKS' },
     ],
   },
@@ -119,6 +125,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'payroll', label: 'PAYROLL PLANNER' },
       { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
+      { id: 'skilltree', label: 'SKILL TREE' },
+      { id: 'gmstrategy', label: 'GM STRATEGY' },
       { id: 'prospects', label: 'PROSPECTS' },
       { id: 'scoutingboard', label: 'SCOUTING BOARD' },
       { id: 'pipeline', label: 'FARM PIPELINE' },
@@ -347,6 +355,10 @@ export default function Shell() {
       case 'offseason':    return <OffseasonHub />;
       case 'milestones':   return <MilestoneTracker />;
       case 'awardsgallery': return <AwardsGallery />;
+      case 'dynasty':      return <DynastyDashboard />;
+      case 'postgame':     return <PostGameReport report={null} />;
+      case 'gmstrategy':   return <GMStrategyPanel />;
+      case 'skilltree':    return <CoachSkillTree />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
