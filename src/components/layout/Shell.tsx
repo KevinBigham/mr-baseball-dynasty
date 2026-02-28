@@ -239,6 +239,15 @@ import FranchiseRecordsView from '../history/FranchiseRecordsView';
 import CountLeverageView from '../analytics/CountLeverageView';
 import CoachRatingsView from '../management/CoachRatingsView';
 import MatchupHistoryView from '../history/MatchupHistoryView';
+import BattingApproachView from '../analytics/BattingApproachView';
+import PipelineValueView from '../minors/PipelineValueView';
+import SeasonPaceView from '../analytics/SeasonPaceView';
+import StarterGameLogView from '../pitching/StarterGameLogView';
+import TradePackageView from '../trade/TradePackageView';
+import ParkFactorView from '../analytics/ParkFactorView';
+import ExitVeloView from '../analytics/ExitVeloView';
+import ScoutBudgetView from '../management/ScoutBudgetView';
+import PostseasonHistoryView from '../history/PostseasonHistoryView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -332,6 +341,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'arsenalcomp', label: 'ARSENAL COMP' },
       { id: 'rlevindex', label: 'RELIEVER LEV' },
       { id: 'pitchmovement', label: 'PITCH MOVEMENT' },
+      { id: 'startergamelog', label: 'STARTER GAME LOG' },
     ],
   },
   {
@@ -368,6 +378,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'draftboard', label: 'DRAFT BOARD' },
       { id: 'prospectvalue', label: 'PROSPECT VALUE' },
       { id: 'arbprojector', label: 'ARB PROJECTOR' },
+      { id: 'tradepackage', label: 'TRADE PACKAGES' },
     ],
   },
   {
@@ -427,6 +438,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'dynastyrank', label: 'DYNASTY RANK' },
       { id: 'awardpredictor', label: 'AWARD PREDICT' },
       { id: 'countleverage', label: 'COUNT LEVERAGE' },
+      { id: 'battingapproach', label: 'BATTING APPROACH' },
+      { id: 'seasonpace', label: 'SEASON PACE' },
+      { id: 'parkfactors', label: 'PARK FACTORS' },
+      { id: 'exitvelo', label: 'EXIT VELOCITY' },
     ],
   },
   {
@@ -488,6 +503,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salcompliance', label: 'CBT COMPLIANCE' },
       { id: 'capspace', label: 'CAP SPACE' },
       { id: 'coachratings', label: 'COACH RATINGS' },
+      { id: 'pipelinevalue', label: 'PIPELINE VALUE' },
+      { id: 'scoutbudget', label: 'SCOUT BUDGET' },
     ],
   },
   {
@@ -512,6 +529,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'hofmonitor', label: 'HOF MONITOR' },
       { id: 'franchrecords', label: 'FRANCHISE REC' },
       { id: 'matchuphistory', label: 'MATCHUP HISTORY' },
+      { id: 'postseasonhistory', label: 'POSTSEASON' },
     ],
   },
 ];
@@ -908,6 +926,15 @@ export default function Shell() {
       case 'countleverage': return <CountLeverageView />;
       case 'coachratings': return <CoachRatingsView />;
       case 'matchuphistory': return <MatchupHistoryView />;
+      case 'battingapproach': return <BattingApproachView />;
+      case 'pipelinevalue': return <PipelineValueView />;
+      case 'seasonpace': return <SeasonPaceView />;
+      case 'startergamelog': return <StarterGameLogView />;
+      case 'tradepackage': return <TradePackageView />;
+      case 'parkfactors': return <ParkFactorView />;
+      case 'exitvelo': return <ExitVeloView />;
+      case 'scoutbudget': return <ScoutBudgetView />;
+      case 'postseasonhistory': return <PostseasonHistoryView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
