@@ -116,6 +116,9 @@ import DoubleHeaderView from '../game/DoubleHeaderView';
 import CatcherFramingView from '../analytics/CatcherFramingView';
 import DefensiveShiftsView from '../analytics/DefensiveShiftsView';
 import TradeCalculatorView from '../trade/TradeCalculatorView';
+import PinchHitView from '../strategy/PinchHitView';
+import LineupOptimizerView from '../analytics/LineupOptimizerView';
+import PlayerConditioningView from '../player/PlayerConditioningView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -149,6 +152,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'filmstudy', label: 'FILM STUDY' },
       { id: 'pregame', label: 'PRE-GAME PREP' },
       { id: 'doubleheader', label: 'DOUBLEHEADERS' },
+      { id: 'pinchhit', label: 'PINCH HIT/RUN' },
     ],
   },
   {
@@ -170,6 +174,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'septcallups', label: 'SEPT CALL-UPS' },
       { id: 'streaks', label: 'HOT/COLD STREAKS' },
       { id: 'pitchcount', label: 'PITCH COUNT' },
+      { id: 'conditioning', label: 'CONDITIONING' },
     ],
   },
   {
@@ -216,6 +221,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'warbreakdown', label: 'WAR BREAKDOWN' },
       { id: 'catcherframing', label: 'CATCHER FRAMING' },
       { id: 'defshifts', label: 'DEF POSITIONING' },
+      { id: 'lineupopt', label: 'LINEUP OPTIMIZER' },
     ],
   },
   {
@@ -539,6 +545,9 @@ export default function Shell() {
       case 'catcherframing': return <CatcherFramingView />;
       case 'defshifts': return <DefensiveShiftsView />;
       case 'tradecalc': return <TradeCalculatorView />;
+      case 'pinchhit': return <PinchHitView />;
+      case 'lineupopt': return <LineupOptimizerView />;
+      case 'conditioning': return <PlayerConditioningView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
