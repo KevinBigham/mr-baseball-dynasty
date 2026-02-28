@@ -177,6 +177,8 @@ export interface PlayerProfileData {
   };
   splits?: { vsLHP: SplitLine; vsRHP: SplitLine } | null;
   pitchMix?: { fastball: number; breaking: number; offspeed: number } | null;
+  tradeValue?: number;        // 0-100 trade value
+  marketSalary?: number;      // Estimated market salary
   seasonLog?: Array<{
     season: number;
     teamName: string;

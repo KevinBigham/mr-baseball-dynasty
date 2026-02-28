@@ -18,7 +18,7 @@ import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
 import { computeAwards, computeDivisionChampions } from './player/awards';
 import { simulatePlayoffs, getPlayoffResults } from './sim/playoffs';
-import { calculatePlayerValue } from './trade/valuation';
+import { calculatePlayerValue, estimateMarketSalary } from './trade/valuation';
 import { evaluateTrade, executeTrade, getTradeablePlayers, type TradeProposal, type TradeEvaluation, type TradeRecord } from './trade/tradeEngine';
 import { identifyFreeAgents, signFreeAgent as signFA, runAIFreeAgency, type FreeAgent, type FreeAgencyResult } from './offseason/freeAgency';
 import type { TradeablePlayer, LineupData } from '../types/trade';
@@ -858,6 +858,8 @@ const api = {
         salary: player.rosterData.salary,
         contractYearsRemaining: player.rosterData.contractYearsRemaining,
       },
+      tradeValue: calculatePlayerValue(player),
+      marketSalary: estimateMarketSalary(player),
       seasonStats,
       splits: s && !player.isPitcher ? (() => {
         const buildSplit = (sp: { pa: number; ab: number; h: number; hr: number; bb: number; k: number; doubles: number; triples: number } | undefined) => {

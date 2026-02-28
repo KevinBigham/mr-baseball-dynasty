@@ -98,6 +98,25 @@ export default function PlayerProfile() {
             <div className="text-orange-400 font-bold">{player.overall} / {player.potential}</div>
           </div>
         </div>
+        {/* Trade value row */}
+        <div className="grid grid-cols-2 gap-0 divide-x divide-gray-800 border-t border-gray-800">
+          <div className="px-4 py-2">
+            <div className="text-gray-500 text-xs">TRADE VALUE</div>
+            <div className={`font-bold ${
+              (data.tradeValue ?? 0) >= 70 ? 'text-green-400' :
+              (data.tradeValue ?? 0) >= 40 ? 'text-orange-400' :
+              'text-gray-400'
+            }`}>
+              {data.tradeValue ?? 0}
+            </div>
+          </div>
+          <div className="px-4 py-2">
+            <div className="text-gray-500 text-xs">MARKET VALUE</div>
+            <div className="text-gray-200 font-bold">
+              ${((data.marketSalary ?? 0) / 1_000_000).toFixed(1)}M/yr
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Scouting grades */}
