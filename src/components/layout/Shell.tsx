@@ -170,6 +170,9 @@ import TunnelMatrixView from '../pitching/TunnelMatrixView';
 import PlatoonSplitsView from '../analytics/PlatoonSplitsView';
 import FATrackerView from '../offseason/FATrackerView';
 import DefRunsSavedView from '../analytics/DefRunsSavedView';
+import PitchValueMatrixView from '../pitching/PitchValueMatrixView';
+import RosterConstructionView from '../analytics/RosterConstructionView';
+import GameLeverageView from '../analytics/GameLeverageView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -245,6 +248,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'bpfatigue', label: 'BP FATIGUE' },
       { id: 'pitchdesign', label: 'PITCH DESIGN' },
       { id: 'tunnelmatrix', label: 'TUNNEL MATRIX' },
+      { id: 'pitchvalues', label: 'PITCH VALUES' },
     ],
   },
   {
@@ -315,6 +319,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'zoneheatmap', label: 'ZONE HEATMAP' },
       { id: 'platoonsplits', label: 'PLATOON SPLITS+' },
       { id: 'defruns', label: 'DEF RUNS SAVED' },
+      { id: 'rosterconstruction', label: 'ROSTER BUILD' },
+      { id: 'gameleverage', label: 'GAME LEVERAGE' },
     ],
   },
   {
@@ -701,6 +707,9 @@ export default function Shell() {
       case 'platoonsplits': return <PlatoonSplitsView />;
       case 'fatracker': return <FATrackerView />;
       case 'defruns': return <DefRunsSavedView />;
+      case 'pitchvalues': return <PitchValueMatrixView />;
+      case 'rosterconstruction': return <RosterConstructionView />;
+      case 'gameleverage': return <GameLeverageView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
