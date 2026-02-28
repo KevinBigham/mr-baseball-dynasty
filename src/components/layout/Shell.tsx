@@ -311,6 +311,15 @@ import RevenueForecasterView from '../finance/RevenueForecasterView';
 import StreakPredictorView from '../analytics/StreakPredictorView';
 import DeadlineTrackerView from '../trade/DeadlineTrackerView';
 import PitcherFatigueView from '../pitching/PitcherFatigueView';
+import PitchArsenalCompView from '../pitching/PitchArsenalCompView';
+import WinProbChartView from '../analytics/WinProbChartView';
+import MinorLeagueDevPlanView from '../prospects/MinorLeagueDevPlanView';
+import SitHittingSplitsView from '../analytics/SitHittingSplitsView';
+import TradeDeadlineSimView from '../trade/TradeDeadlineSimView';
+import ProspectScoutDashView from '../scouting/ProspectScoutDashView';
+import TeamMoraleView from '../analytics/TeamMoraleView';
+import ContractNegView from '../contracts/ContractNegView';
+import AdvDefMetricsView from '../analytics/AdvDefMetricsView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -417,6 +426,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'bpmatchupopt', label: 'BP MATCHUP OPT' },
       { id: 'pitchsequenceopt', label: 'PITCH SEQ OPT' },
       { id: 'pitcherfatigue', label: 'PITCHER FATIGUE' },
+      { id: 'pitcharsenalcomp', label: 'ARSENAL COMPARE' },
     ],
   },
   {
@@ -464,6 +474,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'deadlinestrategy', label: 'DEADLINE STRATEGY' },
       { id: 'contractbuyout', label: 'CONTRACT BUYOUT' },
       { id: 'deadlinetracker', label: 'DEADLINE TRACKER' },
+      { id: 'tradedeadlinesim', label: 'DEADLINE SIM' },
+      { id: 'contractneg', label: 'CONTRACT NEG' },
     ],
   },
   {
@@ -554,6 +566,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platoonadvtracker', label: 'PLATOON TRACKER' },
       { id: 'defreplacement', label: 'DEF REPLACEMENT' },
       { id: 'streakpredictor', label: 'STREAK PREDICT' },
+      { id: 'winprobchart', label: 'WIN PROB CHART' },
+      { id: 'sithittingsplits', label: 'SIT HITTING' },
+      { id: 'teammoraletracker', label: 'TEAM MORALE' },
+      { id: 'advdefmetrics', label: 'ADV DEF METRICS' },
     ],
   },
   {
@@ -629,6 +645,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scoutreportv2', label: 'ADV SCOUT REPORT' },
       { id: 'callupreadiness', label: 'CALLUP READY' },
       { id: 'revforecaster', label: 'REVENUE FORECAST' },
+      { id: 'milbdevplan', label: 'MILB DEV PLAN' },
+      { id: 'prospectscoutdash', label: 'SCOUT DASHBOARD' },
     ],
   },
   {
@@ -1124,6 +1142,15 @@ export default function Shell() {
       case 'streakpredictor': return <StreakPredictorView />;
       case 'deadlinetracker': return <DeadlineTrackerView />;
       case 'pitcherfatigue': return <PitcherFatigueView />;
+      case 'pitcharsenalcomp': return <PitchArsenalCompView />;
+      case 'winprobchart': return <WinProbChartView />;
+      case 'milbdevplan': return <MinorLeagueDevPlanView />;
+      case 'sithittingsplits': return <SitHittingSplitsView />;
+      case 'tradedeadlinesim': return <TradeDeadlineSimView />;
+      case 'prospectscoutdash': return <ProspectScoutDashView />;
+      case 'teammoraletracker': return <TeamMoraleView />;
+      case 'contractneg': return <ContractNegView />;
+      case 'advdefmetrics': return <AdvDefMetricsView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
