@@ -194,6 +194,9 @@ import TunnelEffectivenessView from '../pitching/TunnelEffectivenessView';
 import AgingCurvesView from '../analytics/AgingCurvesView';
 import BullpenLeverageView from '../pitching/BullpenLeverageView';
 import PowerRankHistoryView from '../analytics/PowerRankHistoryView';
+import ArsenalHeatmapView from '../pitching/ArsenalHeatmapView';
+import TeamDepthScoreView from '../analytics/TeamDepthScoreView';
+import SalaryCapSimView from '../finance/SalaryCapSimView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -277,6 +280,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'velobands', label: 'VELO BANDS' },
       { id: 'tunneleffectiveness', label: 'TUNNEL EFF' },
       { id: 'bpleverageroles', label: 'BP LEVERAGE' },
+      { id: 'arsenalheatmap', label: 'ARSENAL HEATMAP' },
     ],
   },
   {
@@ -357,6 +361,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platoonopt', label: 'PLATOON OPT' },
       { id: 'agingcurves', label: 'AGING CURVES' },
       { id: 'rankhistory', label: 'RANK HISTORY' },
+      { id: 'teamdepth', label: 'TEAM DEPTH' },
     ],
   },
   {
@@ -403,6 +408,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'frontoffice2', label: 'FRONT OFFICE' },
       { id: 'gmtradehistory', label: 'GM TRADE LOG' },
       { id: 'draftclassscouting', label: 'DRAFT REPORTS' },
+      { id: 'salarycapsim', label: 'SALARY CAP SIM' },
     ],
   },
   {
@@ -773,6 +779,9 @@ export default function Shell() {
       case 'agingcurves': return <AgingCurvesView />;
       case 'bpleverageroles': return <BullpenLeverageView />;
       case 'rankhistory': return <PowerRankHistoryView />;
+      case 'arsenalheatmap': return <ArsenalHeatmapView />;
+      case 'teamdepth': return <TeamDepthScoreView />;
+      case 'salarycapsim': return <SalaryCapSimView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
