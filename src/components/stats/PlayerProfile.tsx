@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
-import type { PlayerProfileData } from '../../types/league';
+import type { PlayerProfileData, SplitLine } from '../../types/league';
 
 function GradeBox({ label, value }: { label: string; value: number }) {
   const cls =
@@ -161,6 +161,47 @@ export default function PlayerProfile() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Platoon splits (hitters only) */}
+      {data.splits && !isPitcher && (data.splits.vsLHP.pa > 0 || data.splits.vsRHP.pa > 0) && (
+        <div className="bloomberg-border mt-4">
+          <div className="bloomberg-header">PLATOON SPLITS</div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-500 border-b border-gray-800">
+                <th className="px-2 py-1 text-left">SPLIT</th>
+                <th className="px-2 py-1 text-right">PA</th>
+                <th className="px-2 py-1 text-right">AVG</th>
+                <th className="px-2 py-1 text-right">OBP</th>
+                <th className="px-2 py-1 text-right">SLG</th>
+                <th className="px-2 py-1 text-right">OPS</th>
+                <th className="px-2 py-1 text-right">HR</th>
+                <th className="px-2 py-1 text-right">BB</th>
+                <th className="px-2 py-1 text-right">K</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(['vsLHP', 'vsRHP'] as const).map(key => {
+                const sp: SplitLine = data.splits![key];
+                if (sp.pa === 0) return null;
+                return (
+                  <tr key={key} className="bloomberg-row">
+                    <td className="px-2 py-1 text-gray-400 font-bold">{key === 'vsLHP' ? 'vs LHP' : 'vs RHP'}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.pa}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.avg.toFixed(3)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.obp.toFixed(3)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.slg.toFixed(3)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums font-bold text-orange-400">{sp.ops.toFixed(3)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.hr}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.bb}</td>
+                    <td className="px-2 py-1 text-right tabular-nums text-gray-200">{sp.k}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

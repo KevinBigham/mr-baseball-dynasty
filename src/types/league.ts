@@ -144,6 +144,11 @@ export interface LeaderboardEntry {
   displayValue: string;
 }
 
+export interface SplitLine {
+  pa: number; ab: number; avg: number; obp: number; slg: number; ops: number;
+  hr: number; bb: number; k: number;
+}
+
 export interface PlayerProfileData {
   player: {
     playerId: number;
@@ -170,4 +175,5 @@ export interface PlayerProfileData {
     seasons: number;
     [key: string]: number;
   };
+  splits?: { vsLHP: SplitLine; vsRHP: SplitLine } | null;
 }

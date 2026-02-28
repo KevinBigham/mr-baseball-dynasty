@@ -749,6 +749,22 @@ const api = {
         contractYearsRemaining: player.rosterData.contractYearsRemaining,
       },
       seasonStats,
+      splits: s && !player.isPitcher ? (() => {
+        const buildSplit = (sp: { pa: number; ab: number; h: number; hr: number; bb: number; k: number; doubles: number; triples: number } | undefined) => {
+          if (!sp || sp.pa === 0) return { pa: 0, ab: 0, avg: 0, obp: 0, slg: 0, ops: 0, hr: 0, bb: 0, k: 0 };
+          const avg = sp.ab > 0 ? sp.h / sp.ab : 0;
+          const obp = sp.pa > 0 ? (sp.h + sp.bb) / sp.pa : 0;
+          const tb2 = (sp.h - sp.doubles - sp.triples - sp.hr) + sp.doubles * 2 + sp.triples * 3 + sp.hr * 4;
+          const slg2 = sp.ab > 0 ? tb2 / sp.ab : 0;
+          return {
+            pa: sp.pa, ab: sp.ab,
+            avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)),
+            slg: Number(slg2.toFixed(3)), ops: Number((obp + slg2).toFixed(3)),
+            hr: sp.hr, bb: sp.bb, k: sp.k,
+          };
+        };
+        return { vsLHP: buildSplit(s.vsLHP), vsRHP: buildSplit(s.vsRHP) };
+      })() : null,
       careerStats: (() => {
         const career = getCareerRecords().get(playerId);
         if (career) {
