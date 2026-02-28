@@ -40,6 +40,7 @@ import { getRunSupportBBMod } from './runSupport';
 import { getSituationalContactMod } from './situationalHitting';
 import { getGameCallingMod } from './catcherGameCalling';
 import { getCloserIntensityKMod } from './closerIntensity';
+import { getArsenalKMod } from './pitchArsenal';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -522,7 +523,8 @@ function simulateHalfInning(
         protectionBBMod,
         infieldIn,
         countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod * getHighFastballKMod(pitcher, batter)
-          * getCloserIntensityKMod(pitcher, ctx.inning >= 9 && fieldingRunDiff > 0 && fieldingRunDiff <= 3),
+          * getCloserIntensityKMod(pitcher, ctx.inning >= 9 && fieldingRunDiff > 0 && fieldingRunDiff <= 3)
+          * getArsenalKMod(pitcher.pitcherAttributes?.pitchArsenalCount ?? 3),
         countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod
           * getRunSupportBBMod(
             ctx.isTop ? ctx.homeScore : ctx.awayScore,
