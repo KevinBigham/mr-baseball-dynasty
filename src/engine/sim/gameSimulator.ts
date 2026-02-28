@@ -46,6 +46,7 @@ import { getLateGameDefenseBonus } from './lateGameDefense';
 import { getPatiencePitchBonus } from './batterPatience';
 import { getWorkEthicPitchReduction } from './workEthicEndurance';
 import { getLeadRunnerEffectiveSpeed } from './baserunningAdvancement';
+import { selectPinchRunner } from './pinchRunner';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -609,6 +610,28 @@ function simulateHalfInning(
         runners: preRunners,
         result: { outcome, runsScored: runsThisPA, runnersAdvanced: 0 },
       });
+    }
+
+    // ── Pinch-runner check (late innings, close game, slow runner) ──
+    if (markov.runners !== 0 && markov.outs < 3) {
+      const scoreDiff = ctx.isTop
+        ? ctx.awayScore + markov.runsScored - ctx.homeScore
+        : ctx.homeScore + markov.runsScored - ctx.awayScore;
+      const currentRunners = getRunnersOnBase(markov.runners, lineup, pos);
+      const usedInLineup = new Set(lineup.map(p => p.playerId));
+      const prDecision = selectPinchRunner(
+        currentRunners, bench, ctx.inning, scoreDiff, usedInLineup,
+      );
+      if (prDecision) {
+        // Swap the pinch runner into the lineup slot occupied by the slow runner
+        const slotIdx = lineup.findIndex(p => p.playerId === prDecision.runnerPlayerId);
+        const replacement = bench.find(p => p.playerId === prDecision.replacementPlayerId);
+        if (slotIdx >= 0 && replacement) {
+          lineup[slotIdx] = replacement;
+          const benchIdx = bench.indexOf(replacement);
+          if (benchIdx >= 0) bench.splice(benchIdx, 1);
+        }
+      }
     }
 
     pos++;
