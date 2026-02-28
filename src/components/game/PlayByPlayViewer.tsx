@@ -213,6 +213,68 @@ export default function PlayByPlayViewer({
         ))}
       </div>
 
+      {/* ── Batting summary ─────────────────────────────────────── */}
+      <div className="border-b border-gray-800 px-4 py-2 grid grid-cols-2 gap-4">
+        {[
+          { label: awayTeamName, batters: boxScore.awayBatting },
+          { label: homeTeamName, batters: boxScore.homeBatting },
+        ].map(({ label, batters }) => (
+          <div key={label}>
+            <div className="text-gray-500 text-xs font-bold mb-1">{label} BATTING</div>
+            <table className="text-xs font-mono w-full">
+              <thead>
+                <tr className="text-gray-600">
+                  <th className="text-left pr-2">NAME</th>
+                  <th className="text-right px-1">AB</th>
+                  <th className="text-right px-1">R</th>
+                  <th className="text-right px-1">H</th>
+                  <th className="text-right px-1">RBI</th>
+                  <th className="text-right px-1">BB</th>
+                  <th className="text-right px-1">K</th>
+                  <th className="text-right px-1">HR</th>
+                  <th className="text-right px-1">SB</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batters.filter(b => b.pa > 0).map(b => {
+                  const name = playerNames.get(b.playerId) ?? `#${b.playerId}`;
+                  const hasMultiHit = b.h >= 2;
+                  const hasHR = b.hr > 0;
+                  return (
+                    <tr key={b.playerId} className="text-gray-300">
+                      <td className="text-left pr-2 truncate max-w-[8rem]">{name}</td>
+                      <td className="text-right px-1 tabular-nums">{b.ab}</td>
+                      <td className="text-right px-1 tabular-nums">{b.r || ''}</td>
+                      <td className={`text-right px-1 tabular-nums ${hasMultiHit ? 'text-green-400' : ''}`}>
+                        {b.h}
+                      </td>
+                      <td className="text-right px-1 tabular-nums">{b.rbi || ''}</td>
+                      <td className="text-right px-1 tabular-nums">{b.bb || ''}</td>
+                      <td className="text-right px-1 tabular-nums">{b.k || ''}</td>
+                      <td className={`text-right px-1 tabular-nums ${hasHR ? 'text-orange-400 font-bold' : ''}`}>
+                        {b.hr || ''}
+                      </td>
+                      <td className="text-right px-1 tabular-nums text-cyan-400">{b.sb || ''}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="text-gray-400 border-t border-gray-800 font-bold">
+                  <td className="text-left pr-2">TOTAL</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.ab, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.r, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.h, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.rbi, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.bb, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.k, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.hr, 0)}</td>
+                  <td className="text-right px-1 tabular-nums">{batters.reduce((s, b) => s + b.sb, 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
       {/* ── Inning filter tabs ────────────────────────────────────── */}
       <div className="flex gap-1 px-4 py-2 border-b border-gray-800 overflow-x-auto">
         <button
