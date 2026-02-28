@@ -209,6 +209,9 @@ import CareerMilestonesView from '../history/CareerMilestonesView';
 import PitchingMatchupView from '../pitching/PitchingMatchupView';
 import FranchiseValueView from '../finance/FranchiseValueView';
 import MiLBStandingsView from '../minors/MiLBStandingsView';
+import PlatoonMatrixView from '../analytics/PlatoonMatrixView';
+import ProspectReportView from '../scouting/ProspectReportView';
+import StadiumRevenueView from '../finance/StadiumRevenueView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -380,6 +383,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'expectedba', label: 'EXPECTED BA' },
       { id: 'defwar', label: 'DEF WAR' },
       { id: 'swingdecision', label: 'SWING DECISION' },
+      { id: 'platoonmatrix', label: 'PLATOON MATRIX' },
     ],
   },
   {
@@ -432,6 +436,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fobudget', label: 'FO BUDGET' },
       { id: 'franchisevalue', label: 'FRANCHISE VALUE' },
       { id: 'milbstandings', label: 'MILB STANDINGS' },
+      { id: 'prospectreport', label: 'SCOUT REPORTS' },
+      { id: 'stadiumrevenue', label: 'STADIUM REVENUE' },
     ],
   },
   {
@@ -818,6 +824,9 @@ export default function Shell() {
       case 'pitchmatchup': return <PitchingMatchupView />;
       case 'franchisevalue': return <FranchiseValueView />;
       case 'milbstandings': return <MiLBStandingsView />;
+      case 'platoonmatrix': return <PlatoonMatrixView />;
+      case 'prospectreport': return <ProspectReportView />;
+      case 'stadiumrevenue': return <StadiumRevenueView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
