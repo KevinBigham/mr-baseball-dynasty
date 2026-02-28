@@ -35,6 +35,7 @@ import { generateUmpire } from './umpire';
 import { getTempoModifier } from './pitchTempo';
 import { getHighFastballKMod } from './highFastball';
 import { getTeamChemistryModifier, chemistryDefenseAdjustment } from './teamChemistry';
+import { getHomeFieldAdvantage } from './homeFieldAdvantage';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -732,7 +733,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     .filter(p => p.teamId === input.homeTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
     .slice(0, 9)
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9
-    + chemistryDefenseAdjustment(homeChemMod);
+    + chemistryDefenseAdjustment(homeChemMod)
+    + getHomeFieldAdvantage().defenseBonus; // Home team defense boost
 
   const awayDefRating = input.players
     .filter(p => p.teamId === input.awayTeam.teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher)
