@@ -83,6 +83,7 @@ export default function StandingsView() {
                     <th className="text-right px-2 py-1">GB</th>
                     <th className="text-right px-2 py-1">RS</th>
                     <th className="text-right px-2 py-1">RA</th>
+                    <th className="text-right px-2 py-1" title="Run differential">DIFF</th>
                     <th className="text-right px-2 py-1 text-orange-600" title="Pythagorean wins">xW</th>
                   </tr>
                 </thead>
@@ -106,6 +107,9 @@ export default function StandingsView() {
                       <td className="text-right px-2 py-1 tabular-nums text-gray-500">{row.gb === 0 ? '—' : row.gb.toFixed(1)}</td>
                       <td className="text-right px-2 py-1 tabular-nums">{row.runsScored}</td>
                       <td className="text-right px-2 py-1 tabular-nums">{row.runsAllowed}</td>
+                      <td className={`text-right px-2 py-1 tabular-nums ${row.runsScored - row.runsAllowed > 0 ? 'text-green-400' : row.runsScored - row.runsAllowed < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                        {row.runsScored - row.runsAllowed > 0 ? '+' : ''}{row.runsScored - row.runsAllowed}
+                      </td>
                       <td className="text-right px-2 py-1 tabular-nums text-orange-600">{row.pythagWins}</td>
                     </tr>
                   ))}
