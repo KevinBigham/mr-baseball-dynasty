@@ -54,6 +54,7 @@ import { getGBFBKMod } from './gbPitcherKPenalty';
 import { getBatterEyeBBMod } from './batterEyeResistance';
 import { getCommandKMod } from './commandControl';
 import { getMentalToughnessBBMod } from './mentalToughnessBB';
+import { getPlatoonKMod } from './platoonKMod';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -541,7 +542,8 @@ function simulateHalfInning(
           * getArsenalKMod(pitcher.pitcherAttributes?.pitchArsenalCount ?? 3)
           * getHitterApproachKMod(batter)
           * getGBFBKMod(pitcher)
-          * getCommandKMod(pitcher),
+          * getCommandKMod(pitcher)
+          * getPlatoonKMod(pitcher.throws, batter.bats),
         countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod
           * getRunSupportBBMod(
             ctx.isTop ? ctx.homeScore : ctx.awayScore,
