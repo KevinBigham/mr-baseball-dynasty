@@ -28,7 +28,9 @@ export interface PAInput {
 function computeTTO(attrs: PitcherAttributes, timesThrough: number): number {
   const rawTTO = [0, 0.026, 0.066][Math.min(timesThrough - 1, 2)] ?? 0;
   const arsenalFactor = 0.80 - attrs.pitchArsenalCount * 0.10;
-  return rawTTO * arsenalFactor;
+  // Pitching IQ reduces TTO penalty (smarter pitchers vary approach better)
+  const iqFactor = 1.0 - ((attrs.pitchingIQ ?? 400) - 400) / 550 * 0.15;
+  return rawTTO * arsenalFactor * iqFactor;
 }
 
 function computeFatigue(attrs: PitcherAttributes, pitchCount: number): number {
