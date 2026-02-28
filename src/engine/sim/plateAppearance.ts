@@ -21,6 +21,7 @@ export interface PAInput {
   infieldIn?: boolean;       // Infield drawn in (runner on 3rd, close game)
   countKMod?: number;        // Count leverage K rate modifier (< 1 = fewer Ks)
   countBBMod?: number;       // Count leverage BB rate modifier (> 1 = more walks)
+  tempoBABIPMod?: number;    // Pitch tempo BABIP modifier (negative = defense-friendly)
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -257,6 +258,7 @@ function stage3(
   outs: number,
   batter: Player,
   infieldIn?: boolean,
+  tempoBABIPMod?: number,
 ): [PAOutcome, RandomGenerator] {
   // Defense modifier: average (400) = neutral; better defense lowers BABIP
   const defMod = (defenseRating - 400) / 550 * 0.03;
@@ -270,7 +272,7 @@ function stage3(
   const infieldInMod = (infieldIn && battedBall === 'GB') ? 0.06 : 0;
 
   const effectiveBabip = Math.max(0.15, Math.min(0.45,
-    hRates.babip - defMod + parkBabipMod + shiftMod + infieldInMod,
+    hRates.babip - defMod + parkBabipMod + shiftMod + infieldInMod + (tempoBABIPMod ?? 0),
   ));
 
   // Spray chart: pull tendency shifts XBH distribution
@@ -419,6 +421,7 @@ export function resolvePlateAppearance(
     input.outs,
     input.batter,
     input.infieldIn,
+    input.tempoBABIPMod,
   );
 
   return [{ outcome: finalOutcome, runsScored: 0, runnersAdvanced: 0 }, gen];

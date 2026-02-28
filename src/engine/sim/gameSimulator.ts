@@ -32,6 +32,7 @@ import { getFramingModifier } from './catcherFraming';
 import { generateWeather, getWeatherHRModifier, getMonthFromDate } from './weather';
 import { getStreakContactModifier } from './hitterStreaks';
 import { generateUmpire } from './umpire';
+import { getTempoModifier } from './pitchTempo';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -514,6 +515,7 @@ function simulateHalfInning(
         infieldIn,
         countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod,
         countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod,
+        tempoBABIPMod: getTempoModifier(pitcher),
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
