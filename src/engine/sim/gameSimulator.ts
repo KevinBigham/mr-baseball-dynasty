@@ -38,6 +38,7 @@ import { getTeamChemistryModifier, chemistryDefenseAdjustment } from './teamChem
 import { getHomeFieldAdvantage } from './homeFieldAdvantage';
 import { getRunSupportBBMod } from './runSupport';
 import { getSituationalContactMod } from './situationalHitting';
+import { getGameCallingMod } from './catcherGameCalling';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -525,7 +526,7 @@ function simulateHalfInning(
             ctx.isTop ? ctx.homeScore : ctx.awayScore,
             ctx.isTop ? ctx.awayScore : ctx.homeScore,
           ),
-        tempoBABIPMod: getTempoModifier(pitcher),
+        tempoBABIPMod: getTempoModifier(pitcher) + getGameCallingMod(catcher),
       };
       let paResult: import('../../types/game').PAResult;
       [paResult, gen] = resolvePlateAppearance(gen, paInput);
