@@ -224,6 +224,9 @@ import TransactionLogView from '../history/TransactionLogView';
 import PitchEffectivenessView from '../pitching/PitchEffectivenessView';
 import RevenueProjectionsView from '../finance/RevenueProjectionsView';
 import HOFMonitorView from '../history/HOFMonitorView';
+import TunnelAnalysisView from '../pitching/TunnelAnalysisView';
+import ChemistryIndexView from '../analytics/ChemistryIndexView';
+import ProspectTradeValueView from '../trade/ProspectTradeValueView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -313,6 +316,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'spinrate', label: 'SPIN RATE' },
       { id: 'pitchlocation', label: 'PITCH LOCATION' },
       { id: 'pitcheffcount', label: 'PITCH EFF/COUNT' },
+      { id: 'tunnelanalysis', label: 'TUNNEL ANALYSIS' },
     ],
   },
   {
@@ -347,6 +351,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'buyoutcalc', label: 'BUYOUT CALC' },
       { id: 'deadlinewarroom', label: 'WAR ROOM' },
       { id: 'draftboard', label: 'DRAFT BOARD' },
+      { id: 'prospectvalue', label: 'PROSPECT VALUE' },
     ],
   },
   {
@@ -402,6 +407,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'platoonmatrix', label: 'PLATOON MATRIX' },
       { id: 'playercomp', label: 'PLAYER COMP' },
       { id: 'battereye', label: 'BATTER EYE' },
+      { id: 'chemindex', label: 'CHEMISTRY INDEX' },
     ],
   },
   {
@@ -863,6 +869,9 @@ export default function Shell() {
       case 'pitcheffcount': return <PitchEffectivenessView />;
       case 'revprojections': return <RevenueProjectionsView />;
       case 'hofmonitor': return <HOFMonitorView />;
+      case 'tunnelanalysis': return <TunnelAnalysisView />;
+      case 'chemindex': return <ChemistryIndexView />;
+      case 'prospectvalue': return <ProspectTradeValueView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
