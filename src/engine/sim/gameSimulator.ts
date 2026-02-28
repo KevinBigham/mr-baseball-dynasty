@@ -50,6 +50,7 @@ import { selectPinchRunner } from './pinchRunner';
 import { getOutfieldArmBonus } from './outfieldArms';
 import { getExperienceBBMod } from './experienceModifier';
 import { getHitterApproachKMod } from './hitterApproach';
+import { getGBFBKMod } from './gbPitcherKPenalty';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -535,7 +536,8 @@ function simulateHalfInning(
         countKMod: countMod.kRateMod * framing.kMod * umpireMods.kMod * getHighFastballKMod(pitcher, batter)
           * getCloserIntensityKMod(pitcher, ctx.inning >= 9 && fieldingRunDiff > 0 && fieldingRunDiff <= 3)
           * getArsenalKMod(pitcher.pitcherAttributes?.pitchArsenalCount ?? 3)
-          * getHitterApproachKMod(batter),
+          * getHitterApproachKMod(batter)
+          * getGBFBKMod(pitcher),
         countBBMod: countMod.bbRateMod * framing.bbMod * umpireMods.bbMod
           * getRunSupportBBMod(
             ctx.isTop ? ctx.homeScore : ctx.awayScore,
