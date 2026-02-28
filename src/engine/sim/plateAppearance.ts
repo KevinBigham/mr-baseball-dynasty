@@ -6,6 +6,7 @@ import { log5MultiOutcome, weightedRates, PITCHER_WEIGHTS, squashModifier, sampl
 import { LEAGUE_RATES } from '../../data/positionalPriors';
 import type { ParkFactor } from '../../data/parkFactors';
 import { computeShiftDecision } from './defensiveShift';
+import { getInfieldHitBonus } from './infieldHit';
 
 // ─── Inputs to a single plate appearance ──────────────────────────────────────
 export interface PAInput {
@@ -321,7 +322,8 @@ function stage3(
     }
 
     case 'GB': {
-      if (roll < effectiveBabip * 0.85) { // GBs have slightly lower BABIP than average
+      const ifhBonus = getInfieldHitBonus(batter.hitterAttributes?.speed ?? 350);
+      if (roll < (effectiveBabip + ifhBonus) * 0.85) { // GBs have slightly lower BABIP than average
         return ['1B', gen];
       }
       // Out — check for error first
