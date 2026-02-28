@@ -346,12 +346,14 @@ function stage3(
 
     case 'FB': {
       if (roll < effectiveBabip * 0.75) { // FBs have lower BABIP
-        // Hit — mostly extra base hits (modified by spray chart)
+        // Hit — mostly extra base hits (modified by spray chart and power)
         let hitRoll: number;
         [hitRoll, gen] = nextFloat(gen);
         const xbhBonus = parkFactor.doubleFactor - 1.0;
+        // Power hitters drive FB hits harder → more XBH
+        const pwrXBH = Math.max(0, ((batter.hitterAttributes?.power ?? 400) - 400) / 550) * 0.04;
         if (hitRoll < 0.05 + parkFactor.tripleFactor * 0.015 + pull3bMod) return ['3B', gen];
-        if (hitRoll < 0.45 + xbhBonus * 0.25 + pullDblBonus)              return ['2B', gen];
+        if (hitRoll < 0.45 + xbhBonus * 0.25 + pullDblBonus + pwrXBH)     return ['2B', gen];
         return ['1B', gen];
       }
       // Out — check for error first
