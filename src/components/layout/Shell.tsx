@@ -227,6 +227,18 @@ import HOFMonitorView from '../history/HOFMonitorView';
 import TunnelAnalysisView from '../pitching/TunnelAnalysisView';
 import ChemistryIndexView from '../analytics/ChemistryIndexView';
 import ProspectTradeValueView from '../trade/ProspectTradeValueView';
+import ArsenalCompView from '../pitching/ArsenalCompView';
+import SalaryComplianceView from '../finance/SalaryComplianceView';
+import DynastyRankView from '../analytics/DynastyRankView';
+import RelieverLevIndexView from '../pitching/RelieverLevIndexView';
+import ArbProjectorView from '../contracts/ArbProjectorView';
+import AwardPredictorView from '../analytics/AwardPredictorView';
+import PitchMovementView from '../pitching/PitchMovementView';
+import CapSpaceView from '../finance/CapSpaceView';
+import FranchiseRecordsView from '../history/FranchiseRecordsView';
+import CountLeverageView from '../analytics/CountLeverageView';
+import CoachRatingsView from '../management/CoachRatingsView';
+import MatchupHistoryView from '../history/MatchupHistoryView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -317,6 +329,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchlocation', label: 'PITCH LOCATION' },
       { id: 'pitcheffcount', label: 'PITCH EFF/COUNT' },
       { id: 'tunnelanalysis', label: 'TUNNEL ANALYSIS' },
+      { id: 'arsenalcomp', label: 'ARSENAL COMP' },
+      { id: 'rlevindex', label: 'RELIEVER LEV' },
+      { id: 'pitchmovement', label: 'PITCH MOVEMENT' },
     ],
   },
   {
@@ -352,6 +367,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'deadlinewarroom', label: 'WAR ROOM' },
       { id: 'draftboard', label: 'DRAFT BOARD' },
       { id: 'prospectvalue', label: 'PROSPECT VALUE' },
+      { id: 'arbprojector', label: 'ARB PROJECTOR' },
     ],
   },
   {
@@ -408,6 +424,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'playercomp', label: 'PLAYER COMP' },
       { id: 'battereye', label: 'BATTER EYE' },
       { id: 'chemindex', label: 'CHEMISTRY INDEX' },
+      { id: 'dynastyrank', label: 'DYNASTY RANK' },
+      { id: 'awardpredictor', label: 'AWARD PREDICT' },
+      { id: 'countleverage', label: 'COUNT LEVERAGE' },
     ],
   },
   {
@@ -466,6 +485,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospecteta', label: 'PROSPECT ETA' },
       { id: 'coachingtree', label: 'COACHING TREE' },
       { id: 'revprojections', label: 'REVENUE PROJ' },
+      { id: 'salcompliance', label: 'CBT COMPLIANCE' },
+      { id: 'capspace', label: 'CAP SPACE' },
+      { id: 'coachratings', label: 'COACH RATINGS' },
     ],
   },
   {
@@ -488,6 +510,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'careermilestones', label: 'CAREER MILESTONES' },
       { id: 'txnlog', label: 'TRANSACTION LOG' },
       { id: 'hofmonitor', label: 'HOF MONITOR' },
+      { id: 'franchrecords', label: 'FRANCHISE REC' },
+      { id: 'matchuphistory', label: 'MATCHUP HISTORY' },
     ],
   },
 ];
@@ -872,6 +896,18 @@ export default function Shell() {
       case 'tunnelanalysis': return <TunnelAnalysisView />;
       case 'chemindex': return <ChemistryIndexView />;
       case 'prospectvalue': return <ProspectTradeValueView />;
+      case 'arsenalcomp': return <ArsenalCompView />;
+      case 'salcompliance': return <SalaryComplianceView />;
+      case 'dynastyrank': return <DynastyRankView />;
+      case 'rlevindex': return <RelieverLevIndexView />;
+      case 'arbprojector': return <ArbProjectorView />;
+      case 'awardpredictor': return <AwardPredictorView />;
+      case 'pitchmovement': return <PitchMovementView />;
+      case 'capspace': return <CapSpaceView />;
+      case 'franchrecords': return <FranchiseRecordsView />;
+      case 'countleverage': return <CountLeverageView />;
+      case 'coachratings': return <CoachRatingsView />;
+      case 'matchuphistory': return <MatchupHistoryView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
