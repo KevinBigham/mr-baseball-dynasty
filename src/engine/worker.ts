@@ -1456,6 +1456,20 @@ const api = {
     return _intlProspects;
   },
 
+  async signIntlProspect(prospectId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const prospect = _intlProspects.find(p => p.prospectId === prospectId);
+    if (!prospect) return { ok: false, error: 'Prospect not found.' };
+
+    const player = { ...prospect._playerData };
+    player.teamId = state.userTeamId;
+    player.rosterData = { ...player.rosterData, rosterStatus: 'MINORS_ROOKIE' as const };
+    state.players.push(player);
+    _intlProspects = _intlProspects.filter(p => p.prospectId !== prospectId);
+    rebuildMaps();
+    return { ok: true };
+  },
+
   // ── Awards History ────────────────────────────────────────────────────
   async getAwardHistory(): Promise<AwardHistoryEntry[]> {
     return getAwardHistory();

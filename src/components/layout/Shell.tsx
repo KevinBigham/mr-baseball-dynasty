@@ -30,6 +30,8 @@ import TradeDeadlineRecap from '../trade/TradeDeadlineRecap';
 import WaiverWire from '../roster/WaiverWire';
 import ExtensionCenter from '../contracts/ExtensionCenter';
 import OwnerDashboard from '../owner/OwnerDashboard';
+import IntlProspects from '../prospects/IntlProspects';
+import SimHub from '../game/SimHub';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -43,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'GAME',
     items: [
       { id: 'dashboard', label: 'HOME' },
+      { id: 'simhub', label: 'SIM HUB' },
       { id: 'scoreboard', label: 'SCOREBOARD' },
       { id: 'standings', label: 'STANDINGS' },
     ],
@@ -85,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'finance', label: 'FINANCE' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
       { id: 'prospects', label: 'PROSPECTS' },
+      { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
     ],
   },
@@ -281,6 +285,8 @@ export default function Shell() {
       case 'waivers':      return <WaiverWire />;
       case 'extensions':   return <ExtensionCenter />;
       case 'owner':        return <OwnerDashboard />;
+      case 'intl':         return <IntlProspects />;
+      case 'simhub':       return <SimHub />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
