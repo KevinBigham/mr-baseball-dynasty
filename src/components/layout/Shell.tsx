@@ -119,6 +119,9 @@ import TradeCalculatorView from '../trade/TradeCalculatorView';
 import PinchHitView from '../strategy/PinchHitView';
 import LineupOptimizerView from '../analytics/LineupOptimizerView';
 import PlayerConditioningView from '../player/PlayerConditioningView';
+import StolenBaseAnalyticsView from '../analytics/StolenBaseAnalyticsView';
+import BullpenUsageView from '../pitching/BullpenUsageView';
+import PlatoonAdvantageView from '../analytics/PlatoonAdvantageView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -153,6 +156,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pregame', label: 'PRE-GAME PREP' },
       { id: 'doubleheader', label: 'DOUBLEHEADERS' },
       { id: 'pinchhit', label: 'PINCH HIT/RUN' },
+      { id: 'sbanalytics', label: 'STOLEN BASE' },
     ],
   },
   {
@@ -175,6 +179,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'streaks', label: 'HOT/COLD STREAKS' },
       { id: 'pitchcount', label: 'PITCH COUNT' },
       { id: 'conditioning', label: 'CONDITIONING' },
+      { id: 'bullpenusage', label: 'BULLPEN USAGE' },
     ],
   },
   {
@@ -222,6 +227,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'catcherframing', label: 'CATCHER FRAMING' },
       { id: 'defshifts', label: 'DEF POSITIONING' },
       { id: 'lineupopt', label: 'LINEUP OPTIMIZER' },
+      { id: 'platoonadv', label: 'PLATOON MATRIX' },
     ],
   },
   {
@@ -548,6 +554,9 @@ export default function Shell() {
       case 'pinchhit': return <PinchHitView />;
       case 'lineupopt': return <LineupOptimizerView />;
       case 'conditioning': return <PlayerConditioningView />;
+      case 'sbanalytics': return <StolenBaseAnalyticsView />;
+      case 'bullpenusage': return <BullpenUsageView />;
+      case 'platoonadv': return <PlatoonAdvantageView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
