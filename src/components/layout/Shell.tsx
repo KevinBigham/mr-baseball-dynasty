@@ -188,6 +188,9 @@ import PIVIndexView from '../pitching/PIVIndexView';
 import SprayDirectionView from '../analytics/SprayDirectionView';
 import GMTradeHistoryView from '../management/GMTradeHistoryView';
 import PitchVelocityView from '../pitching/PitchVelocityView';
+import PlatoonOptView from '../analytics/PlatoonOptView';
+import DraftClassScoutingView from '../scouting/DraftClassScoutingView';
+import TunnelEffectivenessView from '../pitching/TunnelEffectivenessView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -269,6 +272,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitcherworkload', label: 'WORKLOAD MONITOR' },
       { id: 'pivindex', label: 'PIV INDEX' },
       { id: 'velobands', label: 'VELO BANDS' },
+      { id: 'tunneleffectiveness', label: 'TUNNEL EFF' },
     ],
   },
   {
@@ -346,6 +350,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gbfb', label: 'GB/FB TENDENCY' },
       { id: 'runexpectancy', label: 'RUN EXPECTANCY' },
       { id: 'spraydirection', label: 'SPRAY DIRECTION' },
+      { id: 'platoonopt', label: 'PLATOON OPT' },
     ],
   },
   {
@@ -391,6 +396,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'milbaffiliates', label: 'MILB AFFILIATES' },
       { id: 'frontoffice2', label: 'FRONT OFFICE' },
       { id: 'gmtradehistory', label: 'GM TRADE LOG' },
+      { id: 'draftclassscouting', label: 'DRAFT REPORTS' },
     ],
   },
   {
@@ -755,6 +761,9 @@ export default function Shell() {
       case 'spraydirection': return <SprayDirectionView />;
       case 'gmtradehistory': return <GMTradeHistoryView />;
       case 'velobands': return <PitchVelocityView />;
+      case 'platoonopt': return <PlatoonOptView />;
+      case 'draftclassscouting': return <DraftClassScoutingView />;
+      case 'tunneleffectiveness': return <TunnelEffectivenessView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
