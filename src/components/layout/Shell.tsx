@@ -50,6 +50,8 @@ import TripleCrownTracker from '../analytics/TripleCrownTracker';
 import TeamSnapshot from '../analytics/TeamSnapshot';
 import ProspectScoutingBoard from '../prospects/ProspectScoutingBoard';
 import OffseasonHub from '../offseason/OffseasonHub';
+import MilestoneTracker from '../history/MilestoneTracker';
+import AwardsGallery from '../analytics/AwardsGallery';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -132,6 +134,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'recap', label: 'SEASON RECAP' },
       { id: 'timeline', label: 'TIMELINE' },
       { id: 'newsfeed', label: 'NEWS FEED' },
+      { id: 'awardsgallery', label: 'AWARDS GALLERY' },
+      { id: 'milestones', label: 'MILESTONES' },
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
     ],
@@ -341,6 +345,8 @@ export default function Shell() {
       case 'teamsnapshot':  return <TeamSnapshot />;
       case 'scoutingboard': return <ProspectScoutingBoard />;
       case 'offseason':    return <OffseasonHub />;
+      case 'milestones':   return <MilestoneTracker />;
+      case 'awardsgallery': return <AwardsGallery />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
