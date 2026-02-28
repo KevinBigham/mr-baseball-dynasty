@@ -17,11 +17,15 @@ import CoachingStaffView from '../coaching/CoachingStaffView';
 import PlayerComparison from '../stats/PlayerComparison';
 import ParkComparisonView from '../stats/ParkComparisonView';
 import PowerRankings from '../analytics/PowerRankings';
+import TeamComparison from '../analytics/TeamComparison';
+import HallOfFame from '../history/HallOfFame';
+import DepthChart from '../roster/DepthChart';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',    label: 'HOME' },
   { id: 'standings',    label: 'STANDINGS' },
   { id: 'roster',       label: 'ROSTER' },
+  { id: 'depth',        label: 'DEPTH' },
   { id: 'lineup',       label: 'LINEUP' },
   { id: 'trades',       label: 'TRADES' },
   { id: 'draft',        label: 'DRAFT' },
@@ -31,8 +35,10 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'analytics',    label: 'ANALYTICS' },
   { id: 'frontoffice',  label: 'FRONT OFFICE' },
   { id: 'history',      label: 'HISTORY' },
+  { id: 'records',      label: 'RECORDS' },
   { id: 'stats',        label: 'LEADERS' },
   { id: 'compare',      label: 'COMPARE' },
+  { id: 'teamcompare',  label: 'TEAMS' },
   { id: 'rankings',     label: 'POWER' },
   { id: 'parks',        label: 'PARKS' },
   { id: 'profile',      label: 'PLAYER' },
@@ -58,9 +64,12 @@ export default function Shell() {
       case 'history':      return <InjuryTransactions />;
       case 'stats':        return <Leaderboards />;
       case 'compare':    return <PlayerComparison allPlayers={[]} />;
-      case 'rankings':   return <PowerRankings />;
-      case 'parks':      return <div className="p-4"><ParkComparisonView /></div>;
-      case 'profile':    return <PlayerProfile />;
+      case 'rankings':     return <PowerRankings />;
+      case 'teamcompare': return <TeamComparison />;
+      case 'records':      return <HallOfFame />;
+      case 'depth':        return <DepthChart />;
+      case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
+      case 'profile':      return <PlayerProfile />;
       default:           return <Dashboard />;
     }
   };
@@ -91,7 +100,7 @@ export default function Shell() {
       </header>
 
       {/* ── Nav bar ─────────────────────────────────────────────────── */}
-      <nav className="flex border-b border-gray-800 bg-gray-950 shrink-0">
+      <nav className="flex border-b border-gray-800 bg-gray-950 shrink-0 overflow-x-auto">
         {NAV_TABS.map(tab => (
           <button
             key={tab.id}
