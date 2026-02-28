@@ -639,6 +639,8 @@ const api = {
         case 'k':    value = s.ka; break;
         case 'wins': value = s.w; break;
         case 'whip': value = s.outs > 10 ? -((s.bba + s.ha) / (s.outs / 3)) : -99; break;
+        case 'sv':   value = s.sv; break;
+        case 'qs':   value = s.qs; break;
         default:     value = 0;
       }
       if (value !== 0 || stat === 'avg') results.push({ player, value });

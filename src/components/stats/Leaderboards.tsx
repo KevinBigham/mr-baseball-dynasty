@@ -18,6 +18,8 @@ const PITCHING_STATS = [
   { id: 'wins', label: 'WINS' },
   { id: 'k',    label: 'STRIKEOUTS' },
   { id: 'whip', label: 'WHIP' },
+  { id: 'sv',   label: 'SAVES' },
+  { id: 'qs',   label: 'QUALITY STARTS' },
 ];
 
 export default function Leaderboards() {
