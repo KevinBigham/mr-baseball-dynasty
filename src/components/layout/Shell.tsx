@@ -113,6 +113,9 @@ import HotColdStreaksView from '../player/HotColdStreaksView';
 import WARBreakdownView from '../analytics/WARBreakdownView';
 import PitchCountView from '../pitching/PitchCountView';
 import DoubleHeaderView from '../game/DoubleHeaderView';
+import CatcherFramingView from '../analytics/CatcherFramingView';
+import DefensiveShiftsView from '../analytics/DefensiveShiftsView';
+import TradeCalculatorView from '../trade/TradeCalculatorView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -190,6 +193,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'traderumors', label: 'TRADE RUMORS' },
       { id: 'comppicks', label: 'COMP PICKS' },
       { id: 'qualifyingoffer', label: 'QUALIFYING OFFER' },
+      { id: 'tradecalc', label: 'TRADE CALCULATOR' },
     ],
   },
   {
@@ -210,6 +214,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'awardpredictions', label: 'AWARD PREDICTIONS' },
       { id: 'parks', label: 'BALLPARKS' },
       { id: 'warbreakdown', label: 'WAR BREAKDOWN' },
+      { id: 'catcherframing', label: 'CATCHER FRAMING' },
+      { id: 'defshifts', label: 'DEF POSITIONING' },
     ],
   },
   {
@@ -530,6 +536,9 @@ export default function Shell() {
       case 'warbreakdown': return <WARBreakdownView />;
       case 'pitchcount': return <PitchCountView />;
       case 'doubleheader': return <DoubleHeaderView />;
+      case 'catcherframing': return <CatcherFramingView />;
+      case 'defshifts': return <DefensiveShiftsView />;
+      case 'tradecalc': return <TradeCalculatorView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
