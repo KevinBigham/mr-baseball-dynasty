@@ -17,6 +17,7 @@ import {
   type GameFSMContext,
 } from './fsm';
 import { isStarterAvailable, isRelieverAvailable, recordAppearance, type PitcherRestMap } from './pitcherRest';
+import { selectDefensiveSub } from './defensiveSub';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -598,6 +599,16 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
     awayLineScore.push(awayRuns);
 
+    // Defensive substitution: home team fields during top half
+    const homeDefSub = selectDefensiveSub(
+      homeLineup, homeBench, inning, ctx.homeScore - ctx.awayScore,
+    );
+    if (homeDefSub) {
+      homeLineup[homeDefSub.lineupSlot] = homeDefSub.replacement;
+      const idx = homeBench.indexOf(homeDefSub.replacement);
+      if (idx >= 0) homeBench.splice(idx, 1);
+    }
+
     // Pitcher management: pull home starter? (home team pitches in top half)
     const homeSave = isSaveSituation(inning, ctx.homeScore, ctx.awayScore);
     homePitcher = managePitcher(
@@ -646,6 +657,16 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
     homeLineScore.push(homeRuns);
+
+    // Defensive substitution: away team fields during bottom half
+    const awayDefSub = selectDefensiveSub(
+      awayLineup, awayBench, inning, ctx.awayScore - ctx.homeScore,
+    );
+    if (awayDefSub) {
+      awayLineup[awayDefSub.lineupSlot] = awayDefSub.replacement;
+      const idx = awayBench.indexOf(awayDefSub.replacement);
+      if (idx >= 0) awayBench.splice(idx, 1);
+    }
 
     // Pitcher management: pull away starter? (away team pitches in bottom half)
     const awaySave = isSaveSituation(inning, ctx.awayScore, ctx.homeScore);
