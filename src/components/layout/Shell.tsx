@@ -34,6 +34,8 @@ import IntlProspects from '../prospects/IntlProspects';
 import SimHub from '../game/SimHub';
 import Rule5Protection from '../roster/Rule5Protection';
 import TeamChemistry from '../analytics/TeamChemistry';
+import LeagueSalaries from '../finance/LeagueSalaries';
+import SeasonRecap from '../dashboard/SeasonRecap';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -90,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'ORG',
     items: [
       { id: 'finance', label: 'FINANCE' },
+      { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
       { id: 'prospects', label: 'PROSPECTS' },
       { id: 'intl', label: 'INTL SIGNING' },
@@ -100,6 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'HISTORY',
     items: [
       { id: 'franchise', label: 'FRANCHISE' },
+      { id: 'recap', label: 'SEASON RECAP' },
       { id: 'history', label: 'TRANSACTIONS' },
       { id: 'records', label: 'RECORDS & HOF' },
     ],
@@ -293,6 +297,8 @@ export default function Shell() {
       case 'simhub':       return <SimHub />;
       case 'rule5':        return <Rule5Protection />;
       case 'chemistry':    return <TeamChemistry />;
+      case 'salaries':     return <LeagueSalaries />;
+      case 'recap':        return <SeasonRecap />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
