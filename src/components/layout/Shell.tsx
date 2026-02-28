@@ -176,6 +176,9 @@ import GameLeverageView from '../analytics/GameLeverageView';
 import CatcherGameCallingView from '../analytics/CatcherGameCallingView';
 import SalaryDumpView from '../finance/SalaryDumpView';
 import GBFBTendenciesView from '../analytics/GBFBTendenciesView';
+import PitchReleaseView from '../pitching/PitchReleaseView';
+import IntlScoutingBoardView from '../scouting/IntlScoutingBoardView';
+import ClutchPitchingView from '../pitching/ClutchPitchingView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -252,6 +255,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchdesign', label: 'PITCH DESIGN' },
       { id: 'tunnelmatrix', label: 'TUNNEL MATRIX' },
       { id: 'pitchvalues', label: 'PITCH VALUES' },
+      { id: 'pitchrelease', label: 'RELEASE POINT' },
+      { id: 'clutchpitching', label: 'CLUTCH PITCHING' },
     ],
   },
   {
@@ -367,6 +372,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'prospectgrades', label: 'PROSPECT GRADES' },
       { id: 'revsharing', label: 'REVENUE SHARING' },
       { id: 'salarydump', label: 'SALARY DUMP' },
+      { id: 'intlscoutboard', label: 'INTL SCOUT BOARD' },
     ],
   },
   {
@@ -719,6 +725,9 @@ export default function Shell() {
       case 'catchercalling': return <CatcherGameCallingView />;
       case 'salarydump': return <SalaryDumpView />;
       case 'gbfb': return <GBFBTendenciesView />;
+      case 'pitchrelease': return <PitchReleaseView />;
+      case 'intlscoutboard': return <IntlScoutingBoardView />;
+      case 'clutchpitching': return <ClutchPitchingView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
