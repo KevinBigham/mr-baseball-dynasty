@@ -104,6 +104,9 @@ import MediaPersonaView from '../narrative/MediaPersonaView';
 import FilmStudyView from '../game/FilmStudyView';
 import CompPicksView from '../draft/CompPicksView';
 import QualifyingOfferView from '../contracts/QualifyingOfferView';
+import UnlocksView from '../progression/UnlocksView';
+import ManagerLegacyView from '../management/ManagerLegacyView';
+import BattingPracticeView from '../game/BattingPracticeView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -135,6 +138,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'winexpectancy', label: 'WIN EXPECTANCY' },
       { id: 'mediapersona', label: 'MEDIA PERSONA' },
       { id: 'filmstudy', label: 'FILM STUDY' },
+      { id: 'pregame', label: 'PRE-GAME PREP' },
     ],
   },
   {
@@ -224,6 +228,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
       { id: 'prospectgrad', label: 'PROSPECT GRAD' },
       { id: 'staffpoaching', label: 'STAFF POACHING' },
+      { id: 'unlocks', label: 'UNLOCKS' },
     ],
   },
   {
@@ -242,6 +247,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'legacy', label: 'LEGACY SCORE' },
       { id: 'alltimerecords', label: 'ALL-TIME RECORDS' },
       { id: 'retirement', label: 'RETIREMENT WATCH' },
+      { id: 'mgrlegacy', label: 'MANAGER LEGACY' },
     ],
   },
 ];
@@ -503,6 +509,9 @@ export default function Shell() {
       case 'filmstudy': return <FilmStudyView />;
       case 'comppicks': return <CompPicksView />;
       case 'qualifyingoffer': return <QualifyingOfferView />;
+      case 'unlocks': return <UnlocksView />;
+      case 'mgrlegacy': return <ManagerLegacyView />;
+      case 'pregame': return <BattingPracticeView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
