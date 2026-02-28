@@ -71,6 +71,9 @@ import FranchiseLegacyView from '../history/FranchiseLegacyView';
 import PressRoom from '../media/PressRoom';
 import SeasonGoalsView from '../goals/SeasonGoalsView';
 import SalaryBreakdown from '../finance/SalaryBreakdown';
+import PitchRepertoireView from '../pitching/PitchRepertoireView';
+import TradeBlockManager from '../trade/TradeBlockManager';
+import DraftScoutBoardView from '../scouting/DraftScoutBoardView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -105,6 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'lineup', label: 'LINEUP' },
       { id: 'clubhouse', label: 'CLUBHOUSE' },
       { id: 'mentors', label: 'MENTOR HUB' },
+      { id: 'repertoire', label: 'PITCH REPERTOIRE' },
     ],
   },
   {
@@ -112,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'offseason', label: 'OFFSEASON HUB' },
       { id: 'trades', label: 'TRADE CENTER' },
+      { id: 'tradeblock', label: 'TRADE BLOCK' },
       { id: 'tradefinder', label: 'TRADE FINDER' },
       { id: 'deadline', label: 'DEADLINE RECAP' },
       { id: 'freeagents', label: 'FA MARKET' },
@@ -152,6 +157,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'gmstrategy', label: 'GM STRATEGY' },
       { id: 'prospects', label: 'PROSPECTS' },
       { id: 'scoutingboard', label: 'SCOUTING BOARD' },
+      { id: 'draftscout', label: 'DRAFT INTEL' },
       { id: 'pipeline', label: 'FARM PIPELINE' },
       { id: 'devtracker', label: 'DEVELOPMENT' },
       { id: 'breakouts', label: 'BREAKOUT WATCH' },
@@ -404,6 +410,9 @@ export default function Shell() {
       case 'pressroom':    return <PressRoom />;
       case 'seasongoals':  return <SeasonGoalsView />;
       case 'salarybreakdown': return <SalaryBreakdown />;
+      case 'repertoire':  return <PitchRepertoireView />;
+      case 'tradeblock':  return <TradeBlockManager />;
+      case 'draftscout':  return <DraftScoutBoardView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
