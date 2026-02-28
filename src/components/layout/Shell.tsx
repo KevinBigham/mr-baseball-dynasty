@@ -83,6 +83,9 @@ import InjuryTrackerView from '../medical/InjuryTrackerView';
 import PlayerArchetypesView from '../player/PlayerArchetypesView';
 import GrudgeRevengeView from '../narrative/GrudgeRevengeView';
 import OwnerPersonalityView from '../management/OwnerPersonalityView';
+import HeadlineTickerView from '../narrative/HeadlineTickerView';
+import IncentiveTracker from '../contracts/IncentiveTracker';
+import BracketView from '../playoffs/BracketView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -102,10 +105,12 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'schedule', label: 'SCHEDULE' },
       { id: 'standings', label: 'STANDINGS' },
       { id: 'playoffpicture', label: 'PLAYOFF PICTURE' },
+      { id: 'bracket', label: 'PLAYOFF BRACKET' },
       { id: 'challenges', label: 'SERIES CHALLENGES' },
       { id: 'pressroom', label: 'PRESS ROOM' },
       { id: 'seasongoals', label: 'SEASON GOALS' },
       { id: 'grudges', label: 'GRUDGE & REVENGE' },
+      { id: 'headlines', label: 'STAT HEADLINES' },
     ],
   },
   {
@@ -139,6 +144,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rule5', label: 'RULE 5' },
       { id: 'springtraining', label: 'SPRING TRAINING' },
       { id: 'holdouts', label: 'HOLDOUTS' },
+      { id: 'incentives', label: 'INCENTIVES' },
       { id: 'offseasonevents', label: 'OFFSEASON EVENTS' },
     ],
   },
@@ -440,6 +446,9 @@ export default function Shell() {
       case 'archetypes': return <PlayerArchetypesView />;
       case 'grudges':    return <GrudgeRevengeView />;
       case 'ownerpersonality': return <OwnerPersonalityView />;
+      case 'headlines': return <HeadlineTickerView />;
+      case 'incentives': return <IncentiveTracker />;
+      case 'bracket':  return <BracketView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
