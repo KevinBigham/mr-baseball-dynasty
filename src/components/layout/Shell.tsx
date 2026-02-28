@@ -86,6 +86,9 @@ import OwnerPersonalityView from '../management/OwnerPersonalityView';
 import HeadlineTickerView from '../narrative/HeadlineTickerView';
 import IncentiveTracker from '../contracts/IncentiveTracker';
 import BracketView from '../playoffs/BracketView';
+import BullpenView from '../pitching/BullpenView';
+import StadiumUpgradesView from '../stadium/StadiumUpgradesView';
+import ScoutNetworkView from '../scouting/ScoutNetworkView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -127,6 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fanengagement', label: 'FAN ENGAGEMENT' },
       { id: 'injuries', label: 'INJURY TRACKER' },
       { id: 'archetypes', label: 'ARCHETYPES' },
+      { id: 'bullpen', label: 'BULLPEN MGMT' },
     ],
   },
   {
@@ -188,6 +192,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'owner', label: 'OWNER & GOALS' },
       { id: 'gmrep', label: 'GM REPUTATION' },
       { id: 'ownerpersonality', label: 'OWNER PERSONALITY' },
+      { id: 'scoutnetwork', label: 'SCOUT NETWORK' },
+      { id: 'stadium', label: 'STADIUM UPGRADES' },
       { id: 'salarybreakdown', label: 'SALARY BREAKDOWN' },
     ],
   },
@@ -449,6 +455,9 @@ export default function Shell() {
       case 'headlines': return <HeadlineTickerView />;
       case 'incentives': return <IncentiveTracker />;
       case 'bracket':  return <BracketView />;
+      case 'bullpen':  return <BullpenView />;
+      case 'stadium':  return <StadiumUpgradesView />;
+      case 'scoutnetwork': return <ScoutNetworkView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
