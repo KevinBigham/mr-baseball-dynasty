@@ -10,7 +10,10 @@ const HITTING_STATS = [
   { id: 'rbi', label: 'RBI' },
   { id: 'avg', label: 'BATTING AVG' },
   { id: 'obp', label: 'ON-BASE PCT' },
+  { id: 'slg', label: 'SLUGGING' },
+  { id: 'ops', label: 'OPS' },
   { id: 'sb',  label: 'STOLEN BASES' },
+  { id: 'h',   label: 'HITS' },
 ];
 
 const PITCHING_STATS = [

@@ -634,6 +634,20 @@ const api = {
         case 'rbi':  value = s.rbi; break;
         case 'avg':  value = s.ab > 100 ? s.h / s.ab : 0; break;
         case 'obp':  value = s.pa > 100 ? (s.h + s.bb + s.hbp) / s.pa : 0; break;
+        case 'slg': {
+          if (s.ab < 100) { value = 0; break; }
+          const tb = (s.h - s.doubles - s.triples - s.hr) + s.doubles * 2 + s.triples * 3 + s.hr * 4;
+          value = tb / s.ab;
+          break;
+        }
+        case 'ops': {
+          if (s.ab < 100 || s.pa < 100) { value = 0; break; }
+          const obp = (s.h + s.bb + s.hbp) / s.pa;
+          const totalBases = (s.h - s.doubles - s.triples - s.hr) + s.doubles * 2 + s.triples * 3 + s.hr * 4;
+          value = obp + totalBases / s.ab;
+          break;
+        }
+        case 'h':    value = s.h; break;
         case 'sb':   value = s.sb; break;
         case 'era':  value = s.outs > 10 ? -((s.er / s.outs) * 27) : -99; break; // negative for sorting
         case 'k':    value = s.ka; break;
@@ -651,7 +665,8 @@ const api = {
 
     return top.map((r, i) => {
       const team = _teamMap.get(r.player.teamId);
-      let displayValue = r.value.toFixed(stat === 'avg' || stat === 'obp' ? 3 : 0);
+      const isRateStat = ['avg', 'obp', 'slg', 'ops'].includes(stat);
+      let displayValue = r.value.toFixed(isRateStat ? 3 : 0);
       if (stat === 'era' || stat === 'whip') displayValue = (-r.value).toFixed(2);
       return {
         rank: i + 1,
