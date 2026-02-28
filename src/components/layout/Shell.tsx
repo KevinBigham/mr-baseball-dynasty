@@ -263,6 +263,24 @@ import PitchLocationHeatmapView from '../pitching/PitchLocationHeatmapView';
 import UmpireZoneView from '../analytics/UmpireZoneView';
 import ProspectDevTimelineView from '../scouting/ProspectDevTimelineView';
 import DeadlineValueView from '../trade/DeadlineValueView';
+import StaffWorkloadCalendarView from '../pitching/StaffWorkloadCalendarView';
+import TradeChipRankingView from '../trade/TradeChipRankingView';
+import ClutchPerformanceView from '../analytics/ClutchPerformanceView';
+import PitchTunnelMatrixView from '../pitching/PitchTunnelMatrixView';
+import MiLBAwardTrackerView from '../minors/MiLBAwardTrackerView';
+import WeatherImpactView from '../analytics/WeatherImpactView';
+import DraftPickValueView from '../draft/DraftPickValueView';
+import FranchiseHealthView from '../finance/FranchiseHealthView';
+import FatigueRestView from '../analytics/FatigueRestView';
+import ScoutTripPlannerView from '../scouting/ScoutTripPlannerView';
+import BullpenMatchupMatrixView from '../pitching/BullpenMatchupMatrixView';
+import HistoricalSeasonCompView from '../history/HistoricalSeasonCompView';
+import PitcherStaminaView from '../pitching/PitcherStaminaView';
+import FABiddingWarView from '../offseason/FABiddingWarView';
+import DefensiveRangeView from '../analytics/DefensiveRangeView';
+import PowerRankTrendView from '../analytics/PowerRankTrendView';
+import InjuryRecoveryView from '../medical/InjuryRecoveryView';
+import PayrollDistributionView from '../finance/PayrollDistributionView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -359,6 +377,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'startergamelog', label: 'STARTER GAME LOG' },
       { id: 'pitchusagecount', label: 'PITCH BY COUNT' },
       { id: 'pitchlocalheatmap', label: 'PITCH LOC HEATMAP' },
+      { id: 'staffworkload', label: 'STAFF WORKLOAD' },
+      { id: 'pitchtunnelmatrix', label: 'TUNNEL MATRIX+' },
+      { id: 'bpmatchup', label: 'BP MATCHUP' },
+      { id: 'pitcherstamina', label: 'STAMINA TRACKER' },
     ],
   },
   {
@@ -400,6 +422,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'buyoutanalyzer', label: 'BUYOUT ANALYZER' },
       { id: 'extensioncalc', label: 'EXTENSION CALC' },
       { id: 'deadlinevalue', label: 'DEADLINE VALUE' },
+      { id: 'tradechiprankig', label: 'TRADE CHIP RANK' },
+      { id: 'draftpickvalue', label: 'DRAFT PICK VALUE' },
+      { id: 'fabiddingwar', label: 'FA BIDDING WAR' },
     ],
   },
   {
@@ -470,6 +495,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'defposmatrix', label: 'DEF MATRIX' },
       { id: 'gamepace', label: 'GAME PACE' },
       { id: 'umpirezone', label: 'UMPIRE ZONES' },
+      { id: 'clutchperformance', label: 'CLUTCH INDEX+' },
+      { id: 'weatherimpact', label: 'WEATHER IMPACT' },
+      { id: 'fatiguerest', label: 'FATIGUE & REST' },
+      { id: 'defensiverange', label: 'DEF RANGE CHART' },
+      { id: 'powerranktrend', label: 'RANK TREND' },
     ],
   },
   {
@@ -535,6 +565,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scoutbudget', label: 'SCOUT BUDGET' },
       { id: 'foreputation', label: 'FO REPUTATION' },
       { id: 'prospectdevtimeline', label: 'PROSPECT DEV' },
+      { id: 'milbawardtracker', label: 'MILB AWARDS' },
+      { id: 'scouttrip', label: 'SCOUT TRIPS' },
+      { id: 'franchisehealth', label: 'FINANCIAL HEALTH' },
+      { id: 'payrolldist', label: 'PAYROLL DIST' },
     ],
   },
   {
@@ -560,6 +594,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'franchrecords', label: 'FRANCHISE REC' },
       { id: 'matchuphistory', label: 'MATCHUP HISTORY' },
       { id: 'postseasonhistory', label: 'POSTSEASON' },
+      { id: 'historicalseasoncomp', label: 'SEASON COMP' },
+      { id: 'injuryrecovery', label: 'INJURY RECOVERY' },
     ],
   },
 ];
@@ -980,6 +1016,24 @@ export default function Shell() {
       case 'umpirezone': return <UmpireZoneView />;
       case 'prospectdevtimeline': return <ProspectDevTimelineView />;
       case 'deadlinevalue': return <DeadlineValueView />;
+      case 'staffworkload': return <StaffWorkloadCalendarView />;
+      case 'tradechiprankig': return <TradeChipRankingView />;
+      case 'clutchperformance': return <ClutchPerformanceView />;
+      case 'pitchtunnelmatrix': return <PitchTunnelMatrixView />;
+      case 'milbawardtracker': return <MiLBAwardTrackerView />;
+      case 'weatherimpact': return <WeatherImpactView />;
+      case 'draftpickvalue': return <DraftPickValueView />;
+      case 'franchisehealth': return <FranchiseHealthView />;
+      case 'fatiguerest': return <FatigueRestView />;
+      case 'scouttrip': return <ScoutTripPlannerView />;
+      case 'bpmatchup': return <BullpenMatchupMatrixView />;
+      case 'historicalseasoncomp': return <HistoricalSeasonCompView />;
+      case 'pitcherstamina': return <PitcherStaminaView />;
+      case 'fabiddingwar': return <FABiddingWarView />;
+      case 'defensiverange': return <DefensiveRangeView />;
+      case 'powerranktrend': return <PowerRankTrendView />;
+      case 'injuryrecovery': return <InjuryRecoveryView />;
+      case 'payrolldist': return <PayrollDistributionView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;

@@ -4,7 +4,13 @@ export type NavTab = 'dashboard' | 'standings' | 'roster' | 'stats' | 'profile' 
 | 'sbsuccessmodel' | 'platoonoptengine' | 'buyoutanalyzer'
 | 'pitchusagecount' | 'foreputation' | 'defposmatrix'
 | 'gamepace' | 'extensioncalc' | 'pitchlocalheatmap'
-| 'umpirezone' | 'prospectdevtimeline' | 'deadlinevalue';
+| 'umpirezone' | 'prospectdevtimeline' | 'deadlinevalue'
+| 'staffworkload' | 'tradechiprankig' | 'clutchperformance'
+| 'pitchtunnelmatrix' | 'milbawardtracker' | 'weatherimpact'
+| 'draftpickvalue' | 'franchisehealth' | 'fatiguerest'
+| 'scouttrip' | 'bpmatchup' | 'historicalseasoncomp'
+| 'pitcherstamina' | 'fabiddingwar' | 'defensiverange'
+| 'powerranktrend' | 'injuryrecovery' | 'payrolldist';
 
 interface UIStore {
   activeTab: NavTab;
