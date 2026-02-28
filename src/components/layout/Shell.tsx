@@ -32,6 +32,8 @@ import ExtensionCenter from '../contracts/ExtensionCenter';
 import OwnerDashboard from '../owner/OwnerDashboard';
 import IntlProspects from '../prospects/IntlProspects';
 import SimHub from '../game/SimHub';
+import Rule5Protection from '../roster/Rule5Protection';
+import TeamChemistry from '../analytics/TeamChemistry';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -68,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'waivers', label: 'WAIVER WIRE' },
       { id: 'extensions', label: 'EXTENSIONS' },
       { id: 'draft', label: 'DRAFT' },
+      { id: 'rule5', label: 'RULE 5' },
     ],
   },
   {
@@ -79,6 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rankings', label: 'POWER RANKINGS' },
       { id: 'compare', label: 'PLAYER COMPARE' },
       { id: 'teamcompare', label: 'TEAM COMPARE' },
+      { id: 'chemistry', label: 'CHEMISTRY' },
       { id: 'parks', label: 'BALLPARKS' },
     ],
   },
@@ -287,6 +291,8 @@ export default function Shell() {
       case 'owner':        return <OwnerDashboard />;
       case 'intl':         return <IntlProspects />;
       case 'simhub':       return <SimHub />;
+      case 'rule5':        return <Rule5Protection />;
+      case 'chemistry':    return <TeamChemistry />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
