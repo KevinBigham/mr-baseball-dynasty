@@ -302,6 +302,15 @@ import ScoutReportV2View from '../scouting/ScoutReportV2View';
 import PinchHitDecisionView from '../analytics/PinchHitDecisionView';
 import BPMatchupOptView from '../pitching/BPMatchupOptView';
 import ScheduleStrengthView from '../analytics/ScheduleStrengthView';
+import BattingOrderImpactView from '../analytics/BattingOrderImpactView';
+import PlatoonAdvTrackerView from '../analytics/PlatoonAdvTrackerView';
+import CallUpReadinessView from '../prospects/CallUpReadinessView';
+import PitchSequenceOptView from '../pitching/PitchSequenceOptView';
+import DefReplacementView from '../analytics/DefReplacementView';
+import RevenueForecasterView from '../finance/RevenueForecasterView';
+import StreakPredictorView from '../analytics/StreakPredictorView';
+import DeadlineTrackerView from '../trade/DeadlineTrackerView';
+import PitcherFatigueView from '../pitching/PitcherFatigueView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -406,6 +415,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'relieverfatigue', label: 'RELIEVER FATIGUE' },
       { id: 'pitchtunnelheatmap', label: 'TUNNEL HEATMAP' },
       { id: 'bpmatchupopt', label: 'BP MATCHUP OPT' },
+      { id: 'pitchsequenceopt', label: 'PITCH SEQ OPT' },
+      { id: 'pitcherfatigue', label: 'PITCHER FATIGUE' },
     ],
   },
   {
@@ -452,6 +463,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fabiddingwar', label: 'FA BIDDING WAR' },
       { id: 'deadlinestrategy', label: 'DEADLINE STRATEGY' },
       { id: 'contractbuyout', label: 'CONTRACT BUYOUT' },
+      { id: 'deadlinetracker', label: 'DEADLINE TRACKER' },
     ],
   },
   {
@@ -538,6 +550,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'teamchemweb', label: 'CHEMISTRY WEB' },
       { id: 'phdecision', label: 'PH DECISION' },
       { id: 'schedulestrength', label: 'SCHEDULE SOS' },
+      { id: 'battingorderimpact', label: 'ORDER IMPACT' },
+      { id: 'platoonadvtracker', label: 'PLATOON TRACKER' },
+      { id: 'defreplacement', label: 'DEF REPLACEMENT' },
+      { id: 'streakpredictor', label: 'STREAK PREDICT' },
     ],
   },
   {
@@ -611,6 +627,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salarycapsim2', label: 'CAP SIMULATOR' },
       { id: 'prospectgradimpact', label: 'GRAD IMPACT' },
       { id: 'scoutreportv2', label: 'ADV SCOUT REPORT' },
+      { id: 'callupreadiness', label: 'CALLUP READY' },
+      { id: 'revforecaster', label: 'REVENUE FORECAST' },
     ],
   },
   {
@@ -1097,6 +1115,15 @@ export default function Shell() {
       case 'phdecision': return <PinchHitDecisionView />;
       case 'bpmatchupopt': return <BPMatchupOptView />;
       case 'schedulestrength': return <ScheduleStrengthView />;
+      case 'battingorderimpact': return <BattingOrderImpactView />;
+      case 'platoonadvtracker': return <PlatoonAdvTrackerView />;
+      case 'callupreadiness': return <CallUpReadinessView />;
+      case 'pitchsequenceopt': return <PitchSequenceOptView />;
+      case 'defreplacement': return <DefReplacementView />;
+      case 'revforecaster': return <RevenueForecasterView />;
+      case 'streakpredictor': return <StreakPredictorView />;
+      case 'deadlinetracker': return <DeadlineTrackerView />;
+      case 'pitcherfatigue': return <PitcherFatigueView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;

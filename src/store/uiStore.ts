@@ -17,7 +17,10 @@ export type NavTab = 'dashboard' | 'standings' | 'roster' | 'stats' | 'profile' 
 | 'walkrateleaders' | 'catcherpoptime' | 'rosterflex'
 | 'pitchtunnelheatmap' | 'defoptimizer' | 'contractbuyout'
 | 'agingprojections' | 'teamchemweb' | 'scoutreportv2'
-| 'phdecision' | 'bpmatchupopt' | 'schedulestrength';
+| 'phdecision' | 'bpmatchupopt' | 'schedulestrength'
+| 'battingorderimpact' | 'platoonadvtracker' | 'callupreadiness'
+| 'pitchsequenceopt' | 'defreplacement' | 'revforecaster'
+| 'streakpredictor' | 'deadlinetracker' | 'pitcherfatigue';
 
 interface UIStore {
   activeTab: NavTab;
