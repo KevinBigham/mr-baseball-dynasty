@@ -155,6 +155,9 @@ import GameScoreView from '../analytics/GameScoreView';
 import WinProbabilityView from '../analytics/WinProbabilityView';
 import ArbProjectionsView from '../contracts/ArbProjectionsView';
 import DefPositioningView from '../analytics/DefPositioningView';
+import BaserunningIQView from '../analytics/BaserunningIQView';
+import OptionChainView from '../contracts/OptionChainView';
+import ContactQualityView from '../analytics/ContactQualityView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -192,6 +195,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'sbanalytics', label: 'STOLEN BASE' },
       { id: 'momentum', label: 'MOMENTUM' },
       { id: 'winprob', label: 'WIN PROBABILITY' },
+      { id: 'baseruniq', label: 'BASERUNNING IQ' },
     ],
   },
   {
@@ -254,6 +258,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'marketvalue', label: 'MARKET VALUE' },
       { id: 'waiverclaims', label: 'WAIVER CLAIMS' },
       { id: 'arbprojections', label: 'ARB PROJECTIONS' },
+      { id: 'optionchain', label: 'OPTION CHAIN' },
     ],
   },
   {
@@ -288,6 +293,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'situational', label: 'SITUATIONAL' },
       { id: 'gamescore', label: 'GAME SCORE' },
       { id: 'defpositioning', label: 'DEF POSITIONING' },
+      { id: 'contactquality', label: 'CONTACT QUALITY' },
     ],
   },
   {
@@ -656,6 +662,9 @@ export default function Shell() {
       case 'winprob': return <WinProbabilityView />;
       case 'arbprojections': return <ArbProjectionsView />;
       case 'defpositioning': return <DefPositioningView />;
+      case 'baseruniq': return <BaserunningIQView />;
+      case 'optionchain': return <OptionChainView />;
+      case 'contactquality': return <ContactQualityView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
