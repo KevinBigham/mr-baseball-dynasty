@@ -37,6 +37,9 @@ import TeamChemistry from '../analytics/TeamChemistry';
 import LeagueSalaries from '../finance/LeagueSalaries';
 import SeasonRecap from '../dashboard/SeasonRecap';
 import RosterComparison from '../analytics/RosterComparison';
+import TeamSchedule from '../game/TeamSchedule';
+import FarmPipeline from '../prospects/FarmPipeline';
+import TradeFinder from '../trade/TradeFinder';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -52,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'dashboard', label: 'HOME' },
       { id: 'simhub', label: 'SIM HUB' },
       { id: 'scoreboard', label: 'SCOREBOARD' },
+      { id: 'schedule', label: 'SCHEDULE' },
       { id: 'standings', label: 'STANDINGS' },
     ],
   },
@@ -68,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'MOVES',
     items: [
       { id: 'trades', label: 'TRADE CENTER' },
+      { id: 'tradefinder', label: 'TRADE FINDER' },
       { id: 'deadline', label: 'DEADLINE RECAP' },
       { id: 'freeagents', label: 'FA MARKET' },
       { id: 'waivers', label: 'WAIVER WIRE' },
@@ -97,6 +102,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'salaries', label: 'LEAGUE SALARIES' },
       { id: 'frontoffice', label: 'COACHING STAFF' },
       { id: 'prospects', label: 'PROSPECTS' },
+      { id: 'pipeline', label: 'FARM PIPELINE' },
       { id: 'intl', label: 'INTL SIGNING' },
       { id: 'owner', label: 'OWNER & GOALS' },
     ],
@@ -302,6 +308,9 @@ export default function Shell() {
       case 'salaries':     return <LeagueSalaries />;
       case 'recap':        return <SeasonRecap />;
       case 'rostercompare': return <RosterComparison />;
+      case 'schedule':     return <TeamSchedule />;
+      case 'pipeline':     return <FarmPipeline />;
+      case 'tradefinder':  return <TradeFinder />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;

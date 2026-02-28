@@ -574,6 +574,50 @@ const api = {
     return _recentGames;
   },
 
+  // ── Team Schedule ──────────────────────────────────────────────────────────
+  async getTeamSchedule(teamId: number): Promise<Array<{
+    gameId: number;
+    date: string;
+    opponentId: number;
+    opponentAbbr: string;
+    isHome: boolean;
+    isDivisional: boolean;
+    isInterleague: boolean;
+    played: boolean;
+    result?: { won: boolean; teamScore: number; oppScore: number; innings: number; walkOff?: boolean };
+  }>> {
+    const state = requireState();
+    const gameResultMap = new Map<number, import('../types/game').GameSummary>();
+    for (const g of _recentGames) gameResultMap.set(g.gameId, g);
+
+    return state.schedule
+      .filter(g => g.homeTeamId === teamId || g.awayTeamId === teamId)
+      .map(g => {
+        const isHome = g.homeTeamId === teamId;
+        const opponentId = isHome ? g.awayTeamId : g.homeTeamId;
+        const opponent = _teamMap.get(opponentId);
+        const played = gameResultMap.has(g.gameId);
+        const result = played ? (() => {
+          const gs = gameResultMap.get(g.gameId)!;
+          const teamScore = isHome ? gs.homeScore : gs.awayScore;
+          const oppScore = isHome ? gs.awayScore : gs.homeScore;
+          return { won: teamScore > oppScore, teamScore, oppScore, innings: gs.innings, walkOff: gs.walkOff };
+        })() : undefined;
+
+        return {
+          gameId: g.gameId,
+          date: g.date,
+          opponentId,
+          opponentAbbr: opponent?.abbreviation ?? '???',
+          isHome,
+          isDivisional: g.isDivisional,
+          isInterleague: g.isInterleague,
+          played,
+          result,
+        };
+      });
+  },
+
   // ── Standings ──────────────────────────────────────────────────────────────
   async getStandings(): Promise<StandingsData> {
     const state = requireState();
