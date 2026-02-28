@@ -706,14 +706,31 @@ const api = {
       grades['STM'] = toScoutingScale(p.stamina);
     }
 
-    const seasonStats: null | { season: number; [key: string]: number } = s ? {
-      season: state.season - 1,
-      pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
-      avg: s.ab > 0 ? Number((s.h / s.ab).toFixed(3)) : 0,
-      obp: s.pa > 0 ? Number(((s.h + s.bb + s.hbp) / s.pa).toFixed(3)) : 0,
-      w: s.w, l: s.l, sv: s.sv, era: s.outs > 0 ? Number(((s.er / s.outs) * 27).toFixed(2)) : 0,
-      ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
-    } : null;
+    const seasonStats: null | { season: number; [key: string]: number } = s ? (() => {
+      const ip = s.outs / 3;
+      const avg = s.ab > 0 ? s.h / s.ab : 0;
+      const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
+      const tb = (s.h - s.doubles - s.triples - s.hr) + s.doubles * 2 + s.triples * 3 + s.hr * 4;
+      const slg = s.ab > 0 ? tb / s.ab : 0;
+      const era = ip > 0 ? (s.er / ip) * 9 : 0;
+      const whip = ip > 0 ? (s.bba + s.ha) / ip : 0;
+      const fip = ip > 0 ? (13 * s.hra + 3 * s.bba - 2 * s.ka) / ip + 3.10 : 0;
+      return {
+        season: state.season - 1,
+        pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
+        doubles: s.doubles, triples: s.triples,
+        avg: Number(avg.toFixed(3)),
+        obp: Number(obp.toFixed(3)),
+        slg: Number(slg.toFixed(3)),
+        ops: Number((obp + slg).toFixed(3)),
+        w: s.w, l: s.l, sv: s.sv,
+        era: Number(era.toFixed(2)),
+        whip: Number(whip.toFixed(2)),
+        fip: Number(fip.toFixed(2)),
+        qs: s.qs,
+        ip: Number(ip.toFixed(1)), ka: s.ka, bba: s.bba, hra: s.hra,
+      };
+    })() : null;
 
     return {
       player: {

@@ -124,6 +124,7 @@ export default function PlayerProfile() {
                     {statRow('SV',   (seasonStats as Record<string, number>).sv)}
                     {statRow('IP',   (seasonStats as Record<string, number>).ip, 1)}
                     {statRow('ERA',  (seasonStats as Record<string, number>).era, 2)}
+                    {statRow('FIP',  (seasonStats as Record<string, number>).fip, 2)}
                     {statRow('WHIP', (seasonStats as Record<string, number>).whip, 2)}
                   </>
                 ) : (
@@ -145,11 +146,14 @@ export default function PlayerProfile() {
                     {statRow('K',   (seasonStats as Record<string, number>).ka)}
                     {statRow('BB',  (seasonStats as Record<string, number>).bba)}
                     {statRow('HR',  (seasonStats as Record<string, number>).hra)}
+                    {statRow('QS',  (seasonStats as Record<string, number>).qs)}
                   </>
                 ) : (
                   <>
                     {statRow('AVG', (seasonStats as Record<string, number>).avg, 3)}
                     {statRow('OBP', (seasonStats as Record<string, number>).obp, 3)}
+                    {statRow('SLG', (seasonStats as Record<string, number>).slg, 3)}
+                    {statRow('OPS', (seasonStats as Record<string, number>).ops, 3)}
                     {statRow('BB',  (seasonStats as Record<string, number>).bb)}
                     {statRow('K',   (seasonStats as Record<string, number>).k)}
                   </>
