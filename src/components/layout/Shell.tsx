@@ -281,6 +281,18 @@ import DefensiveRangeView from '../analytics/DefensiveRangeView';
 import PowerRankTrendView from '../analytics/PowerRankTrendView';
 import InjuryRecoveryView from '../medical/InjuryRecoveryView';
 import PayrollDistributionView from '../finance/PayrollDistributionView';
+import ProspectReportCardView from '../scouting/ProspectReportCardView';
+import TeamWinSharesView from '../analytics/TeamWinSharesView';
+import SalaryCapSim2View from '../finance/SalaryCapSim2View';
+import LineupRulesView from '../analytics/LineupRulesView';
+import RelieverFatigueModelView from '../pitching/RelieverFatigueModelView';
+import FanMoraleView from '../analytics/FanMoraleView';
+import ProspectGradImpactView from '../prospects/ProspectGradImpactView';
+import DeadlineStrategyView from '../trade/DeadlineStrategyView';
+import SeasonSimForecastView from '../analytics/SeasonSimForecastView';
+import WalkRateLeaderboardView from '../analytics/WalkRateLeaderboardView';
+import CatcherPopTimeView from '../analytics/CatcherPopTimeView';
+import RosterFlexScoreView from '../analytics/RosterFlexScoreView';
 
 // ─── Navigation group definitions ───────────────────────────────────────────
 
@@ -381,6 +393,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'pitchtunnelmatrix', label: 'TUNNEL MATRIX+' },
       { id: 'bpmatchup', label: 'BP MATCHUP' },
       { id: 'pitcherstamina', label: 'STAMINA TRACKER' },
+      { id: 'lineuprules', label: 'LINEUP RULES' },
+      { id: 'relieverfatigue', label: 'RELIEVER FATIGUE' },
     ],
   },
   {
@@ -425,6 +439,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'tradechiprankig', label: 'TRADE CHIP RANK' },
       { id: 'draftpickvalue', label: 'DRAFT PICK VALUE' },
       { id: 'fabiddingwar', label: 'FA BIDDING WAR' },
+      { id: 'deadlinestrategy', label: 'DEADLINE STRATEGY' },
     ],
   },
   {
@@ -500,6 +515,12 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fatiguerest', label: 'FATIGUE & REST' },
       { id: 'defensiverange', label: 'DEF RANGE CHART' },
       { id: 'powerranktrend', label: 'RANK TREND' },
+      { id: 'teamwinshares', label: 'WIN SHARES' },
+      { id: 'seasonsimforecast', label: 'SEASON SIM' },
+      { id: 'walkrateleaders', label: 'WALK RATE' },
+      { id: 'catcherpoptime', label: 'CATCHER POP TIME' },
+      { id: 'rosterflex', label: 'ROSTER FLEX' },
+      { id: 'fanmorale', label: 'FAN MORALE' },
     ],
   },
   {
@@ -569,6 +590,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'scouttrip', label: 'SCOUT TRIPS' },
       { id: 'franchisehealth', label: 'FINANCIAL HEALTH' },
       { id: 'payrolldist', label: 'PAYROLL DIST' },
+      { id: 'prospectrptcard', label: 'PROSPECT RPT CARDS' },
+      { id: 'salarycapsim2', label: 'CAP SIMULATOR' },
+      { id: 'prospectgradimpact', label: 'GRAD IMPACT' },
     ],
   },
   {
@@ -1034,6 +1058,18 @@ export default function Shell() {
       case 'powerranktrend': return <PowerRankTrendView />;
       case 'injuryrecovery': return <InjuryRecoveryView />;
       case 'payrolldist': return <PayrollDistributionView />;
+      case 'prospectrptcard': return <ProspectReportCardView />;
+      case 'teamwinshares': return <TeamWinSharesView />;
+      case 'salarycapsim2': return <SalaryCapSim2View />;
+      case 'lineuprules': return <LineupRulesView />;
+      case 'relieverfatigue': return <RelieverFatigueModelView />;
+      case 'fanmorale': return <FanMoraleView />;
+      case 'prospectgradimpact': return <ProspectGradImpactView />;
+      case 'deadlinestrategy': return <DeadlineStrategyView />;
+      case 'seasonsimforecast': return <SeasonSimForecastView />;
+      case 'walkrateleaders': return <WalkRateLeaderboardView />;
+      case 'catcherpoptime': return <CatcherPopTimeView />;
+      case 'rosterflex': return <RosterFlexScoreView />;
       case 'parks':        return <div className="p-4"><ParkComparisonView /></div>;
       case 'profile':      return <PlayerProfile />;
       default:             return <Dashboard />;
