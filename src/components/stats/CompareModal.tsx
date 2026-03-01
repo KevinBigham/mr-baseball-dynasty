@@ -10,17 +10,12 @@ import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
+import { formatSalary } from '../../utils/format';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function toScout(ovr: number): number {
   return Math.round(20 + (ovr / 550) * 60);
-}
-
-function formatSalary(s: number): string {
-  if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
-  if (s >= 1_000) return `$${(s / 1000).toFixed(0)}K`;
-  return `$${s}`;
 }
 
 function makeRosterPlayer(p: PlayerProfileData['player']): RosterPlayer {

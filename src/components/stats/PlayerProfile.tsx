@@ -439,13 +439,21 @@ export default function PlayerProfile() {
   const [data, setData] = useState<PlayerProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advStats, setAdvStats] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
     if (!selectedPlayerId || !gameStarted) return;
     setLoading(true);
     setError(null);
-    getEngine().getPlayerProfile(selectedPlayerId)
-      .then(setData)
+    setAdvStats(null);
+    Promise.all([
+      getEngine().getPlayerProfile(selectedPlayerId),
+      getEngine().getAdvancedStats(selectedPlayerId),
+    ])
+      .then(([profileData, adv]) => {
+        setData(profileData);
+        if (adv) setAdvStats(adv as unknown as Record<string, number>);
+      })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
   }, [selectedPlayerId, gameStarted]);
@@ -682,6 +690,68 @@ export default function PlayerProfile() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── Advanced Metrics ───────────────────────────────────────────── */}
+      {advStats && (
+        <div className="bloomberg-border">
+          <div className="bloomberg-header">ADVANCED METRICS</div>
+          {isPitcher ? (
+            <>
+              <StatGrid stats={[
+                { label: 'FIP', value: advStats.fip?.toFixed(2), highlight: true },
+                { label: 'xFIP', value: advStats.xFIP?.toFixed(2) },
+                { label: 'BABIP', value: advStats.babip?.toFixed(3) },
+                { label: 'WAR', value: advStats.war?.toFixed(1), highlight: true },
+              ]} />
+              <div className="border-t border-gray-800">
+                <StatGrid stats={[
+                  { label: 'K/9', value: advStats.k9?.toFixed(1) },
+                  { label: 'BB/9', value: advStats.bb9?.toFixed(1) },
+                  { label: 'K/BB', value: advStats.kbb?.toFixed(2) },
+                  { label: 'HR/9', value: advStats.hr9?.toFixed(1) },
+                ]} />
+              </div>
+            </>
+          ) : (
+            <>
+              <StatGrid stats={[
+                { label: 'wRC+', value: Math.round(advStats.wRCPlus), highlight: true },
+                { label: 'wOBA', value: advStats.wOBA?.toFixed(3) },
+                { label: 'BABIP', value: advStats.babip?.toFixed(3) },
+                { label: 'WAR', value: advStats.war?.toFixed(1), highlight: true },
+              ]} />
+              <div className="border-t border-gray-800">
+                <StatGrid stats={[
+                  { label: 'ISO', value: advStats.iso?.toFixed(3) },
+                  { label: 'OPS', value: advStats.ops?.toFixed(3) },
+                  { label: 'AVG', value: advStats.avg?.toFixed(3) },
+                  { label: 'OBP', value: advStats.obp?.toFixed(3) },
+                ]} />
+              </div>
+            </>
+          )}
+          <div className="px-4 py-2 border-t border-gray-800">
+            <div className="text-gray-600 text-xs">
+              {!isPitcher && advStats.wRCPlus !== undefined && (
+                <span>
+                  {advStats.wRCPlus >= 130 ? '🔥 Elite hitter' :
+                   advStats.wRCPlus >= 110 ? 'Above average hitter' :
+                   advStats.wRCPlus >= 90  ? 'Average hitter' :
+                   'Below average hitter'} (wRC+ of 100 = league average)
+                </span>
+              )}
+              {isPitcher && advStats.fip !== undefined && (
+                <span>
+                  {advStats.fip <= 3.00 ? '🔥 Elite pitcher' :
+                   advStats.fip <= 3.50 ? 'Above average pitcher' :
+                   advStats.fip <= 4.20 ? 'Average pitcher' :
+                   'Below average pitcher'} (FIP measures true pitching talent)
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

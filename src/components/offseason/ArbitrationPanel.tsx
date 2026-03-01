@@ -9,16 +9,12 @@ import { useState, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import type { ArbitrationCase } from '../../engine/finances';
 import type { UserTransaction } from './OffseasonSummary';
+import { formatSalary } from '../../utils/format';
 
 interface Props {
   cases: ArbitrationCase[];
   onComplete: () => void;
   onTransaction: (tx: UserTransaction) => void;
-}
-
-function formatSalary(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  return `$${(n / 1_000).toFixed(0)}K`;
 }
 
 function ovrGrade(ovr: number): string {

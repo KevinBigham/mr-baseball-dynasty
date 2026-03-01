@@ -8,6 +8,7 @@ import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import DepthChart from './DepthChart';
 import ProspectPipeline from './ProspectPipeline';
 import ILManagement from './ILManagement';
+import { formatSalary } from '../../utils/format';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
@@ -30,12 +31,6 @@ interface FullRosterData {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatSalary(s: number): string {
-  if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
-  if (s >= 1_000) return `$${(s / 1000).toFixed(0)}K`;
-  return `$${s}`;
-}
 
 function formatServiceTime(days: number): string {
   const years = Math.floor(days / 172);

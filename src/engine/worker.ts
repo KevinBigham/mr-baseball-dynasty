@@ -50,6 +50,11 @@ import {
   identifyRule5Eligible, conductRule5Draft, userRule5Pick,
   type Rule5Selection,
 } from './draft/rule5Draft';
+import { processAIRosterMoves, type AIRosterMove } from './aiRosterManager';
+import {
+  computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages,
+  type AdvancedHittingStats, type AdvancedPitchingStats, type LeagueAverages,
+} from './advancedStats';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -60,6 +65,8 @@ let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonS
 let _careerHistory = new Map<number, import('../types/player').PlayerSeasonStats[]>();
 let _seasonResults: SeasonResult[] = [];
 let _foStaff: import('../types/frontOffice').FOStaffMember[] = [];
+let _lastAIRosterMoves: AIRosterMove[] = [];
+let _cachedLeagueAverages: LeagueAverages | null = null;
 
 // ─── Draft state ──────────────────────────────────────────────────────────────
 
@@ -231,6 +238,16 @@ const api = {
       staffBonuses.injuryRateMultiplier,
       staffBonuses.recoverySpeedMultiplier,
     );
+
+    // ── AI roster moves (call-ups, options, DFAs after injuries) ────────────
+    const rosterMoveSeed = Math.abs(injurySeed * 3 + state.season * 17);
+    _lastAIRosterMoves = processAIRosterMoves(
+      state.players, state.teams, state.userTeamId, rosterMoveSeed,
+    );
+
+    // ── Cache league averages for advanced stats queries ────────────────────
+    const allSeasonStats = Array.from(_playerSeasonStats.values());
+    _cachedLeagueAverages = computeLeagueAverages(allSeasonStats);
 
     // ── Awards (computed before aging — players are at their in-season state) ──
     const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
@@ -1293,6 +1310,111 @@ const api = {
         ? _draftState.picks.length
         : getOverallPick(_draftState.currentRound, _draftState.currentPickInRound, _draftState.draftOrder.length),
     };
+  },
+
+  // ── Advanced Stats ───────────────────────────────────────────────────────
+  async getAdvancedStats(playerId: number): Promise<AdvancedHittingStats | AdvancedPitchingStats | null> {
+    const stats = _playerSeasonStats.get(playerId);
+    if (!stats) return null;
+    const player = _playerMap.get(playerId);
+    if (!player) return null;
+
+    // Compute league averages if not cached
+    if (!_cachedLeagueAverages) {
+      const allStats = Array.from(_playerSeasonStats.values());
+      _cachedLeagueAverages = computeLeagueAverages(allStats);
+    }
+
+    if (player.isPitcher) {
+      return computeAdvancedPitching(stats, _cachedLeagueAverages);
+    }
+    return computeAdvancedHitting(stats, _cachedLeagueAverages);
+  },
+
+  async getLeaderboardAdvanced(
+    category: 'hitting' | 'pitching',
+    sortBy: string,
+    limit = 30,
+  ): Promise<Array<{
+    rank: number;
+    playerId: number;
+    name: string;
+    teamAbbr: string;
+    position: string;
+    age: number;
+    stats: Record<string, number>;
+  }>> {
+    const state = requireState();
+
+    if (!_cachedLeagueAverages) {
+      const allStats = Array.from(_playerSeasonStats.values());
+      _cachedLeagueAverages = computeLeagueAverages(allStats);
+    }
+
+    const entries: Array<{
+      playerId: number;
+      name: string;
+      teamAbbr: string;
+      position: string;
+      age: number;
+      sortValue: number;
+      stats: Record<string, number>;
+    }> = [];
+
+    for (const [pid, seasonStats] of _playerSeasonStats) {
+      const player = _playerMap.get(pid);
+      if (!player) continue;
+
+      if (category === 'hitting') {
+        if (player.isPitcher) continue;
+        if (seasonStats.pa < 100) continue;
+        const adv = computeAdvancedHitting(seasonStats, _cachedLeagueAverages);
+        const team = state.teams.find(t => t.teamId === player.teamId);
+        entries.push({
+          playerId: pid,
+          name: player.name,
+          teamAbbr: team?.abbreviation ?? '???',
+          position: player.position,
+          age: player.age,
+          sortValue: (adv as unknown as Record<string, number>)[sortBy] ?? 0,
+          stats: adv as unknown as Record<string, number>,
+        });
+      } else {
+        if (!player.isPitcher) continue;
+        if (seasonStats.outs < 60) continue; // 20+ IP
+        const adv = computeAdvancedPitching(seasonStats, _cachedLeagueAverages);
+        const team = state.teams.find(t => t.teamId === player.teamId);
+        entries.push({
+          playerId: pid,
+          name: player.name,
+          teamAbbr: team?.abbreviation ?? '???',
+          position: player.position,
+          age: player.age,
+          sortValue: (adv as unknown as Record<string, number>)[sortBy] ?? 0,
+          stats: adv as unknown as Record<string, number>,
+        });
+      }
+    }
+
+    // Sort: for FIP/ERA/xFIP/bb9/hr9/whip lower is better; for others higher is better
+    const lowerIsBetter = ['fip', 'xFIP', 'era', 'bb9', 'hr9', 'whip', 'babip'];
+    const ascending = lowerIsBetter.includes(sortBy);
+    entries.sort((a, b) => ascending ? a.sortValue - b.sortValue : b.sortValue - a.sortValue);
+
+    return entries.slice(0, limit).map((e, i) => ({
+      rank: i + 1,
+      playerId: e.playerId,
+      name: e.name,
+      teamAbbr: e.teamAbbr,
+      position: e.position,
+      age: e.age,
+      stats: e.stats,
+    }));
+  },
+
+  // ── AI Roster Moves ─────────────────────────────────────────────────────
+  async getAIRosterMoves(): Promise<AIRosterMove[]> {
+    return _lastAIRosterMoves;
   },
 
   // ── Save / Load ────────────────────────────────────────────────────────────

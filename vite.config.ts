@@ -27,7 +27,15 @@ export default defineConfig({
     }),
   ],
   build: {
-    rollupOptions: {},
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-charts': ['recharts'],
+          'game-engine': ['comlink'],
+        },
+      },
+    },
   },
   test: {
     environment: 'node',

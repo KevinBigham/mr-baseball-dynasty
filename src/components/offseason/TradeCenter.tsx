@@ -3,12 +3,7 @@ import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import type { TradeProposal, TradePlayerInfo } from '../../engine/trading';
-
-function formatSalary(s: number): string {
-  if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
-  if (s >= 1_000) return `$${(s / 1000).toFixed(0)}K`;
-  return `$${s}`;
-}
+import { formatSalary } from '../../utils/format';
 
 // ─── Trade Offer Card ─────────────────────────────────────────────────────────
 

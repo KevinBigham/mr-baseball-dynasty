@@ -2,16 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import type { RosterPlayer } from '../../types/league';
+import { formatSalary } from '../../utils/format';
 
 interface FAPlayer extends RosterPlayer {
   projectedSalary: number;
   projectedYears: number;
-}
-
-function formatSalary(s: number): string {
-  if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
-  if (s >= 1_000) return `$${(s / 1000).toFixed(0)}K`;
-  return `$${s}`;
 }
 
 type SortKey = 'overall' | 'age' | 'position' | 'salary' | 'stat';

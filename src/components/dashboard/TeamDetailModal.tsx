@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer, StandingsRow } from '../../types/league';
+import { formatSalary } from '../../utils/format';
 
 interface TeamInfo {
   teamId: number; name: string; abbreviation: string;
@@ -22,12 +23,6 @@ function ovrGrade(ovr: number): { grade: string; color: string } {
   if (g >= 50) return { grade: String(g), color: 'text-gray-300' };
   if (g >= 40) return { grade: String(g), color: 'text-orange-400' };
   return { grade: String(g), color: 'text-red-400' };
-}
-
-function formatSalary(sal: number): string {
-  if (sal >= 1_000_000) return `$${(sal / 1_000_000).toFixed(1)}M`;
-  if (sal >= 1_000) return `$${(sal / 1_000).toFixed(0)}K`;
-  return `$${sal}`;
 }
 
 export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props) {

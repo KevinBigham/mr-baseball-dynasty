@@ -2,6 +2,7 @@ import type { AISigningRecord } from '../../engine/freeAgency';
 import type { ArbitrationCase } from '../../engine/finances';
 import type { WaiverClaim } from '../../engine/waivers';
 import type { Rule5Selection } from '../../engine/draft/rule5Draft';
+import { formatSalary } from '../../utils/format';
 
 export interface UserTransaction {
   type: 'signing' | 'trade';
@@ -17,12 +18,6 @@ interface Props {
   rule5Selections?: Rule5Selection[];
   onContinue: () => void;
   season: number;
-}
-
-function formatSalary(s: number): string {
-  if (s >= 1_000_000) return `$${(s / 1_000_000).toFixed(1)}M`;
-  if (s >= 1_000) return `$${(s / 1000).toFixed(0)}K`;
-  return `$${s}`;
 }
 
 export default function OffseasonSummary({

@@ -2,15 +2,19 @@
  * PostseasonReport — season results, awards, bracket, development events
  */
 
+import { useState, useEffect } from 'react';
+import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import type { SeasonResult, AwardCandidate } from '../../types/league';
 import type { AwardWinner, DivisionChampion } from '../../engine/player/awards';
 import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
+import type { AIRosterMove } from '../../engine/aiRosterManager';
 import SeasonHighlights from './SeasonHighlights';
 import AwardRacePanel from './AwardRacePanel';
 import PlayoffBracketView from './PlayoffBracket';
 import DevGradeCard from './DevGradeCard';
+import AITransactionsPanel from './AITransactionsPanel';
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -59,6 +63,11 @@ export default function PostseasonReport({
 }: Props) {
   const { userTeamId, gamePhase } = useGameStore();
   const { setActiveTab } = useUIStore();
+  const [aiMoves, setAiMoves] = useState<AIRosterMove[]>([]);
+
+  useEffect(() => {
+    getEngine().getAIRosterMoves().then(setAiMoves).catch(() => {});
+  }, []);
 
   const completedSeason = lastResult.season;
 
@@ -124,6 +133,8 @@ export default function PostseasonReport({
       </div>
 
       {playoffBracket && <PlayoffBracketView bracket={playoffBracket} />}
+
+      {aiMoves.length > 0 && <AITransactionsPanel moves={aiMoves} />}
 
       {lastResult.developmentEvents && lastResult.developmentEvents.length > 0 && (
         <div className="bloomberg-border bg-gray-900">

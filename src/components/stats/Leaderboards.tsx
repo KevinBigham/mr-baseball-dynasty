@@ -49,11 +49,59 @@ const PITCHING_COLS: ColDef[] = [
   { key: 'hra',  label: 'HRA',  format: v => String(v),       width: 'w-10' },
 ];
 
+// ─── Advanced stat columns ──────────────────────────────────────────────────
+
+const ADV_HITTING_COLS: ColDef[] = [
+  { key: 'wRCPlus', label: 'wRC+',  format: v => String(Math.round(v)), width: 'w-12' },
+  { key: 'wOBA',    label: 'wOBA',  format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'ops',     label: 'OPS',   format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'babip',   label: 'BABIP', format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'iso',     label: 'ISO',   format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'avg',     label: 'AVG',   format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'obp',     label: 'OBP',   format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'slg',     label: 'SLG',   format: v => v.toFixed(3),          width: 'w-12' },
+  { key: 'war',     label: 'WAR',   format: v => v.toFixed(1),          width: 'w-12' },
+];
+
+const ADV_PITCHING_COLS: ColDef[] = [
+  { key: 'fip',   label: 'FIP',   format: v => v.toFixed(2),  width: 'w-12' },
+  { key: 'xFIP',  label: 'xFIP',  format: v => v.toFixed(2),  width: 'w-12' },
+  { key: 'era',   label: 'ERA',   format: v => v.toFixed(2),  width: 'w-12' },
+  { key: 'babip', label: 'BABIP', format: v => v.toFixed(3),  width: 'w-12' },
+  { key: 'whip',  label: 'WHIP',  format: v => v.toFixed(2),  width: 'w-12' },
+  { key: 'k9',    label: 'K/9',   format: v => v.toFixed(1),  width: 'w-12' },
+  { key: 'bb9',   label: 'BB/9',  format: v => v.toFixed(1),  width: 'w-12' },
+  { key: 'kbb',   label: 'K/BB',  format: v => v.toFixed(2),  width: 'w-12' },
+  { key: 'war',   label: 'WAR',   format: v => v.toFixed(1),  width: 'w-12' },
+];
+
+const ELITE_ADV_HITTING: Record<string, (v: number) => boolean> = {
+  wRCPlus: v => v >= 130,
+  wOBA:    v => v >= 0.370,
+  ops:     v => v >= 0.900,
+  iso:     v => v >= 0.220,
+  war:     v => v >= 5.0,
+  avg:     v => v >= 0.300,
+  obp:     v => v >= 0.380,
+  slg:     v => v >= 0.520,
+};
+
+const ELITE_ADV_PITCHING: Record<string, (v: number) => boolean> = {
+  fip:  v => v <= 3.00 && v > 0,
+  xFIP: v => v <= 3.20 && v > 0,
+  era:  v => v <= 3.00 && v > 0,
+  whip: v => v <= 1.10 && v > 0,
+  k9:   v => v >= 10.0,
+  kbb:  v => v >= 4.0,
+  bb9:  v => v <= 2.00 && v > 0,
+  war:  v => v >= 4.0,
+};
+
 const HITTING_POSITIONS = ['ALL', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 const PITCHING_POSITIONS = ['ALL', 'SP', 'RP', 'CL'];
 
 // Stats where lower is better (ascending sort is "best")
-const ASC_STATS = new Set(['era', 'whip', 'bb9', 'bb', 'l', 'k', 'hra', 'h']);
+const ASC_STATS = new Set(['era', 'whip', 'bb9', 'bb', 'l', 'k', 'hra', 'h', 'fip', 'xFIP', 'hr9', 'babip']);
 
 // Elite stat thresholds — values that deserve gold highlighting
 const ELITE_HITTING: Record<string, (v: number) => boolean> = {
@@ -80,6 +128,8 @@ const ELITE_PITCHING: Record<string, (v: number) => boolean> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+type LeaderboardMode = 'hitting' | 'pitching' | 'advanced';
+
 export default function Leaderboards() {
   const { leaderboardFull, setLeaderboardFull } = useLeagueStore();
   const { setSelectedPlayer, setActiveTab, leaderboardCategory, setLeaderboardCategory } = useUIStore();
@@ -91,17 +141,37 @@ export default function Leaderboards() {
   const [qualified, setQualified] = useState(true);
   const [myTeamOnly, setMyTeamOnly] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<LeaderboardMode>('hitting');
+  const [advSubCat, setAdvSubCat] = useState<'hitting' | 'pitching'>('hitting');
+  const [advData, setAdvData] = useState<Array<{
+    rank: number; playerId: number; name: string; teamAbbr: string;
+    position: string; age: number; stats: Record<string, number>;
+  }>>([]);
 
-  const cols = leaderboardCategory === 'hitting' ? HITTING_COLS : PITCHING_COLS;
-  const positions = leaderboardCategory === 'hitting' ? HITTING_POSITIONS : PITCHING_POSITIONS;
-  const eliteMap = leaderboardCategory === 'hitting' ? ELITE_HITTING : ELITE_PITCHING;
+  const isAdvanced = mode === 'advanced';
+  const cols = isAdvanced
+    ? (advSubCat === 'hitting' ? ADV_HITTING_COLS : ADV_PITCHING_COLS)
+    : (leaderboardCategory === 'hitting' ? HITTING_COLS : PITCHING_COLS);
+  const positions = isAdvanced
+    ? (advSubCat === 'hitting' ? HITTING_POSITIONS : PITCHING_POSITIONS)
+    : (leaderboardCategory === 'hitting' ? HITTING_POSITIONS : PITCHING_POSITIONS);
+  const eliteMap = isAdvanced
+    ? (advSubCat === 'hitting' ? ELITE_ADV_HITTING : ELITE_ADV_PITCHING)
+    : (leaderboardCategory === 'hitting' ? ELITE_HITTING : ELITE_PITCHING);
 
   // Reset sortBy and posFilter when switching category
-  const switchCategory = useCallback((cat: 'hitting' | 'pitching') => {
-    setLeaderboardCategory(cat);
-    const defaultSort = cat === 'hitting' ? 'hr' : 'era';
-    setSortBy(defaultSort);
-    setSortAsc(ASC_STATS.has(defaultSort));
+  const switchCategory = useCallback((cat: LeaderboardMode) => {
+    setMode(cat);
+    if (cat === 'advanced') {
+      setAdvSubCat('hitting');
+      setSortBy('wRCPlus');
+      setSortAsc(false);
+    } else {
+      setLeaderboardCategory(cat);
+      const defaultSort = cat === 'hitting' ? 'hr' : 'era';
+      setSortBy(defaultSort);
+      setSortAsc(ASC_STATS.has(defaultSort));
+    }
     setPosFilter('ALL');
     setMyTeamOnly(false);
   }, [setLeaderboardCategory]);
@@ -119,20 +189,45 @@ export default function Leaderboards() {
   useEffect(() => {
     if (!gameStarted) return;
     setLoading(true);
-    getEngine().getLeaderboardFull({
-      category: leaderboardCategory,
-      sortBy,
-      minPA: qualified ? 100 : 1,
-      minIP: qualified ? 20 : 1,
-      position: posFilter === 'ALL' ? undefined : posFilter,
-      limit: 50,
-    })
-      .then(setLeaderboardFull)
-      .finally(() => setLoading(false));
-  }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull]);
+
+    if (isAdvanced) {
+      getEngine().getLeaderboardAdvanced(advSubCat, sortBy, 50)
+        .then(setAdvData)
+        .finally(() => setLoading(false));
+    } else {
+      getEngine().getLeaderboardFull({
+        category: leaderboardCategory,
+        sortBy,
+        minPA: qualified ? 100 : 1,
+        minIP: qualified ? 20 : 1,
+        position: posFilter === 'ALL' ? undefined : posFilter,
+        limit: 50,
+      })
+        .then(setLeaderboardFull)
+        .finally(() => setLoading(false));
+    }
+  }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull, isAdvanced, advSubCat]);
 
   // Client-side filter for My Team + re-sort for direction
   const displayed = useMemo(() => {
+    if (isAdvanced) {
+      let rows = advData;
+      if (sortAsc) {
+        rows = [...rows].reverse();
+      }
+      // Map to LeaderboardFullEntry-compatible shape
+      return rows.map((r, i) => ({
+        rank: i + 1,
+        playerId: r.playerId,
+        name: r.name,
+        teamAbbr: r.teamAbbr,
+        teamId: 0,
+        position: r.position,
+        age: r.age,
+        isPitcher: advSubCat === 'pitching',
+        stats: r.stats,
+      }));
+    }
     let rows = leaderboardFull;
     if (myTeamOnly) {
       rows = rows.filter(e => e.teamId === userTeamId);
@@ -142,7 +237,7 @@ export default function Leaderboards() {
       rows = [...rows].reverse();
     }
     return rows;
-  }, [leaderboardFull, myTeamOnly, userTeamId, sortAsc]);
+  }, [leaderboardFull, myTeamOnly, userTeamId, sortAsc, isAdvanced, advData, advSubCat]);
 
   const openPlayer = (id: number) => {
     setSelectedPlayer(id);
@@ -155,21 +250,48 @@ export default function Leaderboards() {
 
       {/* Category tabs */}
       <div className="flex gap-1 mb-3">
-        {(['hitting', 'pitching'] as const).map(cat => (
-          <button
-            key={cat}
-            onClick={() => switchCategory(cat)}
-            className={[
-              'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors',
-              leaderboardCategory === cat
-                ? 'border-orange-500 text-orange-400 bg-orange-950/30'
-                : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400',
-            ].join(' ')}
-          >
-            {cat}
-          </button>
-        ))}
+        {(['hitting', 'pitching', 'advanced'] as const).map(cat => {
+          const isActive = cat === 'advanced' ? mode === 'advanced' : (mode !== 'advanced' && leaderboardCategory === cat);
+          return (
+            <button
+              key={cat}
+              onClick={() => switchCategory(cat)}
+              className={[
+                'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors',
+                isActive
+                  ? 'border-orange-500 text-orange-400 bg-orange-950/30'
+                  : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400',
+              ].join(' ')}
+            >
+              {cat}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Advanced sub-category toggle */}
+      {isAdvanced && (
+        <div className="flex gap-1 mb-3">
+          {(['hitting', 'pitching'] as const).map(sub => (
+            <button
+              key={sub}
+              onClick={() => {
+                setAdvSubCat(sub);
+                setSortBy(sub === 'hitting' ? 'wRCPlus' : 'fip');
+                setSortAsc(sub === 'pitching');
+              }}
+              className={[
+                'text-xs px-3 py-1 border transition-colors',
+                advSubCat === sub
+                  ? 'border-orange-500 text-orange-400 bg-orange-950/20'
+                  : 'border-gray-700 text-gray-600 hover:text-gray-400',
+              ].join(' ')}
+            >
+              {sub === 'hitting' ? 'HITTERS' : 'PITCHERS'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Filters row */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
