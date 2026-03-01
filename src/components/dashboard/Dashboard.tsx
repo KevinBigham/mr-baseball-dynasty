@@ -28,6 +28,11 @@ import StoryboardPanel   from './StoryboardPanel';
 import MomentsPanel      from './MomentsPanel';
 import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
 import type { PressContext } from '../../data/pressConference';
+import FreeAgencyPanel from '../offseason/FreeAgencyPanel';
+import TradeCenter from '../offseason/TradeCenter';
+import PlayoffBracketView from './PlayoffBracket';
+import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
+import { saveGame } from '../../db/schema';
 
 const TEAM_OPTIONS = [
   { id: 1,  label: 'ADM — New Harbor Admirals (AL East)' },
@@ -97,7 +102,7 @@ export default function Dashboard() {
     ownerArchetype, ownerPatience, teamMorale,
     adjustOwnerPatience, adjustTeamMorale, setOwnerArchetype,
     breakoutWatch, setBreakoutWatch, incrementSeasonsManaged, seasonsManaged,
-    frontOffice,
+    frontOffice, gamePhase, setGamePhase,
   } = useGameStore();
 
   const {
@@ -122,6 +127,7 @@ export default function Dashboard() {
   const [postSimArcWins,   setPostSimArcWins]   = useState<number | undefined>(undefined);
   const [postSimArcPO,     setPostSimArcPO]     = useState<boolean | undefined>(undefined);
   const [postSimArcChamp,  setPostSimArcChamp]  = useState<boolean | undefined>(undefined);
+  const [playoffBracket,   setPlayoffBracket]   = useState<PlayoffBracket | null>(null);
 
   // ── Set owner archetype on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -149,12 +155,14 @@ export default function Dashboard() {
       setSeason(result.season + 1);
       setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
 
-      const [standings, hrLeaders] = await Promise.all([
+      const [standings, hrLeaders, bracket] = await Promise.all([
         engine.getStandings(),
         engine.getLeaderboard('hr', 10),
+        engine.simulatePlayoffs(),
       ]);
       setStandings(standings);
       setLeaderboard(hrLeaders);
+      setPlayoffBracket(bracket);
       setSimProgress(1);
 
       // ── Resolve MFSN predictions ───────────────────────────────────────────
@@ -166,8 +174,14 @@ export default function Dashboard() {
       const userTeamSeason = result.teamSeasons.find(ts => ts.teamId === userTeamId);
       const userWins       = userTeamSeason?.record.wins ?? 81;
       const userLosses     = userTeamSeason?.record.losses ?? 81;
-      const isPlayoff      = !!userTeamSeason?.playoffRound;
-      const isChampion     = userTeamSeason?.playoffRound === 'Champion';
+
+      // Use actual playoff bracket results
+      const allPlayoffIds = bracket ? new Set([
+        ...bracket.alTeams.map(t => t.teamId),
+        ...bracket.nlTeams.map(t => t.teamId),
+      ]) : new Set<number>();
+      const isPlayoff  = allPlayoffIds.has(userTeamId);
+      const isChampion = bracket?.championId === userTeamId;
 
       const breakoutsLeague = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
       const bustsLeague     = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
@@ -269,6 +283,8 @@ export default function Dashboard() {
         if (event) setPoachEvent(event);
       }
 
+      setGamePhase('postseason');
+
     } catch (e) {
       setError(String(e));
     } finally {
@@ -277,7 +293,7 @@ export default function Dashboard() {
   }, [
     userTeamId, difficulty, ownerArchetype, ownerPatience, teamMorale,
     breakoutWatch, rivals, seasonsManaged, frontOffice, mfsnReport, poachEvent,
-    setSeason, setSimulating, setSimProgress,
+    setSeason, setSimulating, setSimProgress, setGamePhase,
     setStandings, setLeaderboard, setLastSeasonStats,
     adjustOwnerPatience, adjustTeamMorale,
     setBreakoutWatch, setRivals, storeUpdateRivals, addNewsItems,
@@ -285,6 +301,30 @@ export default function Dashboard() {
     setMFSNReport, setPoachEvent,
     addMoments, setWeeklyStories,
   ]);
+
+  // ── Enter offseason ─────────────────────────────────────────────────────────
+  const enterOffseason = useCallback(async () => {
+    const engine = getEngine();
+    await engine.startOffseason();
+    setGamePhase('offseason');
+  }, [setGamePhase]);
+
+  // ── Finish offseason → preseason ────────────────────────────────────────────
+  const finishOffseason = useCallback(async () => {
+    setGamePhase('preseason');
+    setLastResult(null);
+    setPlayoffBracket(null);
+
+    // Auto-save after offseason
+    try {
+      const engine = getEngine();
+      const state = await engine.getFullState();
+      if (state) {
+        const teamName = TEAM_OPTIONS.find(t => t.id === userTeamId)?.label?.split(' — ')[1] ?? 'Dynasty';
+        await saveGame(state, `${teamName} — S${season}`, teamName);
+      }
+    } catch { /* non-fatal */ }
+  }, [setGamePhase, userTeamId, season]);
 
   // ── Breakout watch at start of season ─────────────────────────────────────
   const refreshBreakoutWatch = useCallback(async () => {
@@ -473,6 +513,9 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* ── Playoff Bracket ──────────────────────────────────────────── */}
+          {playoffBracket && <PlayoffBracketView bracket={playoffBracket} />}
+
           {lastResult.developmentEvents && lastResult.developmentEvents.length > 0 && (
             <div className="bloomberg-border bg-gray-900">
               <div className="bloomberg-header px-4">OFFSEASON DEVELOPMENT</div>
@@ -530,7 +573,27 @@ export default function Dashboard() {
               className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
               YOUR ROSTER →
             </button>
+            {gamePhase === 'postseason' && (
+              <button onClick={enterOffseason}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-1.5 uppercase tracking-wider transition-colors">
+                ENTER OFFSEASON →
+              </button>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* ── Offseason: Free Agency + Trades ────────────────────────────────────── */}
+      {gamePhase === 'offseason' && (
+        <div className="space-y-4">
+          <div className="bloomberg-border bg-gray-900 px-4 py-2">
+            <div className="text-orange-500 font-bold text-xs tracking-widest">
+              OFFSEASON — {season - 1} → {season}
+            </div>
+            <div className="text-gray-500 text-xs">Sign free agents, make trades, and manage your roster before next season.</div>
+          </div>
+          <FreeAgencyPanel onDone={finishOffseason} />
+          <TradeCenter />
         </div>
       )}
 

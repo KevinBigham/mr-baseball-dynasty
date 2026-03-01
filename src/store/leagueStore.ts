@@ -83,6 +83,8 @@ interface LeagueStore {
 
   addMoments:             (items: SeasonMoment[]) => void;
   setWeeklyStories:       (stories: WeeklyStory[]) => void;
+
+  resetAll:               () => void;
 }
 
 // ─── Key moment generator ─────────────────────────────────────────────────────
@@ -172,4 +174,22 @@ export const useLeagueStore = create<LeagueStore>(set => ({
     moments: [...items, ...state.moments].slice(0, 100),
   })),
   setWeeklyStories: stories => set({ weeklyStories: stories }),
+
+  resetAll: () => set({
+    standings: null,
+    roster: null,
+    leaderboard: [],
+    lastSeasonERA: 0,
+    lastSeasonBA: 0,
+    lastSeasonRPG: 0,
+    newsItems: [],
+    rivals: [],
+    franchiseHistory: [],
+    presserAvailable: false,
+    presserDone: false,
+    mfsnReport: null,
+    poachEvent: null,
+    moments: [],
+    weeklyStories: [],
+  }),
 }));

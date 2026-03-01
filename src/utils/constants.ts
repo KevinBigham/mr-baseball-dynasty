@@ -74,7 +74,7 @@ export const LEAGUE_BABIP_TARGET = 0.295;
 // Calibrated to modern MLB (2019 baseline): 24 pitchers 200K, 10 players 40HR, Win SD 13.40
 // Our sim targets single-season single-seed, so bounds are narrower than multi-year MLB range
 export const GATES = {
-  leagueERA:          { min: 3.80, max: 4.40 },
+  leagueERA:          { min: 3.80, max: 4.50 },  // real MLB ranges: 3.96 (2022) to 4.51 (2019)
   leagueBA:           { min: 0.245, max: 0.265 },
   leagueRPG:          { min: 4.2, max: 4.8 },
   teamWinsSD:         { min: 7, max: 14 },    // real MLB: 12-15; binomial floor ~6.4; sim target 8-10

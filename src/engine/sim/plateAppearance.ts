@@ -84,9 +84,9 @@ function pitcherToRates(p: PitcherAttributes): {
   const commandFactor = p.command / 400;
 
   return {
-    // exponent=0.9: moderates K tail — elite stuff (stuffFactor~1.12→kRate=0.250) allows
-    // 200+K seasons without over-producing 200K pitchers; capped at 0.38 for realism
-    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 0.9))),
+    // exponent=1.3: elite separation — elite stuff (stuffFactor~1.3→kRate~0.32)
+    // produces 200+K seasons at realistic rate (15-35 per league); capped at 0.38 for realism
+    kRate:     Math.min(0.38, Math.max(0.08, LEAGUE_RATES.pitcherKRate * Math.pow(stuffFactor, 1.3))),
     bbRate:    Math.max(0.03, LEAGUE_RATES.pitcherBBRate * (2 - commandFactor)),
     hrRate:    Math.max(0.01, LEAGUE_RATES.pitcherHRRate * (2 - stuffFactor) * (2 - commandFactor)),
     hbpRate:   LEAGUE_RATES.hbpRate * (2 - commandFactor * 0.5),

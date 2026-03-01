@@ -7,6 +7,7 @@ import type {
   LeaderboardEntry, PlayerProfileData, RosterPlayer, StandingsRow,
 } from '../types/league';
 import type { ScheduleEntry } from '../types/game';
+import type { RosterStatus } from '../types/player';
 import { createPRNG, serializeState, deserializeState } from './math/prng';
 import { generateLeaguePlayers } from './player/generation';
 import { buildInitialTeams } from '../data/teams';
@@ -16,6 +17,22 @@ import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
 import { computeAwards, computeDivisionChampions } from './player/awards';
+import { simulateFullPlayoffs, type PlayoffBracket } from './sim/playoffSimulator';
+import {
+  promotePlayer as doPromote, demotePlayer as doDemote,
+  dfaPlayer as doDFA, releasePlayer as doRelease,
+  countActive, count40Man,
+  type TransactionResult,
+} from './rosterActions';
+import {
+  generateFreeAgentClass, signFreeAgent as doSign,
+  processAISignings, projectSalary, projectYears,
+} from './freeAgency';
+import {
+  generateTradeOffers, executeTrade as doTrade,
+  evaluateProposedTrade, evaluatePlayer,
+  type TradeProposal, type TradeResult, type TradePlayerInfo,
+} from './trading';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -305,6 +322,192 @@ const api = {
       seasonStats,
       careerStats: { seasons: 1, ...(seasonStats ?? {}) },
     };
+  },
+
+  // ── Roster Transactions ──────────────────────────────────────────────────
+  async promotePlayer(playerId: number, targetStatus: RosterStatus): Promise<TransactionResult> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = doPromote(player, targetStatus, state.players);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  async demotePlayer(playerId: number, targetStatus: RosterStatus): Promise<TransactionResult> {
+    requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = doDemote(player, targetStatus);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  async dfaPlayer(playerId: number): Promise<TransactionResult> {
+    requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = doDFA(player);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  async releasePlayer(playerId: number): Promise<TransactionResult> {
+    requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = doRelease(player);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  // ── Extended roster (all minor league levels) ───────────────────────────
+  async getFullRoster(teamId: number): Promise<RosterData & {
+    aaa: RosterPlayer[]; aa: RosterPlayer[]; aPlus: RosterPlayer[];
+    aMinus: RosterPlayer[]; rookie: RosterPlayer[]; intl: RosterPlayer[];
+    fortyManCount: number; activeCount: number;
+  }> {
+    const state = requireState();
+    const teamPlayers = state.players.filter(p => p.teamId === teamId);
+    const toRP = (p: Player) => playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
+
+    return {
+      teamId,
+      season: state.season,
+      active:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').map(toRP),
+      il:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60').map(toRP),
+      minors:  teamPlayers.filter(p => p.rosterData.rosterStatus.startsWith('MINORS_') && p.rosterData.isOn40Man).map(toRP),
+      dfa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'DFA').map(toRP),
+      aaa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AAA').map(toRP),
+      aa:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AA').map(toRP),
+      aPlus:   teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_APLUS').map(toRP),
+      aMinus:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AMINUS').map(toRP),
+      rookie:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_ROOKIE').map(toRP),
+      intl:    teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_INTL').map(toRP),
+      fortyManCount: count40Man(state.players, teamId),
+      activeCount:   countActive(state.players, teamId),
+    };
+  },
+
+  // ── Playoffs ─────────────────────────────────────────────────────────────
+  async simulatePlayoffs(): Promise<PlayoffBracket | null> {
+    const state = requireState();
+    // Get current standings
+    const standingsRows = state.teams.map(team => {
+      const { wins, losses, runsScored, runsAllowed } = team.seasonRecord;
+      return {
+        teamId: team.teamId,
+        name: team.name,
+        abbreviation: team.abbreviation,
+        league: team.league,
+        division: team.division,
+        wins, losses,
+        pct: (wins + losses) > 0 ? wins / (wins + losses) : 0,
+        gb: 0,
+        runsScored, runsAllowed,
+        pythagWins: wins,
+      };
+    });
+
+    if (standingsRows.length < 12) return null;
+
+    const seed = Number(deserializeState(state.prngState).next()[0]);
+    const bracket = simulateFullPlayoffs(standingsRows, state.teams, state.players, seed);
+    return bracket;
+  },
+
+  // ── Free Agency ────────────────────────────────────────────────────────────
+  async startOffseason(): Promise<{ freeAgentCount: number }> {
+    const state = requireState();
+    const count = generateFreeAgentClass(state.players);
+    rebuildMaps();
+    return { freeAgentCount: count };
+  },
+
+  async getFreeAgents(limit = 50): Promise<(RosterPlayer & { projectedSalary: number; projectedYears: number })[]> {
+    const state = requireState();
+    const fas = state.players
+      .filter(p => p.rosterData.rosterStatus === 'FREE_AGENT')
+      .sort((a, b) => b.overall - a.overall)
+      .slice(0, limit);
+
+    return fas.map(p => {
+      const rp = playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
+      return {
+        ...rp,
+        projectedSalary: projectSalary(p),
+        projectedYears:  projectYears(p),
+      };
+    });
+  },
+
+  async signFreeAgent(playerId: number, years: number, salary: number): Promise<TransactionResult> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = doSign(player, state.userTeamId, years, salary, state.players);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  async finishOffseason(): Promise<{ aiSignings: number }> {
+    const state = requireState();
+    const aiSignings = processAISignings(state.players, state.teams, state.userTeamId);
+    rebuildMaps();
+    return { aiSignings };
+  },
+
+  // ── Trading ──────────────────────────────────────────────────────────────
+  async getTradeOffers(): Promise<TradeProposal[]> {
+    const state = requireState();
+    return generateTradeOffers(state.userTeamId, state.players, state.teams);
+  },
+
+  async getTeamPlayers(teamId: number): Promise<TradePlayerInfo[]> {
+    const state = requireState();
+    return state.players
+      .filter(p => p.teamId === teamId &&
+        (p.rosterData.rosterStatus === 'MLB_ACTIVE' || p.rosterData.rosterStatus.startsWith('MINORS_')) &&
+        p.overall >= 150)
+      .sort((a, b) => b.overall - a.overall)
+      .slice(0, 30)
+      .map(p => ({
+        playerId: p.playerId,
+        name: p.name,
+        position: p.position,
+        age: p.age,
+        overall: p.overall,
+        potential: p.potential,
+        salary: p.rosterData.salary,
+        contractYearsRemaining: p.rosterData.contractYearsRemaining,
+        tradeValue: evaluatePlayer(p),
+      }));
+  },
+
+  async proposeTrade(
+    partnerTeamId: number,
+    userPlayerIds: number[],
+    partnerPlayerIds: number[],
+  ): Promise<TradeResult & { fair?: boolean }> {
+    const state = requireState();
+    const evaluation = evaluateProposedTrade(state.players, userPlayerIds, partnerPlayerIds);
+    if (!evaluation.fair) {
+      return { ok: false, error: 'Trade rejected — the other team wants more value in return.' };
+    }
+    const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
+    if (result.ok) rebuildMaps();
+    return { ...result, fair: true };
+  },
+
+  async acceptTradeOffer(
+    partnerTeamId: number,
+    userPlayerIds: number[],
+    partnerPlayerIds: number[],
+  ): Promise<TradeResult> {
+    const state = requireState();
+    const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
+    if (result.ok) rebuildMaps();
+    return result;
   },
 
   // ── Save / Load ────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
 export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'frontOffice';
+export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason';
 
 interface GameStore {
   // ── Core game state ──────────────────────────────────────────────────────────
@@ -12,6 +13,7 @@ interface GameStore {
   simProgress:   number;   // 0–1
   gameStarted:   boolean;
   seasonsManaged: number;
+  gamePhase:     GamePhase;
 
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
@@ -36,6 +38,7 @@ interface GameStore {
   setSimulating:      (v: boolean) => void;
   setSimProgress:     (v: number) => void;
   setGameStarted:     (v: boolean) => void;
+  setGamePhase:       (p: GamePhase) => void;
   incrementSeasonsManaged: () => void;
 
   setSetupScreen:     (s: SetupScreen) => void;
@@ -55,6 +58,9 @@ interface GameStore {
   adjustTeamMorale:   (delta: number) => void;
 
   setBreakoutWatch:   (candidates: BreakoutCandidate[]) => void;
+
+  // ── Reset ───────────────────────────────────────────────────────────────────
+  resetAll:           () => void;
 }
 
 export const useGameStore = create<GameStore>(set => ({
@@ -65,6 +71,7 @@ export const useGameStore = create<GameStore>(set => ({
   simProgress:     0,
   gameStarted:     false,
   seasonsManaged:  0,
+  gamePhase:       'preseason',
 
   setupScreen:     'title',
   startMode:       'instant',
@@ -85,6 +92,7 @@ export const useGameStore = create<GameStore>(set => ({
   setSimulating:   v           => set({ isSimulating: v }),
   setSimProgress:  v           => set({ simProgress: v }),
   setGameStarted:  v           => set({ gameStarted: v }),
+  setGamePhase:    p           => set({ gamePhase: p }),
   incrementSeasonsManaged: ()  => set(state => ({ seasonsManaged: state.seasonsManaged + 1 })),
 
   // ── Setup setters ─────────────────────────────────────────────────────────────
@@ -119,4 +127,24 @@ export const useGameStore = create<GameStore>(set => ({
 
   // ── Breakout watch ────────────────────────────────────────────────────────────
   setBreakoutWatch: candidates => set({ breakoutWatch: candidates }),
+
+  // ── Reset all (new game) ──────────────────────────────────────────────────────
+  resetAll: () => set({
+    season: 2026,
+    userTeamId: 6,
+    isSimulating: false,
+    simProgress: 0,
+    gameStarted: false,
+    seasonsManaged: 0,
+    gamePhase: 'preseason' as GamePhase,
+    setupScreen: 'title' as SetupScreen,
+    startMode: 'instant' as StartModeId,
+    frontOffice: [],
+    foBudget: 15,
+    difficulty: 'normal' as const,
+    ownerArchetype: 'patient_builder' as OwnerArchetype,
+    ownerPatience: 70,
+    teamMorale: 65,
+    breakoutWatch: [],
+  }),
 }));
