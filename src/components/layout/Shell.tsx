@@ -1,14 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import Dashboard from '../dashboard/Dashboard';
-import StandingsView from '../dashboard/StandingsTable';
-import RosterView from '../roster/RosterView';
-import Leaderboards from '../stats/Leaderboards';
-import PlayerProfile from '../stats/PlayerProfile';
-import FinanceView from '../stats/FinanceView';
-import HistoryView from '../stats/HistoryView';
 import { getEngine } from '../../engine/engineClient';
 import { saveGame } from '../../db/schema';
 import SaveManager from './SaveManager';
@@ -17,6 +11,15 @@ import ErrorBoundary from './ErrorBoundary';
 import OfflineIndicator from './OfflineIndicator';
 import FiredScreen from '../dashboard/FiredScreen';
 import MobileNav from './MobileNav';
+import LoadingFallback from './LoadingFallback';
+
+// Lazy-load tab-level route components for bundle optimization
+const StandingsView = lazy(() => import('../dashboard/StandingsTable'));
+const RosterView    = lazy(() => import('../roster/RosterView'));
+const Leaderboards  = lazy(() => import('../stats/Leaderboards'));
+const PlayerProfile = lazy(() => import('../stats/PlayerProfile'));
+const FinanceView   = lazy(() => import('../stats/FinanceView'));
+const HistoryView   = lazy(() => import('../stats/HistoryView'));
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
@@ -79,9 +82,9 @@ export default function Shell() {
 
       {/* ── New Game Confirmation Modal ────────────────────────────── */}
       {showNewGameConfirm && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bloomberg-border bg-gray-900 p-6 max-w-sm w-full">
-            <div className="text-orange-500 font-bold text-xs tracking-widest mb-4">NEW GAME</div>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="new-game-title">
+          <div className="bloomberg-border bg-gray-900 p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
+            <div id="new-game-title" className="text-orange-500 font-bold text-xs tracking-widest mb-4">NEW GAME</div>
             <p className="text-gray-400 text-sm mb-6">
               Are you sure? This will end your current dynasty. Make sure you've saved first.
             </p>
@@ -111,8 +114,8 @@ export default function Shell() {
           <span className="text-gray-500 text-xs hidden sm:inline">SEASON {season}</span>
         </div>
         {isSimulating && (
-          <div className="flex items-center gap-2">
-            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden">
+          <div className="flex items-center gap-2" aria-live="polite" role="status">
+            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden" role="progressbar" aria-valuenow={Math.round(simProgress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Simulation progress">
               <div
                 className="h-full bg-orange-500 transition-all duration-200"
                 style={{ width: `${Math.round(simProgress * 100)}%` }}
@@ -123,9 +126,11 @@ export default function Shell() {
         )}
         <div className="flex items-center gap-1.5 sm:gap-3">
           <OfflineIndicator />
-          {saveFlash && (
-            <span className="text-green-400 text-xs font-bold tracking-wider animate-pulse">SAVED</span>
-          )}
+          <span aria-live="assertive">
+            {saveFlash && (
+              <span className="text-green-400 text-xs font-bold tracking-wider animate-pulse">SAVED</span>
+            )}
+          </span>
           <button
             onClick={handleSave}
             className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
@@ -175,7 +180,9 @@ export default function Shell() {
       {/* ── Main content ─────────────────────────────────────────────── */}
       <main id="main-content" className="flex-1 overflow-auto" role="main">
         <ErrorBoundary partial>
-          {renderContent()}
+          <Suspense fallback={<LoadingFallback />}>
+            {renderContent()}
+          </Suspense>
         </ErrorBoundary>
       </main>
 

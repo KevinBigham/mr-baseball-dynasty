@@ -135,7 +135,14 @@ export default function AwardRacePanel({
   const roy     = league === 'AL' ? data.roy.al      : data.roy.nl;
 
   const hasAny = mvp.length > 0 || cyYoung.length > 0 || roy.length > 0;
-  if (!hasAny) return null;
+  if (!hasAny) return (
+    <div className="bloomberg-border bg-gray-900">
+      <div className="bloomberg-header px-4">AWARD RACE</div>
+      <div className="px-4 py-6 text-center text-gray-600 text-xs">
+        Award race data appears during season simulation.
+      </div>
+    </div>
+  );
 
   return (
     <div className="bloomberg-border bg-gray-900">

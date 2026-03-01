@@ -5,6 +5,7 @@ import { useGameStore } from '../../store/gameStore';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
 import CareerStatsTable from './CareerStatsTable';
+import { SkeletonProfile } from '../layout/Skeleton';
 
 // ─── Scouting grade box ───────────────────────────────────────────────────────
 
@@ -464,7 +465,7 @@ export default function PlayerProfile() {
       <div className="text-gray-600 text-xs mt-16">Select a player from the roster or leaderboard to view their profile.</div>
     </div>
   );
-  if (loading) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading player data…</div>;
+  if (loading) return <SkeletonProfile />;
   if (error)   return <div className="p-4 text-red-400 text-xs">{error}</div>;
   if (!data)   return null;
 

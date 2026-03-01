@@ -227,8 +227,9 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
     return (
       <div className="bloomberg-border bg-gray-900">
         <div className="bloomberg-header px-4">PROSPECT PIPELINE</div>
-        <div className="px-4 py-8 text-center text-gray-500 text-xs">
-          No prospects in the farm system.
+        <div className="bloomberg-border bg-gray-900 px-6 py-12 text-center">
+          <div className="text-gray-500 text-sm mb-2">No prospects in your pipeline yet.</div>
+          <div className="text-gray-600 text-xs">Draft picks and international signings will appear here.</div>
         </div>
       </div>
     );

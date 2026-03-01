@@ -3,7 +3,9 @@ import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import type { StandingsRow } from '../../types/league';
+import { tiebreakCompare } from '../../engine/standings';
 import TeamDetailModal from './TeamDetailModal';
+import { SkeletonTable } from '../layout/Skeleton';
 
 function computeGB(rows: StandingsRow[]): StandingsRow[] {
   if (rows.length === 0) return rows;
@@ -22,7 +24,7 @@ function groupByDivision(rows: StandingsRow[]): Record<string, StandingsRow[]> {
     groups[key].push(r);
   }
   for (const key of Object.keys(groups)) {
-    groups[key] = computeGB(groups[key]!.sort((a, b) => b.wins - a.wins || a.losses - b.losses));
+    groups[key] = computeGB(groups[key]!.sort(tiebreakCompare));
   }
   return groups;
 }
@@ -31,7 +33,7 @@ function computePlayoffIds(rows: StandingsRow[]): Set<number> {
   const ids = new Set<number>();
   for (const league of ['AL', 'NL'] as const) {
     const teams = rows.filter(r => r.league === league)
-      .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+      .sort(tiebreakCompare);
     const divWinners = new Map<string, StandingsRow>();
     for (const t of teams) {
       if (!divWinners.has(t.division)) divWinners.set(t.division, t);
@@ -167,7 +169,7 @@ export default function StandingsView() {
   }, [gameStarted, standings, setStandings]);
 
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
-  if (loading) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading standings…</div>;
+  if (loading) return <div className="p-4"><SkeletonTable rows={5} cols={8} /></div>;
   if (!standings) return <div className="p-4 text-gray-500 text-xs">No standings yet. Simulate a season first.</div>;
 
   const grouped   = groupByDivision(standings.standings);
@@ -185,7 +187,7 @@ export default function StandingsView() {
           {(['divisions', 'picture'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={[
-                'text-xs px-3 py-1 border font-normal transition-colors',
+                'text-xs px-3 py-1 border font-normal transition-colors min-h-[44px]',
                 view === v
                   ? 'border-orange-500 text-orange-400 bg-orange-950/30'
                   : 'border-gray-700 text-gray-500 hover:text-gray-300',
@@ -208,16 +210,17 @@ export default function StandingsView() {
               <div key={divKey} className="bloomberg-border">
                 <div className="bloomberg-header text-xs">{divKey}</div>
                 <table className="w-full">
+                  <caption className="sr-only">{divKey} standings</caption>
                   <thead>
                     <tr className="text-gray-600 text-xs border-b border-gray-800">
-                      <th className="px-1 py-1 w-5"></th>
-                      <th className="text-left px-2 py-1 w-20">TEAM</th>
-                      <th className="text-right px-2 py-1">W</th>
-                      <th className="text-right px-2 py-1">L</th>
-                      <th className="text-right px-2 py-1">PCT</th>
-                      <th className="text-right px-2 py-1">GB</th>
-                      <th className="text-right px-2 py-1">DIFF</th>
-                      <th className="text-right px-2 py-1 text-orange-600" title="Pythagorean wins">xW</th>
+                      <th scope="col" className="px-1 py-1 w-5"><span className="sr-only">Status</span></th>
+                      <th scope="col" className="text-left px-2 py-1 w-20">TEAM</th>
+                      <th scope="col" className="text-right px-2 py-1">W</th>
+                      <th scope="col" className="text-right px-2 py-1">L</th>
+                      <th scope="col" className="text-right px-2 py-1">PCT</th>
+                      <th scope="col" className="text-right px-2 py-1">GB</th>
+                      <th scope="col" className="text-right px-2 py-1">DIFF</th>
+                      <th scope="col" className="text-right px-2 py-1 text-orange-600" title="Pythagorean wins">xW</th>
                     </tr>
                   </thead>
                   <tbody>

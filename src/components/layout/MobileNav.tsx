@@ -19,9 +19,10 @@ export default function MobileNav() {
     <nav className="sm:hidden border-b border-gray-800 bg-gray-950" role="navigation" aria-label="Main navigation">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-2 text-xs font-bold tracking-wider text-gray-400"
+        className="w-full flex items-center justify-between px-4 py-2 text-xs font-bold tracking-wider text-gray-400 min-h-[44px]"
         aria-expanded={open}
         aria-controls="mobile-nav-menu"
+        aria-label="Toggle navigation menu"
       >
         <span className="text-orange-400">
           {NAV_TABS.find(t => t.id === activeTab)?.label ?? 'MENU'}

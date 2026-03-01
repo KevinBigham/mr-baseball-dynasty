@@ -1,8 +1,13 @@
+import { SkeletonCard } from './Skeleton';
+
 export default function LoadingFallback() {
   return (
-    <div className="flex items-center justify-center py-20">
-      <div className="text-orange-400 font-mono text-xs animate-pulse tracking-widest">
-        LOADING…
+    <div className="p-4 space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     </div>
   );

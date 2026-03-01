@@ -3,7 +3,6 @@ import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
-import type { LeaderboardFullEntry } from '../../types/league';
 
 // ─── Stat column definitions ─────────────────────────────────────────────────
 
@@ -97,6 +96,30 @@ const ELITE_ADV_PITCHING: Record<string, (v: number) => boolean> = {
   war:  v => v >= 4.0,
 };
 
+const CAREER_HITTING_COLS: ColDef[] = [
+  { key: 'seasons', label: 'YRS', format: v => String(v),    width: 'w-10' },
+  { key: 'g',       label: 'G',   format: v => String(v),    width: 'w-10' },
+  { key: 'avg',     label: 'AVG', format: v => v.toFixed(3), width: 'w-12' },
+  { key: 'hr',      label: 'HR',  format: v => String(v),    width: 'w-10' },
+  { key: 'h',       label: 'H',   format: v => String(v),    width: 'w-10' },
+  { key: 'rbi',     label: 'RBI', format: v => String(v),    width: 'w-10' },
+  { key: 'ops',     label: 'OPS', format: v => v.toFixed(3), width: 'w-12' },
+  { key: 'sb',      label: 'SB',  format: v => String(v),    width: 'w-10' },
+  { key: 'bb',      label: 'BB',  format: v => String(v),    width: 'w-10' },
+];
+
+const CAREER_PITCHING_COLS: ColDef[] = [
+  { key: 'seasons', label: 'YRS', format: v => String(v),    width: 'w-10' },
+  { key: 'g',       label: 'G',   format: v => String(v),    width: 'w-10' },
+  { key: 'w',       label: 'W',   format: v => String(v),    width: 'w-10' },
+  { key: 'l',       label: 'L',   format: v => String(v),    width: 'w-10' },
+  { key: 'era',     label: 'ERA', format: v => v.toFixed(2), width: 'w-12' },
+  { key: 'ip',      label: 'IP',  format: v => v.toFixed(1), width: 'w-12' },
+  { key: 'k',       label: 'K',   format: v => String(v),    width: 'w-10' },
+  { key: 'sv',      label: 'SV',  format: v => String(v),    width: 'w-10' },
+  { key: 'whip',    label: 'WHIP',format: v => v.toFixed(2), width: 'w-12' },
+];
+
 const HITTING_POSITIONS = ['ALL', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 const PITCHING_POSITIONS = ['ALL', 'SP', 'RP', 'CL'];
 
@@ -128,7 +151,7 @@ const ELITE_PITCHING: Record<string, (v: number) => boolean> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-type LeaderboardMode = 'hitting' | 'pitching' | 'advanced';
+type LeaderboardMode = 'hitting' | 'pitching' | 'advanced' | 'career';
 
 export default function Leaderboards() {
   const { leaderboardFull, setLeaderboardFull } = useLeagueStore();
@@ -147,9 +170,17 @@ export default function Leaderboards() {
     rank: number; playerId: number; name: string; teamAbbr: string;
     position: string; age: number; stats: Record<string, number>;
   }>>([]);
+  const [careerSubCat, setCareerSubCat] = useState<'hitting' | 'pitching'>('hitting');
+  const [careerData, setCareerData] = useState<Array<{
+    rank: number; playerId: number; name: string; position: string;
+    seasonsPlayed: number; isRetired: boolean; careerTotals: Record<string, number>;
+  }>>([]);
 
   const isAdvanced = mode === 'advanced';
-  const cols = isAdvanced
+  const isCareer = mode === 'career';
+  const cols = isCareer
+    ? (careerSubCat === 'hitting' ? CAREER_HITTING_COLS : CAREER_PITCHING_COLS)
+    : isAdvanced
     ? (advSubCat === 'hitting' ? ADV_HITTING_COLS : ADV_PITCHING_COLS)
     : (leaderboardCategory === 'hitting' ? HITTING_COLS : PITCHING_COLS);
   const positions = isAdvanced
@@ -162,7 +193,11 @@ export default function Leaderboards() {
   // Reset sortBy and posFilter when switching category
   const switchCategory = useCallback((cat: LeaderboardMode) => {
     setMode(cat);
-    if (cat === 'advanced') {
+    if (cat === 'career') {
+      setCareerSubCat('hitting');
+      setSortBy('hr');
+      setSortAsc(false);
+    } else if (cat === 'advanced') {
       setAdvSubCat('hitting');
       setSortBy('wRCPlus');
       setSortAsc(false);
@@ -190,7 +225,11 @@ export default function Leaderboards() {
     if (!gameStarted) return;
     setLoading(true);
 
-    if (isAdvanced) {
+    if (isCareer) {
+      getEngine().getCareerLeaderboard({ category: careerSubCat, sortBy, limit: 50 })
+        .then(setCareerData)
+        .finally(() => setLoading(false));
+    } else if (isAdvanced) {
       getEngine().getLeaderboardAdvanced(advSubCat, sortBy, 50)
         .then(setAdvData)
         .finally(() => setLoading(false));
@@ -206,10 +245,26 @@ export default function Leaderboards() {
         .then(setLeaderboardFull)
         .finally(() => setLoading(false));
     }
-  }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull, isAdvanced, advSubCat]);
+  }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull, isAdvanced, advSubCat, isCareer, careerSubCat]);
 
   // Client-side filter for My Team + re-sort for direction
   const displayed = useMemo(() => {
+    if (isCareer) {
+      let rows = careerData;
+      if (sortAsc) rows = [...rows].reverse();
+      return rows.map((r, i) => ({
+        rank: i + 1,
+        playerId: r.playerId,
+        name: r.name,
+        teamAbbr: r.isRetired ? 'RET' : '',
+        teamId: 0,
+        position: r.position,
+        age: r.seasonsPlayed,
+        isPitcher: careerSubCat === 'pitching',
+        stats: r.careerTotals,
+        isRetired: r.isRetired,
+      }));
+    }
     if (isAdvanced) {
       let rows = advData;
       if (sortAsc) {
@@ -237,7 +292,7 @@ export default function Leaderboards() {
       rows = [...rows].reverse();
     }
     return rows;
-  }, [leaderboardFull, myTeamOnly, userTeamId, sortAsc, isAdvanced, advData, advSubCat]);
+  }, [leaderboardFull, myTeamOnly, userTeamId, sortAsc, isAdvanced, advData, advSubCat, isCareer, careerData, careerSubCat]);
 
   const openPlayer = (id: number) => {
     setSelectedPlayer(id);
@@ -249,15 +304,15 @@ export default function Leaderboards() {
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2 mb-4">STATISTICAL LEADERBOARDS</div>
 
       {/* Category tabs */}
-      <div className="flex gap-1 mb-3">
-        {(['hitting', 'pitching', 'advanced'] as const).map(cat => {
-          const isActive = cat === 'advanced' ? mode === 'advanced' : (mode !== 'advanced' && leaderboardCategory === cat);
+      <div className="flex gap-1 mb-3 flex-wrap">
+        {(['hitting', 'pitching', 'advanced', 'career'] as const).map(cat => {
+          const isActive = (cat === 'advanced' || cat === 'career') ? mode === cat : (mode !== 'advanced' && mode !== 'career' && leaderboardCategory === cat);
           return (
             <button
               key={cat}
               onClick={() => switchCategory(cat)}
               className={[
-                'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors',
+                'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors min-h-[44px]',
                 isActive
                   ? 'border-orange-500 text-orange-400 bg-orange-950/30'
                   : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400',
@@ -293,15 +348,40 @@ export default function Leaderboards() {
         </div>
       )}
 
-      {/* Filters row */}
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
+      {/* Career sub-category toggle */}
+      {isCareer && (
+        <div className="flex gap-1 mb-3">
+          {(['hitting', 'pitching'] as const).map(sub => (
+            <button
+              key={sub}
+              onClick={() => {
+                setCareerSubCat(sub);
+                setSortBy(sub === 'hitting' ? 'hr' : 'w');
+                setSortAsc(false);
+              }}
+              className={[
+                'text-xs px-3 py-1 border transition-colors min-h-[44px]',
+                careerSubCat === sub
+                  ? 'border-orange-500 text-orange-400 bg-orange-950/20'
+                  : 'border-gray-700 text-gray-600 hover:text-gray-400',
+              ].join(' ')}
+            >
+              {sub === 'hitting' ? 'HITTERS' : 'PITCHERS'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Filters row (hidden for career mode) */}
+      {!isCareer && <div className="flex items-center gap-3 mb-3 flex-wrap">
         {/* Position filter */}
         <div className="flex items-center gap-1.5">
           <span className="text-gray-600 text-xs">POS:</span>
           <select
             value={posFilter}
             onChange={e => setPosFilter(e.target.value)}
-            className="bg-gray-900 border border-gray-700 text-gray-300 text-xs px-2 py-1 focus:border-orange-500 focus:outline-none"
+            className="bg-gray-900 border border-gray-700 text-gray-300 text-xs px-2 py-1 focus:border-orange-500 focus:outline-none min-h-[44px]"
+            aria-label="Filter by position"
           >
             {positions.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
@@ -334,25 +414,31 @@ export default function Leaderboards() {
         <span className="text-gray-700 text-xs ml-auto">
           {displayed.length} players{myTeamOnly ? ' (filtered)' : ''}
         </span>
-      </div>
+      </div>}
 
       {!gameStarted && <div className="text-gray-500 text-xs">Start a game first.</div>}
-      {loading && <div className="text-orange-400 text-xs animate-pulse">Loading...</div>}
+      {loading && <div className="text-orange-400 text-xs animate-pulse" aria-live="polite" role="status">Loading...</div>}
 
       {!loading && displayed.length > 0 && (
         <div className="bloomberg-border overflow-x-auto">
           <table className="w-full whitespace-nowrap">
+            <caption className="sr-only">
+              {isCareer ? `Career ${careerSubCat}` : isAdvanced ? `Advanced ${advSubCat}` : leaderboardCategory} leaderboard
+            </caption>
             <thead>
               <tr className="text-gray-600 text-xs border-b border-gray-800">
-                <th className="text-right px-2 py-1.5 w-8 sticky left-0 bg-gray-950 z-10">#</th>
-                <th className="text-left px-2 py-1.5 sticky left-8 bg-gray-950 z-10 min-w-[120px]">PLAYER</th>
-                <th className="text-left px-2 py-1.5 w-10">TM</th>
-                <th className="text-left px-2 py-1.5 w-10">POS</th>
-                <th className="text-right px-2 py-1.5 w-8">AGE</th>
+                <th scope="col" className="text-right px-2 py-1.5 w-8 sticky left-0 bg-gray-950 z-10">#</th>
+                <th scope="col" className="text-left px-2 py-1.5 sticky left-8 bg-gray-950 z-10 min-w-[120px]">PLAYER</th>
+                {!isCareer && <th scope="col" className="text-left px-2 py-1.5 w-10">TM</th>}
+                <th scope="col" className="text-left px-2 py-1.5 w-10">POS</th>
+                {!isCareer && <th scope="col" className="text-right px-2 py-1.5 w-8">AGE</th>}
                 {cols.map(col => (
                   <th
+                    scope="col"
                     key={col.key}
                     onClick={() => handleSort(col.key)}
+                    aria-sort={sortBy === col.key ? (sortAsc ? 'ascending' : 'descending') : undefined}
+                    aria-label={`Sort by ${col.label}`}
                     className={[
                       'text-right px-2 py-1.5 cursor-pointer hover:text-gray-400 transition-colors select-none',
                       col.width,
@@ -365,8 +451,9 @@ export default function Leaderboards() {
               </tr>
             </thead>
             <tbody>
-              {displayed.map((entry: LeaderboardFullEntry, idx: number) => {
-                const isUserTeam = entry.teamId === userTeamId;
+              {displayed.map((entry: any, idx: number) => {
+                const isUserTeam = !isCareer && entry.teamId === userTeamId;
+                const retired = isCareer && entry.isRetired;
                 return (
                   <tr
                     key={entry.playerId}
@@ -377,23 +464,26 @@ export default function Leaderboards() {
                       background: isUserTeam ? 'rgba(249,115,22,0.04)' : undefined,
                       borderLeft: isUserTeam ? '2px solid #f97316' : '2px solid transparent',
                     }}
-                    onClick={() => openPlayer(entry.playerId)}
+                    onClick={() => !retired && openPlayer(entry.playerId)}
                   >
                     <td className="text-right px-2 py-1 text-gray-600 tabular-nums sticky left-0 bg-gray-950">
                       {idx + 1}
                     </td>
                     <td className="px-2 py-1 font-bold sticky left-8 bg-gray-950" style={{ color: isUserTeam ? '#fb923c' : '#fdba74' }}>
                       {entry.name}
-                      {idx === 0 && sortBy === 'ops' && leaderboardCategory === 'hitting' && (
+                      {retired && (
+                        <span className="ml-1 text-gray-500 text-[10px] font-bold bg-gray-800 px-1">RET</span>
+                      )}
+                      {!isCareer && idx === 0 && sortBy === 'ops' && leaderboardCategory === 'hitting' && (
                         <span className="ml-1 text-yellow-400 text-[10px] font-black" title="MVP Leader">MVP</span>
                       )}
-                      {idx === 0 && sortBy === 'era' && leaderboardCategory === 'pitching' && sortAsc && (
+                      {!isCareer && idx === 0 && sortBy === 'era' && leaderboardCategory === 'pitching' && sortAsc && (
                         <span className="ml-1 text-yellow-400 text-[10px] font-black" title="Cy Young Leader">CY</span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-gray-500">{entry.teamAbbr}</td>
+                    {!isCareer && <td className="px-2 py-1 text-gray-500">{entry.teamAbbr}</td>}
                     <td className="px-2 py-1 text-gray-500">{entry.position}</td>
-                    <td className="text-right px-2 py-1 tabular-nums text-gray-500">{entry.age}</td>
+                    {!isCareer && <td className="text-right px-2 py-1 tabular-nums text-gray-500">{entry.age}</td>}
                     {cols.map(col => {
                       const val = entry.stats[col.key] ?? 0;
                       const isElite = eliteMap[col.key]?.(val) ?? false;

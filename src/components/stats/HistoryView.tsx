@@ -1,5 +1,10 @@
+import { useState, lazy, Suspense } from 'react';
 import { useLeagueStore, type SeasonSummary } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
+import LoadingFallback from '../layout/LoadingFallback';
+
+const HallOfFameGallery = lazy(() => import('./HallOfFameGallery'));
+const FranchiseRecordsView = lazy(() => import('./FranchiseRecordsView'));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,11 +24,20 @@ function rowBg(s: SeasonSummary): string {
   return 'border-l-2 border-l-gray-800 opacity-70';
 }
 
+type HistoryTab = 'franchise' | 'records' | 'hallOfFame';
+
+const TABS: Array<{ id: HistoryTab; label: string }> = [
+  { id: 'franchise', label: 'FRANCHISE' },
+  { id: 'records', label: 'RECORDS' },
+  { id: 'hallOfFame', label: 'HALL OF FAME' },
+];
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function HistoryView() {
   const { franchiseHistory } = useLeagueStore();
   const { seasonsManaged } = useGameStore();
+  const [activeTab, setActiveTab] = useState<HistoryTab>('franchise');
 
   // History is stored newest-first; display newest-first
   const history = franchiseHistory;
@@ -41,110 +55,145 @@ export default function HistoryView() {
     <div className="p-4">
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2 mb-4">FRANCHISE ARCHIVE</div>
 
-      {/* Empty state */}
-      {history.length === 0 && (
-        <div className="bloomberg-border bg-gray-900 px-6 py-12 text-center">
-          <div className="text-gray-500 text-sm mb-2">Your dynasty story begins now.</div>
-          <div className="text-gray-600 text-xs">
-            Simulate your first season to start building your franchise legacy.
-          </div>
-        </div>
-      )}
+      {/* Sub-tab navigation */}
+      <div className="flex gap-1 mb-4">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={[
+              'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors min-h-[44px]',
+              activeTab === tab.id
+                ? 'border-orange-500 text-orange-400 bg-orange-950/30'
+                : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400',
+            ].join(' ')}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Career summary cards */}
-      {history.length > 0 && (
+      {/* Tab content */}
+      {activeTab === 'franchise' && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <SummaryCard label="SEASONS" value={String(seasonsManaged)} sub="managed" />
-            <SummaryCard
-              label="CAREER RECORD"
-              value={`${totalWins}-${totalLosses}`}
-              sub={`${careerPct.toFixed(3)} PCT`}
-            />
-            <SummaryCard
-              label="PLAYOFFS"
-              value={String(playoffAppearances)}
-              sub={`of ${history.length} seasons`}
-              highlight={playoffAppearances > 0}
-            />
-            <SummaryCard
-              label="CHAMPIONSHIPS"
-              value={String(championships)}
-              sub={championships > 0 ? 'DYNASTY STATUS' : 'ring(s)'}
-              highlight={championships > 0}
-              gold={championships > 0}
-            />
-          </div>
-
-          {/* Award tally */}
-          {allAwards.length > 0 && (
-            <div className="bloomberg-border bg-gray-900 mb-4">
-              <div className="bloomberg-header px-4">AWARD CABINET</div>
-              <div className="px-4 py-3 flex flex-wrap gap-2">
-                {allAwards.map((award, i) => (
-                  <span key={i} className="text-xs bg-orange-900/30 text-orange-400 px-2 py-0.5 border border-orange-800">
-                    {award}
-                  </span>
-                ))}
+          {/* Empty state */}
+          {history.length === 0 && (
+            <div className="bloomberg-border bg-gray-900 px-6 py-12 text-center">
+              <div className="text-gray-500 text-sm mb-2">Your dynasty story begins now.</div>
+              <div className="text-gray-600 text-xs">
+                Simulate your first season to start building your franchise legacy.
               </div>
             </div>
           )}
 
-          {/* Season-by-season table */}
-          <div className="bloomberg-border overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-gray-600 text-xs border-b border-gray-800">
-                  <th className="text-left px-3 py-1.5">SEASON</th>
-                  <th className="text-right px-3 py-1.5">W</th>
-                  <th className="text-right px-3 py-1.5">L</th>
-                  <th className="text-right px-3 py-1.5">PCT</th>
-                  <th className="text-left px-3 py-1.5">FINISH</th>
-                  <th className="text-left px-3 py-1.5">AWARDS</th>
-                  <th className="text-left px-3 py-1.5">KEY MOMENT</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(s => {
-                  const badge = finishBadge(s);
-                  return (
-                    <tr key={s.season} className={`text-xs border-b border-gray-800/50 ${rowBg(s)}`}>
-                      <td className="px-3 py-2 text-gray-400 font-bold tabular-nums">{s.season}</td>
-                      <td className="text-right px-3 py-2 text-gray-300 tabular-nums font-bold">{s.wins}</td>
-                      <td className="text-right px-3 py-2 text-gray-500 tabular-nums">{s.losses}</td>
-                      <td className="text-right px-3 py-2 tabular-nums text-gray-400">{s.pct.toFixed(3)}</td>
-                      <td className="px-3 py-2">
-                        {badge ? (
-                          <span className={`text-xs px-1.5 py-0.5 font-bold ${badge.color}`}>
-                            {badge.text}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">
-                        {s.awardsWon.length > 0 ? s.awardsWon.join(', ') : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-gray-500 max-w-[300px] truncate">
-                        {s.keyMoment}
-                      </td>
+          {/* Career summary cards */}
+          {history.length > 0 && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <SummaryCard label="SEASONS" value={String(seasonsManaged)} sub="managed" />
+                <SummaryCard
+                  label="CAREER RECORD"
+                  value={`${totalWins}-${totalLosses}`}
+                  sub={`${careerPct.toFixed(3)} PCT`}
+                />
+                <SummaryCard
+                  label="PLAYOFFS"
+                  value={String(playoffAppearances)}
+                  sub={`of ${history.length} seasons`}
+                  highlight={playoffAppearances > 0}
+                />
+                <SummaryCard
+                  label="CHAMPIONSHIPS"
+                  value={String(championships)}
+                  sub={championships > 0 ? 'DYNASTY STATUS' : 'ring(s)'}
+                  highlight={championships > 0}
+                  gold={championships > 0}
+                />
+              </div>
+
+              {/* Award tally */}
+              {allAwards.length > 0 && (
+                <div className="bloomberg-border bg-gray-900 mb-4">
+                  <div className="bloomberg-header px-4">AWARD CABINET</div>
+                  <div className="px-4 py-3 flex flex-wrap gap-2">
+                    {allAwards.map((award, i) => (
+                      <span key={i} className="text-xs bg-orange-900/30 text-orange-400 px-2 py-0.5 border border-orange-800">
+                        {award}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Season-by-season table */}
+              <div className="bloomberg-border overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-gray-600 text-xs border-b border-gray-800">
+                      <th className="text-left px-3 py-1.5">SEASON</th>
+                      <th className="text-right px-3 py-1.5">W</th>
+                      <th className="text-right px-3 py-1.5">L</th>
+                      <th className="text-right px-3 py-1.5">PCT</th>
+                      <th className="text-left px-3 py-1.5">FINISH</th>
+                      <th className="text-left px-3 py-1.5">AWARDS</th>
+                      <th className="text-left px-3 py-1.5">KEY MOMENT</th>
                     </tr>
-                  );
-                })}
-                {/* Totals */}
-                <tr className="text-xs border-t-2 border-gray-700 font-bold">
-                  <td className="px-3 py-2 text-orange-500">CAREER</td>
-                  <td className="text-right px-3 py-2 text-orange-400 tabular-nums">{totalWins}</td>
-                  <td className="text-right px-3 py-2 text-gray-500 tabular-nums">{totalLosses}</td>
-                  <td className="text-right px-3 py-2 text-orange-400 tabular-nums">{careerPct.toFixed(3)}</td>
-                  <td className="px-3 py-2 text-orange-400">{playoffAppearances} PO</td>
-                  <td className="px-3 py-2 text-orange-400">{allAwards.length} awards</td>
-                  <td className="px-3 py-2 text-orange-400">{championships} rings</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {history.map(s => {
+                      const badge = finishBadge(s);
+                      return (
+                        <tr key={s.season} className={`text-xs border-b border-gray-800/50 ${rowBg(s)}`}>
+                          <td className="px-3 py-2 text-gray-400 font-bold tabular-nums">{s.season}</td>
+                          <td className="text-right px-3 py-2 text-gray-300 tabular-nums font-bold">{s.wins}</td>
+                          <td className="text-right px-3 py-2 text-gray-500 tabular-nums">{s.losses}</td>
+                          <td className="text-right px-3 py-2 tabular-nums text-gray-400">{s.pct.toFixed(3)}</td>
+                          <td className="px-3 py-2">
+                            {badge ? (
+                              <span className={`text-xs px-1.5 py-0.5 font-bold ${badge.color}`}>
+                                {badge.text}
+                              </span>
+                            ) : (
+                              <span className="text-gray-600 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">
+                            {s.awardsWon.length > 0 ? s.awardsWon.join(', ') : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500 max-w-[300px] truncate">
+                            {s.keyMoment}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* Totals */}
+                    <tr className="text-xs border-t-2 border-gray-700 font-bold">
+                      <td className="px-3 py-2 text-orange-500">CAREER</td>
+                      <td className="text-right px-3 py-2 text-orange-400 tabular-nums">{totalWins}</td>
+                      <td className="text-right px-3 py-2 text-gray-500 tabular-nums">{totalLosses}</td>
+                      <td className="text-right px-3 py-2 text-orange-400 tabular-nums">{careerPct.toFixed(3)}</td>
+                      <td className="px-3 py-2 text-orange-400">{playoffAppearances} PO</td>
+                      <td className="px-3 py-2 text-orange-400">{allAwards.length} awards</td>
+                      <td className="px-3 py-2 text-orange-400">{championships} rings</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
+      )}
+
+      {activeTab === 'records' && (
+        <Suspense fallback={<LoadingFallback />}>
+          <FranchiseRecordsView />
+        </Suspense>
+      )}
+
+      {activeTab === 'hallOfFame' && (
+        <Suspense fallback={<LoadingFallback />}>
+          <HallOfFameGallery />
+        </Suspense>
       )}
     </div>
   );

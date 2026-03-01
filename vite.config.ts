@@ -32,6 +32,8 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
           'vendor-charts': ['recharts'],
+          'vendor-state': ['zustand'],
+          'vendor-db': ['dexie', 'pako'],
           'game-engine': ['comlink'],
         },
       },

@@ -12,6 +12,13 @@ export interface LeagueEnvironment {
   babipAdjustment: number;
 }
 
+export interface RetiredPlayerRecord {
+  name: string;
+  position: string;
+  seasons: PlayerSeasonStats[];
+  retiredSeason: number;
+}
+
 export interface LeagueState {
   season: number;
   teams: Team[];
@@ -21,6 +28,9 @@ export interface LeagueState {
   prngState: number[];  // Serialized PRNG state
   userTeamId: number;
   careerHistory?: Record<string, PlayerSeasonStats[]>;
+  retiredPlayers?: Record<string, RetiredPlayerRecord>;
+  hallOfFame?: import('../engine/hallOfFame').HallOfFameInductee[];
+  franchiseRecords?: import('../engine/franchiseRecords').FranchiseRecordBook;
 }
 
 export interface SeasonResult {

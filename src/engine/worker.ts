@@ -51,6 +51,9 @@ import {
   type Rule5Selection,
 } from './draft/rule5Draft';
 import { processAIRosterMoves, type AIRosterMove } from './aiRosterManager';
+import { identifyHOFCandidates, simulateHOFVoting, type HallOfFameInductee, type HallOfFameCandidate } from './hallOfFame';
+import { updateFranchiseRecords, emptyRecordBook, type FranchiseRecordBook } from './franchiseRecords';
+import type { RetiredPlayerRecord } from '../types/league';
 import {
   computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages,
   type AdvancedHittingStats, type AdvancedPitchingStats, type LeagueAverages,
@@ -67,6 +70,9 @@ let _seasonResults: SeasonResult[] = [];
 let _foStaff: import('../types/frontOffice').FOStaffMember[] = [];
 let _lastAIRosterMoves: AIRosterMove[] = [];
 let _cachedLeagueAverages: LeagueAverages | null = null;
+let _retiredCareerHistory = new Map<number, import('../types/league').RetiredPlayerRecord>();
+let _hallOfFame: import('./hallOfFame').HallOfFameInductee[] = [];
+let _franchiseRecords: import('./franchiseRecords').FranchiseRecordBook | null = null;
 
 // ─── Draft state ──────────────────────────────────────────────────────────────
 
@@ -172,6 +178,9 @@ const api = {
     _playerSeasonStats = new Map();
     _careerHistory = new Map();
     _seasonResults = [];
+    _retiredCareerHistory = new Map();
+    _hallOfFame = [];
+    _franchiseRecords = null;
     _foStaff = [];
     rebuildMaps();
 
@@ -266,8 +275,44 @@ const api = {
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 
+    // ── Persist retired players' career stats before they're pruned ──────────
+    const retiredEvents = (offseasonResult.events ?? []).filter(e => e.type === 'retirement');
+    for (const evt of retiredEvents) {
+      const career = _careerHistory.get(evt.playerId);
+      if (career && career.length > 0) {
+        const player = _playerMap.get(evt.playerId);
+        _retiredCareerHistory.set(evt.playerId, {
+          name: evt.playerName,
+          position: player?.position ?? 'UT',
+          seasons: career,
+          retiredSeason: state.season,
+        });
+      }
+    }
+
     // Rebuild the player map after development (ages/attrs changed)
     rebuildMaps();
+
+    // ── Franchise records (user team only) ──────────────────────────────────
+    const userTeamRecord = result.teamSeasons.find(ts => ts.teamId === state.userTeamId);
+    if (userTeamRecord) {
+      const recBook = _franchiseRecords ?? emptyRecordBook();
+      const recResult = updateFranchiseRecords(
+        recBook, _playerSeasonStats, _careerHistory, _playerMap,
+        { wins: userTeamRecord.record.wins, losses: userTeamRecord.record.losses },
+        state.season, state.userTeamId,
+      );
+      _franchiseRecords = recResult.records;
+    }
+
+    // ── Hall of Fame processing ─────────────────────────────────────────────
+    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
+    const hofCandidates = identifyHOFCandidates(_retiredCareerHistory, state.season, existingInducteeIds);
+    if (hofCandidates.length > 0) {
+      const hofSeed = state.season * 31337;
+      const votingResult = simulateHOFVoting(hofCandidates, hofSeed);
+      _hallOfFame.push(...votingResult.inducted);
+    }
 
     state.prngState = serializeState(gen);
     _seasonResults.push(result);
@@ -1417,6 +1462,120 @@ const api = {
     return _lastAIRosterMoves;
   },
 
+  // ── Career Leaderboards ────────────────────────────────────────────────────
+  async getCareerLeaderboard(options: {
+    category: 'hitting' | 'pitching';
+    sortBy: string;
+    limit?: number;
+  }): Promise<Array<{
+    rank: number;
+    playerId: number;
+    name: string;
+    position: string;
+    seasonsPlayed: number;
+    isRetired: boolean;
+    careerTotals: Record<string, number>;
+  }>> {
+    const { category, sortBy, limit = 25 } = options;
+    const entries: Array<{
+      playerId: number; name: string; position: string;
+      seasonsPlayed: number; isRetired: boolean;
+      sortValue: number; careerTotals: Record<string, number>;
+    }> = [];
+
+    // Helper: aggregate career totals
+    function aggregate(seasons: import('../types/player').PlayerSeasonStats[]): Record<string, number> {
+      const t: Record<string, number> = { g: 0, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0, w: 0, l: 0, sv: 0, hld: 0, bs: 0, gp: 0, gs: 0, outs: 0, ha: 0, ra: 0, er: 0, bba: 0, ka: 0, hra: 0 };
+      for (const s of seasons) {
+        for (const key of Object.keys(t)) {
+          t[key] += (s as unknown as Record<string, number>)[key] ?? 0;
+        }
+      }
+      // Derived stats
+      t.avg = t.ab > 0 ? t.h / t.ab : 0;
+      t.obp = t.pa > 0 ? (t.h + t.bb + t.hbp) / t.pa : 0;
+      t.slg = t.ab > 0 ? (t.h - t.doubles - t.triples - t.hr + t.doubles * 2 + t.triples * 3 + t.hr * 4) / t.ab : 0;
+      t.ops = t.obp + t.slg;
+      t.era = t.outs > 0 ? (t.er / t.outs) * 27 : 0;
+      t.whip = t.outs > 0 ? (t.ha + t.bba) / (t.outs / 3) : 0;
+      t.ip = t.outs / 3;
+      t.seasons = seasons.length;
+      return t;
+    }
+
+    function isPitcherByStat(seasons: import('../types/player').PlayerSeasonStats[]): boolean {
+      let totalOuts = 0; let totalAB = 0;
+      for (const s of seasons) { totalOuts += s.outs; totalAB += s.ab; }
+      return totalOuts > totalAB;
+    }
+
+    // Active players
+    for (const [pid, seasons] of _careerHistory) {
+      if (seasons.length === 0) continue;
+      const isPitcher = isPitcherByStat(seasons);
+      if ((category === 'hitting' && isPitcher) || (category === 'pitching' && !isPitcher)) continue;
+      const player = _playerMap.get(pid);
+      const totals = aggregate(seasons);
+      entries.push({
+        playerId: pid,
+        name: player?.name ?? `Player ${pid}`,
+        position: player?.position ?? 'UT',
+        seasonsPlayed: seasons.length,
+        isRetired: false,
+        sortValue: totals[sortBy] ?? 0,
+        careerTotals: totals,
+      });
+    }
+
+    // Retired players
+    for (const [pid, record] of _retiredCareerHistory) {
+      if (record.seasons.length === 0) continue;
+      const isPitcher = isPitcherByStat(record.seasons);
+      if ((category === 'hitting' && isPitcher) || (category === 'pitching' && !isPitcher)) continue;
+      const totals = aggregate(record.seasons);
+      entries.push({
+        playerId: pid,
+        name: record.name,
+        position: record.position,
+        seasonsPlayed: record.seasons.length,
+        isRetired: true,
+        sortValue: totals[sortBy] ?? 0,
+        careerTotals: totals,
+      });
+    }
+
+    // Sort: for ERA/WHIP lower is better; for everything else higher is better
+    const lowerIsBetter = ['era', 'whip'];
+    const ascending = lowerIsBetter.includes(sortBy);
+    entries.sort((a, b) => ascending ? a.sortValue - b.sortValue : b.sortValue - a.sortValue);
+
+    return entries.slice(0, limit).map((e, i) => ({
+      rank: i + 1,
+      playerId: e.playerId,
+      name: e.name,
+      position: e.position,
+      seasonsPlayed: e.seasonsPlayed,
+      isRetired: e.isRetired,
+      careerTotals: e.careerTotals,
+    }));
+  },
+
+  // ── Hall of Fame ──────────────────────────────────────────────────────────
+  async getHallOfFame(): Promise<HallOfFameInductee[]> {
+    return _hallOfFame;
+  },
+
+  async getHOFCandidates(): Promise<HallOfFameCandidate[]> {
+    if (!_state) return [];
+    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
+    return identifyHOFCandidates(_retiredCareerHistory, _state.season, existingInducteeIds);
+  },
+
+  // ── Franchise Records ─────────────────────────────────────────────────────
+  async getFranchiseRecords(): Promise<FranchiseRecordBook> {
+    return _franchiseRecords ?? emptyRecordBook();
+  },
+
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
     if (!_state) return null;
@@ -1425,7 +1584,18 @@ const api = {
     for (const [playerId, seasons] of _careerHistory) {
       careerHistory[String(playerId)] = seasons;
     }
-    return { ..._state, careerHistory };
+    // Serialize retired career history
+    const retiredPlayers: Record<string, RetiredPlayerRecord> = {};
+    for (const [playerId, record] of _retiredCareerHistory) {
+      retiredPlayers[String(playerId)] = record;
+    }
+    return {
+      ..._state,
+      careerHistory,
+      retiredPlayers,
+      hallOfFame: _hallOfFame,
+      franchiseRecords: _franchiseRecords ?? undefined,
+    };
   },
 
   async loadState(state: LeagueState): Promise<void> {
@@ -1436,6 +1606,16 @@ const api = {
         _careerHistory.set(Number(key), seasons);
       }
     }
+    // Restore retired career history
+    _retiredCareerHistory = new Map();
+    if (state.retiredPlayers) {
+      for (const [key, record] of Object.entries(state.retiredPlayers)) {
+        _retiredCareerHistory.set(Number(key), record);
+      }
+    }
+    // Restore hall of fame and franchise records
+    _hallOfFame = state.hallOfFame ?? [];
+    _franchiseRecords = state.franchiseRecords ?? null;
     _state = state;
     _playerSeasonStats = new Map();
     rebuildMaps();

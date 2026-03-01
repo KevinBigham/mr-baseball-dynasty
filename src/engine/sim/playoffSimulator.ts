@@ -1,6 +1,7 @@
 import type { Player } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { StandingsRow } from '../../types/league';
+import { tiebreakCompare } from '../standings';
 import { simulateGame, type SimulateGameInput } from './gameSimulator';
 
 // ─── Playoff types ──────────────────────────────────────────────────────────
@@ -56,14 +57,14 @@ export function determinePlayoffField(standings: StandingsRow[]): { al: PlayoffT
     const divs = ['East', 'Central', 'West'];
     const divWinners: StandingsRow[] = [];
     for (const div of divs) {
-      const divTeams = rows.filter(r => r.division === div).sort((a, b) => b.wins - a.wins);
+      const divTeams = rows.filter(r => r.division === div).sort(tiebreakCompare);
       if (divTeams.length > 0) divWinners.push(divTeams[0]);
     }
-    divWinners.sort((a, b) => b.wins - a.wins);
+    divWinners.sort(tiebreakCompare);
 
     // Wild cards: best 3 remaining
     const divWinnerIds = new Set(divWinners.map(d => d.teamId));
-    const remaining = rows.filter(r => !divWinnerIds.has(r.teamId)).sort((a, b) => b.wins - a.wins);
+    const remaining = rows.filter(r => !divWinnerIds.has(r.teamId)).sort(tiebreakCompare);
     const wildcards = remaining.slice(0, 3);
 
     // Seed 1-3: division winners by record, 4-6: wild cards by record

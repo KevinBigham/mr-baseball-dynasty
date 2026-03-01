@@ -143,11 +143,11 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="save-manager-title">
       <div className="bloomberg-border bg-gray-900 w-full max-w-lg max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <div className="text-orange-500 font-bold text-xs tracking-widest">DYNASTY MANAGER</div>
+          <div id="save-manager-title" className="text-orange-500 font-bold text-xs tracking-widest">DYNASTY MANAGER</div>
           <button
             onClick={onClose}
             className="text-gray-600 hover:text-gray-400 text-xs transition-colors"

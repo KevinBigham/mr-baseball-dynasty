@@ -293,11 +293,11 @@ export default function CompareModal() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="compare-modal-title">
       <div className="bloomberg-border bg-gray-900 w-full max-w-2xl max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-          <div className="text-orange-500 font-bold text-xs tracking-widest">PLAYER COMPARISON</div>
+          <div id="compare-modal-title" className="text-orange-500 font-bold text-xs tracking-widest">PLAYER COMPARISON</div>
           <button
             onClick={onClose}
             className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
