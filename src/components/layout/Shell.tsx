@@ -8,6 +8,7 @@ import RosterView from '../roster/RosterView';
 import Leaderboards from '../stats/Leaderboards';
 import PlayerProfile from '../stats/PlayerProfile';
 import FinanceView from '../stats/FinanceView';
+import HistoryView from '../stats/HistoryView';
 import { getEngine } from '../../engine/engineClient';
 import { saveGame } from '../../db/schema';
 
@@ -17,6 +18,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'roster',     label: 'ROSTER' },
   { id: 'stats',      label: 'LEADERBOARDS' },
   { id: 'finance',    label: 'FINANCES' },
+  { id: 'history',    label: 'HISTORY' },
   { id: 'profile',    label: 'PLAYER' },
 ];
 
@@ -52,6 +54,7 @@ export default function Shell() {
       case 'roster':     return <RosterView />;
       case 'stats':      return <Leaderboards />;
       case 'finance':    return <FinanceView />;
+      case 'history':    return <HistoryView />;
       case 'profile':    return <PlayerProfile />;
       default:           return <Dashboard />;
     }

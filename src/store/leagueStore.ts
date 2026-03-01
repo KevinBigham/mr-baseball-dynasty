@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { StandingsData, RosterData, LeaderboardEntry } from '../types/league';
+import type { StandingsData, RosterData, LeaderboardEntry, LeaderboardFullEntry } from '../types/league';
 import type { NewsItem } from '../engine/narrative';
 import type { RivalRecord } from '../engine/rivalry';
 import type { MFSNReport } from '../engine/predictions';
@@ -30,6 +30,7 @@ interface LeagueStore {
   standings:      StandingsData | null;
   roster:         RosterData | null;
   leaderboard:    LeaderboardEntry[];
+  leaderboardFull: LeaderboardFullEntry[];
   lastSeasonERA:  number;
   lastSeasonBA:   number;
   lastSeasonRPG:  number;
@@ -62,6 +63,7 @@ interface LeagueStore {
   setStandings:           (d: StandingsData) => void;
   setRoster:              (d: RosterData) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
+  setLeaderboardFull:     (d: LeaderboardFullEntry[]) => void;
   setLastSeasonStats:     (era: number, ba: number, rpg: number) => void;
 
   addNewsItems:           (items: NewsItem[]) => void;
@@ -126,6 +128,7 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   standings:        null,
   roster:           null,
   leaderboard:      [],
+  leaderboardFull:  [],
   lastSeasonERA:    0,
   lastSeasonBA:     0,
   lastSeasonRPG:    0,
@@ -142,6 +145,7 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   setStandings:       d => set({ standings: d }),
   setRoster:          d => set({ roster: d }),
   setLeaderboard:     d => set({ leaderboard: d }),
+  setLeaderboardFull: d => set({ leaderboardFull: d }),
   setLastSeasonStats: (era, ba, rpg) => set({ lastSeasonERA: era, lastSeasonBA: ba, lastSeasonRPG: rpg }),
 
   addNewsItems: items => set(state => ({

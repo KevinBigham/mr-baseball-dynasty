@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import * as Comlink from 'comlink';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore, generateKeyMoment, type SeasonSummary } from '../../store/leagueStore';
@@ -26,6 +27,7 @@ import StaffPoachModal   from './StaffPoachModal';
 import ReputationCard    from './ReputationCard';
 import StoryboardPanel   from './StoryboardPanel';
 import PreseasonPanel   from './PreseasonPanel';
+import SeasonHighlights from './SeasonHighlights';
 import MomentsPanel      from './MomentsPanel';
 import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
 import type { PressContext } from '../../data/pressConference';
@@ -34,6 +36,19 @@ import TradeCenter from '../offseason/TradeCenter';
 import PlayoffBracketView from './PlayoffBracket';
 import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
 import { saveGame } from '../../db/schema';
+
+function extractUserAwards(result: SeasonResult, userTeamId: number): string[] {
+  const awards: string[] = [];
+  if (!result.awards) return awards;
+  const a = result.awards;
+  if (a.mvpAL?.teamId === userTeamId) awards.push(`AL MVP — ${a.mvpAL.name}`);
+  if (a.mvpNL?.teamId === userTeamId) awards.push(`NL MVP — ${a.mvpNL.name}`);
+  if (a.cyYoungAL?.teamId === userTeamId) awards.push(`AL Cy Young — ${a.cyYoungAL.name}`);
+  if (a.cyYoungNL?.teamId === userTeamId) awards.push(`NL Cy Young — ${a.cyYoungNL.name}`);
+  if (a.royAL?.teamId === userTeamId) awards.push(`AL ROY — ${a.royAL.name}`);
+  if (a.royNL?.teamId === userTeamId) awards.push(`NL ROY — ${a.royNL.name}`);
+  return awards;
+}
 
 const TEAM_OPTIONS = [
   { id: 1,  label: 'ADM — New Harbor Admirals (AL East)' },
@@ -98,7 +113,7 @@ function DivChamp({ champ }: { champ: DivisionChampion }) {
 
 export default function Dashboard() {
   const {
-    season, userTeamId, isSimulating, difficulty,
+    season, userTeamId, isSimulating, simProgress, difficulty,
     setSeason, setSimulating, setSimProgress,
     ownerArchetype, ownerPatience, teamMorale,
     adjustOwnerPatience, adjustTeamMorale, setOwnerArchetype,
@@ -151,7 +166,9 @@ export default function Dashboard() {
     setSimProgress(0);
     try {
       const engine = getEngine();
-      const result = await engine.simulateSeason();
+      const result = await engine.simulateSeason(
+        Comlink.proxy((pct: number) => setSimProgress(pct)),
+      );
       setLastResult(result);
       setSeason(result.season + 1);
       setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
@@ -234,7 +251,7 @@ export default function Dashboard() {
         losses:           userLosses,
         pct:              userWins / 162,
         playoffResult:    userTeamSeason?.playoffRound ?? null,
-        awardsWon:        [],
+        awardsWon:        extractUserAwards(result, userTeamId),
         breakoutHits,
         ownerPatienceEnd: ownerPatience,
         teamMoraleEnd:    teamMorale,
@@ -389,6 +406,18 @@ export default function Dashboard() {
           {isSimulating ? 'SIMULATING…' : `⚾ SIM ${season} SEASON`}
         </button>
 
+        {/* Sim flavor text */}
+        {isSimulating && (
+          <div className="text-gray-500 text-xs italic px-2 animate-pulse min-w-[180px]">
+            {simProgress < 0.10 ? 'Spring Training — camp battles underway...' :
+             simProgress < 0.25 ? 'April — Opening Day, a new season begins.' :
+             simProgress < 0.50 ? 'June — All-Star break approaches...' :
+             simProgress < 0.70 ? 'August — dog days, trade deadline passed...' :
+             simProgress < 0.90 ? 'September — pennant race heating up...' :
+             'Computing final results...'}
+          </div>
+        )}
+
         {/* Presser re-open button if done */}
         {presserAvailable && presserDone && pressCtx && (
           <button
@@ -411,6 +440,35 @@ export default function Dashboard() {
 
       {error && (
         <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{error}</div>
+      )}
+
+      {/* ── Quick Actions ────────────────────────────────────────────────────── */}
+      {!isSimulating && (
+        <div className="flex gap-2 flex-wrap">
+          {(gamePhase === 'preseason' ? [
+            { label: 'VIEW ROSTER', tab: 'roster' as const },
+            { label: 'STANDINGS', tab: 'standings' as const },
+            { label: 'FINANCES', tab: 'finance' as const },
+            { label: 'HISTORY', tab: 'history' as const },
+          ] : gamePhase === 'postseason' ? [
+            { label: 'STANDINGS', tab: 'standings' as const },
+            { label: 'LEADERBOARDS', tab: 'stats' as const },
+            { label: 'YOUR ROSTER', tab: 'roster' as const },
+            { label: 'HISTORY', tab: 'history' as const },
+          ] : [
+            { label: 'ROSTER', tab: 'roster' as const },
+            { label: 'FINANCES', tab: 'finance' as const },
+            { label: 'STANDINGS', tab: 'standings' as const },
+          ]).map(a => (
+            <button
+              key={a.label}
+              onClick={() => setActiveTab(a.tab)}
+              className="border border-gray-800 hover:border-gray-600 text-gray-600 hover:text-gray-400 text-[10px] px-3 py-1 uppercase tracking-wider transition-colors"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* ── Owner Patience + Team Morale ──────────────────────────────────────── */}
@@ -475,6 +533,9 @@ export default function Dashboard() {
               {completedSeason} SEASON COMPLETE — OFFSEASON REPORT
             </div>
           </div>
+
+          {/* Season highlights */}
+          <SeasonHighlights result={lastResult} userTeamId={userTeamId} />
 
           <div className="grid grid-cols-4 gap-3">
             {[

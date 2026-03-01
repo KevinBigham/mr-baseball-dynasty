@@ -5,6 +5,7 @@ import type { Team } from '../types/team';
 import type {
   LeagueState, SeasonResult, StandingsData, RosterData,
   LeaderboardEntry, PlayerProfileData, RosterPlayer, StandingsRow,
+  LeaderboardFullEntry, LeaderboardFullOptions,
 } from '../types/league';
 import type { ScheduleEntry } from '../types/game';
 import type { RosterStatus } from '../types/player';
@@ -224,7 +225,82 @@ const api = {
     };
   },
 
-  // ── Leaderboard ────────────────────────────────────────────────────────────
+  // ── Full Leaderboard (multi-stat) ────────────────────────────────────────
+  async getLeaderboardFull(options: LeaderboardFullOptions): Promise<LeaderboardFullEntry[]> {
+    requireState();
+    const { category, sortBy, minPA = 100, minIP = 20, position, limit = 50 } = options;
+    const entries: Array<{ player: Player; stats: Record<string, number>; sortVal: number }> = [];
+
+    for (const [playerId, s] of _playerSeasonStats) {
+      const player = _playerMap.get(playerId);
+      if (!player) continue;
+
+      // Category filter
+      if (category === 'hitting' && player.isPitcher) continue;
+      if (category === 'pitching' && !player.isPitcher) continue;
+
+      // Position filter
+      if (position && player.position !== position) continue;
+
+      // Min threshold
+      if (category === 'hitting' && s.pa < minPA) continue;
+      if (category === 'pitching' && (s.outs / 3) < minIP) continue;
+
+      let computed: Record<string, number>;
+
+      if (category === 'hitting') {
+        const avg = s.ab > 0 ? s.h / s.ab : 0;
+        const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
+        const tb = s.h + s.doubles + s.triples * 2 + s.hr * 3;
+        const slg = s.ab > 0 ? tb / s.ab : 0;
+        const ops = obp + slg;
+        computed = {
+          g: s.g, pa: s.pa, ab: s.ab, r: s.r, h: s.h,
+          '2b': s.doubles, '3b': s.triples, hr: s.hr, rbi: s.rbi,
+          bb: s.bb, k: s.k, sb: s.sb,
+          avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)),
+          slg: Number(slg.toFixed(3)), ops: Number(ops.toFixed(3)),
+        };
+      } else {
+        const ip = s.outs / 3;
+        const era = ip > 0 ? (s.er / ip) * 9 : 0;
+        const whip = ip > 0 ? (s.bba + s.ha) / ip : 0;
+        const k9 = ip > 0 ? (s.ka / ip) * 9 : 0;
+        const bb9 = ip > 0 ? (s.bba / ip) * 9 : 0;
+        computed = {
+          g: s.gp, gs: s.gs, w: s.w, l: s.l, sv: s.sv,
+          ip: Number(ip.toFixed(1)), h: s.ha, er: s.er, bb: s.bba, k: s.ka,
+          era: Number(era.toFixed(2)), whip: Number(whip.toFixed(2)),
+          k9: Number(k9.toFixed(1)), bb9: Number(bb9.toFixed(1)), hra: s.hra,
+        };
+      }
+
+      // Determine sort value
+      const INVERT = new Set(['era', 'whip', 'bb9']);
+      const raw = computed[sortBy] ?? 0;
+      const sortVal = INVERT.has(sortBy) ? -raw : raw;
+
+      entries.push({ player, stats: computed, sortVal });
+    }
+
+    entries.sort((a, b) => b.sortVal - a.sortVal);
+    return entries.slice(0, limit).map((e, i) => {
+      const team = _teamMap.get(e.player.teamId);
+      return {
+        rank: i + 1,
+        playerId: e.player.playerId,
+        name: e.player.name,
+        teamAbbr: team?.abbreviation ?? '---',
+        teamId: e.player.teamId,
+        position: e.player.position,
+        age: e.player.age,
+        isPitcher: e.player.isPitcher,
+        stats: e.stats,
+      };
+    });
+  },
+
+  // ── Leaderboard (single-stat, legacy) ─────────────────────────────────────
   async getLeaderboard(stat: string, limit = 50): Promise<LeaderboardEntry[]> {
     requireState();
     const results: Array<{ player: Player; value: number }> = [];

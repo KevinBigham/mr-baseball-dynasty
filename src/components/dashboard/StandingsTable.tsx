@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
-import { useUIStore } from '../../store/uiStore';
 import type { StandingsRow } from '../../types/league';
+import TeamDetailModal from './TeamDetailModal';
 
 function computeGB(rows: StandingsRow[]): StandingsRow[] {
   if (rows.length === 0) return rows;
@@ -153,9 +153,10 @@ function PlayoffPicturePanel({
 export default function StandingsView() {
   const { standings, setStandings } = useLeagueStore();
   const { gameStarted, userTeamId } = useGameStore();
-  const { setSelectedTeam, setActiveTab } = useUIStore();
+  // Team detail modal handles navigation via its own UIStore calls
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<'divisions' | 'picture'>('divisions');
+  const [detailTeamId, setDetailTeamId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!gameStarted || standings) return;
@@ -173,8 +174,7 @@ export default function StandingsView() {
   const playoffIds = computePlayoffIds(standings.standings);
 
   const handleRowClick = (teamId: number) => {
-    setSelectedTeam(teamId);
-    setActiveTab('roster');
+    setDetailTeamId(teamId);
   };
 
   return (
@@ -284,6 +284,15 @@ export default function StandingsView() {
             <span>DIFF = Run Differential &nbsp;·&nbsp; xW = Pythagorean Wins</span>
           </div>
         </div>
+      )}
+
+      {/* Team detail modal */}
+      {detailTeamId !== null && (
+        <TeamDetailModal
+          teamId={detailTeamId}
+          standingsRow={standings.standings.find(r => r.teamId === detailTeamId)}
+          onClose={() => setDetailTeamId(null)}
+        />
       )}
     </div>
   );

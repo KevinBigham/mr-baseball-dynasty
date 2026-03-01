@@ -105,6 +105,27 @@ export interface LeaderboardEntry {
   displayValue: string;
 }
 
+export interface LeaderboardFullEntry {
+  rank: number;
+  playerId: number;
+  name: string;
+  teamAbbr: string;
+  teamId: number;
+  position: string;
+  age: number;
+  isPitcher: boolean;
+  stats: Record<string, number>;
+}
+
+export interface LeaderboardFullOptions {
+  category: 'hitting' | 'pitching';
+  sortBy: string;
+  minPA?: number;
+  minIP?: number;
+  position?: string;
+  limit?: number;
+}
+
 export interface PlayerProfileData {
   player: {
     playerId: number;
