@@ -275,7 +275,7 @@ export const START_MODES: StartModeOption[] = [
     time:        '⏱ ~5 min',
     diff:        '⚾',
     recommended: false,
-    available:   false, // Phase 1
+    available:   true,
   },
   {
     id:          'snake25',
@@ -286,7 +286,7 @@ export const START_MODES: StartModeOption[] = [
     time:        '⏱ ~10 min',
     diff:        '⚾⚾',
     recommended: false,
-    available:   false, // Phase 1
+    available:   true,
   },
   {
     id:          'auction',
@@ -308,7 +308,7 @@ export const START_MODES: StartModeOption[] = [
     time:        '⏱ ~25 min',
     diff:        '⚾⚾⚾',
     recommended: false,
-    available:   false, // Phase 2
+    available:   true,
   },
 ];
 

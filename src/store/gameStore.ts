@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
-export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice';
+export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
 export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason' | 'fired';
 export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
@@ -34,6 +34,9 @@ interface GameStore {
   // ── Breakout Watch ───────────────────────────────────────────────────────────
   breakoutWatch:   BreakoutCandidate[];
 
+  // ── Tutorial ───────────────────────────────────────────────────────────────────
+  tutorialActive:  boolean;
+
   // ── Setters ───────────────────────────────────────────────────────────────────
   setSeason:          (s: number) => void;
   setUserTeamId:      (id: number) => void;
@@ -62,6 +65,8 @@ interface GameStore {
 
   setBreakoutWatch:   (candidates: BreakoutCandidate[]) => void;
 
+  setTutorialActive:  (v: boolean) => void;
+
   // ── Reset ───────────────────────────────────────────────────────────────────
   resetAll:           () => void;
 }
@@ -89,6 +94,8 @@ export const useGameStore = create<GameStore>(set => ({
   teamMorale:      65,    // Start optimistic but below peak
 
   breakoutWatch:   [],
+
+  tutorialActive:  false,
 
   // ── Core setters ─────────────────────────────────────────────────────────────
   setSeason:       season      => set({ season }),
@@ -133,6 +140,9 @@ export const useGameStore = create<GameStore>(set => ({
   // ── Breakout watch ────────────────────────────────────────────────────────────
   setBreakoutWatch: candidates => set({ breakoutWatch: candidates }),
 
+  // ── Tutorial ────────────────────────────────────────────────────────────────────
+  setTutorialActive: v => set({ tutorialActive: v }),
+
   // ── Reset all (new game) ──────────────────────────────────────────────────────
   resetAll: () => set({
     season: 2026,
@@ -152,5 +162,6 @@ export const useGameStore = create<GameStore>(set => ({
     ownerPatience: 70,
     teamMorale: 65,
     breakoutWatch: [],
+    tutorialActive: false,
   }),
 }));

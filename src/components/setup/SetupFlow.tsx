@@ -6,6 +6,7 @@ import { useUIStore } from '../../store/uiStore';
 import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, generateFOCandidates } from '../../data/frontOffice';
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
 import type { OwnerArchetype } from '../../engine/narrative';
+import DraftRoom from '../draft/DraftRoom';
 
 // ─── Team list ─────────────────────────────────────────────────────────────────
 
@@ -682,11 +683,13 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
 // ─── Main SetupFlow ────────────────────────────────────────────────────────────
 
 export default function SetupFlow() {
-  const { setupScreen, userTeamId, setGameStarted, setSeason, setUserTeamId } = useGameStore();
+  const { setupScreen, userTeamId, startMode, frontOffice, setGameStarted, setSeason, setUserTeamId, setSetupScreen } = useGameStore();
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
+
+  const isDraftMode = startMode === 'snake10' || startMode === 'snake25' || startMode === 'snake26';
 
   const handleStartGame = useCallback(async () => {
     setError(null);
@@ -695,24 +698,40 @@ export default function SetupFlow() {
       const engine = getEngine();
       const seed   = Date.now() % 2147483647;
       await engine.newGame(seed, userTeamId);
-      setUserTeamId(userTeamId);
-      setSelectedTeam(userTeamId);
-      setSeason(2026);
-      setGameStarted(true);
-      const standings = await engine.getStandings();
-      setStandings(standings);
+
+      // Send FO staff to worker
+      if (frontOffice.length > 0) {
+        await engine.setFrontOffice(frontOffice);
+      }
+
+      if (isDraftMode) {
+        // Start the draft and transition to draft screen
+        await engine.startDraft(startMode);
+        setUserTeamId(userTeamId);
+        setSelectedTeam(userTeamId);
+        setSeason(2026);
+        setSetupScreen('draft');
+      } else {
+        // Instant mode — go straight to game
+        setUserTeamId(userTeamId);
+        setSelectedTeam(userTeamId);
+        setSeason(2026);
+        setGameStarted(true);
+        const standings = await engine.getStandings();
+        setStandings(standings);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [userTeamId, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings]);
+  }, [userTeamId, startMode, frontOffice, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-6">
         <div className="text-orange-400 font-black text-xl tracking-widest animate-pulse">
-          GENERATING LEAGUE…
+          {isDraftMode ? 'GENERATING LEAGUE & DRAFT POOL…' : 'GENERATING LEAGUE…'}
         </div>
         <div className="text-gray-600 text-xs text-center space-y-1">
           <div>Generating ~3,700 players across 30 franchises</div>
@@ -729,6 +748,7 @@ export default function SetupFlow() {
     case 'startMode':   return <StartModeScreen />;
     case 'difficulty':  return <DifficultyScreen />;
     case 'frontOffice': return <FrontOfficeScreen onStartGame={handleStartGame} />;
+    case 'draft':       return <DraftRoom />;
     default:            return <TitleScreen />;
   }
 }

@@ -33,9 +33,23 @@ import {
 import {
   generateTradeOffers, executeTrade as doTrade,
   evaluateProposedTrade, evaluatePlayer,
+  shopPlayer as doShopPlayer, findTradesForNeed as doFindTradesForNeed,
   type TradeProposal, type TradeResult, type TradePlayerInfo,
 } from './trading';
 import { processSeasonInjuries } from './injuries';
+import { computeStaffBonuses, DEFAULT_BONUSES, type StaffBonuses } from './staffEffects';
+import { createDraftPool, scoutDraftPool, getDraftRounds, generateAnnualDraftClass, type DraftProspect } from './draft/draftPool';
+import { computePayrollReport, generateArbitrationCases, resolveArbitration, type PayrollReport, type ArbitrationCase } from './finances';
+import {
+  generateDraftOrder, getPickingTeam, getOverallPick,
+  aiSelectPlayer, fillRemainingRosters,
+  type DraftPick, type DraftBoardState,
+} from './draft/draftAI';
+import { processWaivers, type WaiverClaim } from './waivers';
+import {
+  identifyRule5Eligible, conductRule5Draft, userRule5Pick,
+  type Rule5Selection,
+} from './draft/rule5Draft';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -45,6 +59,24 @@ let _teamMap = new Map<number, Team>();
 let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonStats>();
 let _careerHistory = new Map<number, import('../types/player').PlayerSeasonStats[]>();
 let _seasonResults: SeasonResult[] = [];
+let _foStaff: import('../types/frontOffice').FOStaffMember[] = [];
+
+// ─── Draft state ──────────────────────────────────────────────────────────────
+
+interface InternalDraftState {
+  mode: string;
+  pool: Player[];                 // Actual Player objects (unassigned)
+  prospects: DraftProspect[];     // Scouted views (with fog)
+  picks: DraftPick[];
+  draftOrder: number[];
+  currentRound: number;
+  currentPickInRound: number;
+  totalRounds: number;
+  userTeamId: number;
+  isComplete: boolean;
+}
+
+let _draftState: InternalDraftState | null = null;
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -57,6 +89,18 @@ function rebuildMaps(): void {
   if (!_state) return;
   _playerMap = new Map(_state.players.map(p => [p.playerId, p]));
   _teamMap   = new Map(_state.teams.map(t => [t.teamId, t]));
+}
+
+function _buildStandings(state: LeagueState): StandingsRow[] {
+  return state.teams.map(t => ({
+    teamId: t.teamId, name: t.name, abbreviation: t.abbreviation,
+    league: t.league, division: t.division,
+    wins: t.seasonRecord.wins, losses: t.seasonRecord.losses,
+    pct: (t.seasonRecord.wins + t.seasonRecord.losses) > 0
+      ? t.seasonRecord.wins / (t.seasonRecord.wins + t.seasonRecord.losses) : 0,
+    gb: 0, runsScored: t.seasonRecord.runsScored, runsAllowed: t.seasonRecord.runsAllowed,
+    pythagWins: Math.round(pythagenpatWinPct(t.seasonRecord.runsScored, t.seasonRecord.runsAllowed) * 162),
+  }));
 }
 
 
@@ -121,6 +165,7 @@ const api = {
     _playerSeasonStats = new Map();
     _careerHistory = new Map();
     _seasonResults = [];
+    _foStaff = [];
     rebuildMaps();
 
     return { ok: true, season: _state.season, teamCount: teams.length };
@@ -178,8 +223,13 @@ const api = {
         }
       }
     }
+    // Compute FO staff bonuses (defaults to neutral 1.0x if no staff)
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+
     const injuryEvents = processSeasonInjuries(
       state.players, state.schedule.length, injurySeed, state.season,
+      staffBonuses.injuryRateMultiplier,
+      staffBonuses.recoverySpeedMultiplier,
     );
 
     // ── Awards (computed before aging — players are at their in-season state) ──
@@ -192,7 +242,10 @@ const api = {
     }
 
     // ── Offseason: player development + aging ─────────────────────────────────
-    const offseasonResult = advanceOffseason(state.players, gen);
+    const offseasonResult = advanceOffseason(state.players, gen, {
+      hitter: staffBonuses.hitterDevMultiplier,
+      pitcher: staffBonuses.pitcherDevMultiplier,
+    });
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 
@@ -571,7 +624,8 @@ const api = {
 
   async finishOffseason(): Promise<{ aiSignings: number; signingDetails: AISigningRecord[] }> {
     const state = requireState();
-    const result = processAISignings(state.players, state.teams, state.userTeamId);
+    const standings = _buildStandings(state);
+    const result = processAISignings(state.players, state.teams, state.userTeamId, standings);
     rebuildMaps();
     return { aiSignings: result.count, signingDetails: result.signings };
   },
@@ -579,7 +633,20 @@ const api = {
   // ── Trading ──────────────────────────────────────────────────────────────
   async getTradeOffers(): Promise<TradeProposal[]> {
     const state = requireState();
-    return generateTradeOffers(state.userTeamId, state.players, state.teams, _playerSeasonStats);
+    const standings = _buildStandings(state);
+    return generateTradeOffers(state.userTeamId, state.players, state.teams, _playerSeasonStats, standings);
+  },
+
+  async shopPlayer(playerId: number): Promise<TradeProposal[]> {
+    const state = requireState();
+    const standings = _buildStandings(state);
+    return doShopPlayer(playerId, state.players, state.teams, _playerSeasonStats, standings);
+  },
+
+  async findTradesForNeed(position: string): Promise<TradeProposal[]> {
+    const state = requireState();
+    const standings = _buildStandings(state);
+    return doFindTradesForNeed(state.userTeamId, position, state.players, state.teams, _playerSeasonStats, standings);
   },
 
   async getTeamPlayers(teamId: number): Promise<TradePlayerInfo[]> {
@@ -885,6 +952,347 @@ const api = {
     player.rosterData.contractYearsRemaining = years;
     player.rosterData.salary = annualSalary;
     return { ok: true };
+  },
+
+  // ── Finances ───────────────────────────────────────────────────────────
+  async getPayrollReport(teamId: number): Promise<PayrollReport> {
+    const state = requireState();
+    const team = state.teams.find(t => t.teamId === teamId);
+    if (!team) throw new Error(`Team ${teamId} not found`);
+    return computePayrollReport(state.players, team);
+  },
+
+  async getArbitrationCases(): Promise<ArbitrationCase[]> {
+    const state = requireState();
+    return generateArbitrationCases(state.players, state.userTeamId);
+  },
+
+  async resolveArbitrationCase(playerId: number, salary: number): Promise<{ ok: boolean }> {
+    const state = requireState();
+    const player = state.players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false };
+    resolveArbitration(player, salary);
+    rebuildMaps();
+    return { ok: true };
+  },
+
+  // ── Front Office Staff ──────────────────────────────────────────────────
+  async setFrontOffice(staff: import('../types/frontOffice').FOStaffMember[]): Promise<void> {
+    _foStaff = staff;
+  },
+
+  async getStaffBonuses(): Promise<StaffBonuses> {
+    return _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+  },
+
+  // ── Waivers ────────────────────────────────────────────────────────────────
+
+  async processWaivers(): Promise<WaiverClaim[]> {
+    const state = requireState();
+    const standings = _buildStandings(state);
+    const claims = processWaivers(state.players, state.teams, state.userTeamId, standings);
+    rebuildMaps();
+    return claims;
+  },
+
+  // ── Rule 5 Draft ──────────────────────────────────────────────────────────
+
+  async getRule5Eligible(): Promise<Array<{
+    playerId: number; name: string; position: string;
+    overall: number; potential: number; age: number;
+    teamId: number; teamAbbr: string;
+  }>> {
+    const state = requireState();
+    const eligible = identifyRule5Eligible(state.players, state.season);
+    return eligible.map(p => {
+      const team = _teamMap.get(p.teamId);
+      return {
+        playerId: p.playerId,
+        name: p.name,
+        position: p.position,
+        overall: p.overall,
+        potential: p.potential,
+        age: p.age,
+        teamId: p.teamId,
+        teamAbbr: team?.abbreviation ?? '???',
+      };
+    });
+  },
+
+  async conductRule5Draft(): Promise<Rule5Selection[]> {
+    const state = requireState();
+    const standings = _buildStandings(state);
+    const selections = conductRule5Draft(state.players, state.teams, state.userTeamId, state.season, standings);
+    rebuildMaps();
+    return selections;
+  },
+
+  async userRule5Pick(playerId: number): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found.' };
+    const result = userRule5Pick(player, state.userTeamId, state.players);
+    if (result.ok) rebuildMaps();
+    return result;
+  },
+
+  // ── Draft ─────────────────────────────────────────────────────────────────
+
+  async startDraft(mode: string): Promise<DraftBoardState> {
+    const state = requireState();
+    let gen = deserializeState(state.prngState);
+
+    // Extract MLB_ACTIVE players into draft pool
+    const pool = createDraftPool(state.players);
+
+    // Apply scouting fog using staff bonuses
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+    let prospects: DraftProspect[];
+    [prospects, gen] = scoutDraftPool(pool, staffBonuses.scoutingAccuracy, gen);
+
+    // Generate draft order
+    let draftOrder: number[];
+    [draftOrder, gen] = generateDraftOrder(state.teams, gen);
+
+    state.prngState = serializeState(gen);
+
+    const totalRounds = getDraftRounds(mode);
+
+    _draftState = {
+      mode,
+      pool,
+      prospects,
+      picks: [],
+      draftOrder,
+      currentRound: 1,
+      currentPickInRound: 0,
+      totalRounds,
+      userTeamId: state.userTeamId,
+      isComplete: false,
+    };
+
+    return this._buildDraftBoard();
+  },
+
+  async getDraftBoard(): Promise<DraftBoardState> {
+    return this._buildDraftBoard();
+  },
+
+  async makeDraftPick(playerId: number): Promise<DraftBoardState> {
+    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
+    requireState();
+
+    const pickingTeamId = getPickingTeam(
+      _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
+    );
+    if (pickingTeamId !== _draftState.userTeamId) throw new Error('Not your turn');
+
+    this._executePick(playerId, pickingTeamId);
+    return this._buildDraftBoard();
+  },
+
+  async autoPickForUser(): Promise<DraftBoardState> {
+    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
+    requireState();
+
+    const pickingTeamId = getPickingTeam(
+      _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
+    );
+    if (pickingTeamId !== _draftState.userTeamId) throw new Error('Not your turn');
+
+    const teamPicks = _draftState.picks.filter(p => p.teamId === pickingTeamId);
+    const playerId = aiSelectPlayer(
+      _draftState.prospects, teamPicks, _draftState.currentRound,
+    );
+    if (playerId >= 0) this._executePick(playerId, pickingTeamId);
+
+    return this._buildDraftBoard();
+  },
+
+  async autoAdvanceDraft(): Promise<DraftBoardState> {
+    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
+    requireState();
+
+    // AI picks until it's the user's turn or draft is complete
+    while (!_draftState.isComplete) {
+      const pickingTeamId = getPickingTeam(
+        _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
+      );
+      if (pickingTeamId === _draftState.userTeamId) break;
+
+      const teamPicks = _draftState.picks.filter(p => p.teamId === pickingTeamId);
+      const playerId = aiSelectPlayer(
+        _draftState.prospects, teamPicks, _draftState.currentRound,
+      );
+      if (playerId < 0) break;
+      this._executePick(playerId, pickingTeamId);
+    }
+
+    return this._buildDraftBoard();
+  },
+
+  async completeDraft(): Promise<void> {
+    if (!_draftState) throw new Error('No draft to complete');
+    const state = requireState();
+
+    // Fill remaining roster spots from undrafted pool players
+    fillRemainingRosters(state.players, state.teams);
+    rebuildMaps();
+    _draftState = null;
+  },
+
+  // ── Annual Amateur Draft ──────────────────────────────────────────────────
+
+  async startAnnualDraft(): Promise<DraftBoardState> {
+    const state = requireState();
+    let gen = deserializeState(state.prngState);
+
+    // Generate amateur draft class
+    let annualClass: Player[];
+    [annualClass, gen] = generateAnnualDraftClass(gen, state.season);
+
+    // Assign unique IDs and add to global player list
+    const maxId = state.players.reduce((m, p) => Math.max(m, p.playerId), 0);
+    for (let i = 0; i < annualClass.length; i++) {
+      annualClass[i].playerId = maxId + 1 + i;
+    }
+    state.players.push(...annualClass);
+
+    // Scout the class with scouting accuracy from staff
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+    let prospects: DraftProspect[];
+    [prospects, gen] = scoutDraftPool(annualClass, staffBonuses.scoutingAccuracy, gen);
+
+    // Draft order: inverse of standings (worst team picks first)
+    const standings = state.teams
+      .map(t => ({ teamId: t.teamId, wins: t.seasonRecord.wins }))
+      .sort((a, b) => a.wins - b.wins);
+    const draftOrder = standings.map(s => s.teamId);
+
+    state.prngState = serializeState(gen);
+
+    const totalRounds = getDraftRounds('annual'); // 5 rounds
+
+    _draftState = {
+      mode: 'annual',
+      pool: annualClass,
+      prospects,
+      picks: [],
+      draftOrder,
+      currentRound: 1,
+      currentPickInRound: 0,
+      totalRounds,
+      userTeamId: state.userTeamId,
+      isComplete: false,
+    };
+
+    return this._buildDraftBoard();
+  },
+
+  async completeAnnualDraft(): Promise<{ draftedCount: number }> {
+    if (!_draftState) throw new Error('No draft to complete');
+    requireState();
+
+    const draftedCount = _draftState.picks.length;
+
+    // Undrafted annual prospects become free agents
+    for (const p of _draftState.pool) {
+      if (p.teamId === -1) {
+        p.rosterData.rosterStatus = 'FREE_AGENT';
+      }
+    }
+
+    rebuildMaps();
+    _draftState = null;
+    return { draftedCount };
+  },
+
+  // Internal: execute a single draft pick
+  _executePick(playerId: number, teamId: number): void {
+    if (!_draftState) return;
+
+    // Find the player in pool
+    const poolIdx = _draftState.pool.findIndex(p => p.playerId === playerId);
+    if (poolIdx < 0) return;
+    const player = _draftState.pool[poolIdx];
+
+    // Assign to team
+    player.teamId = teamId;
+    if (_draftState.mode === 'annual') {
+      // Annual draft picks start in minors with 6-year team control
+      player.rosterData.rosterStatus = 'MINORS_ROOKIE';
+      player.rosterData.isOn40Man = false;
+      player.rosterData.contractYearsRemaining = 6;
+      player.rosterData.salary = 500_000; // Pre-arb minimum
+    } else {
+      player.rosterData.rosterStatus = 'MLB_ACTIVE';
+      player.rosterData.isOn40Man = true;
+    }
+
+    // Find prospect entry for display info
+    const prospect = _draftState.prospects.find(p => p.playerId === playerId);
+    const team = _teamMap.get(teamId);
+
+    // Record pick
+    const pick: DraftPick = {
+      round: _draftState.currentRound,
+      pickNumber: getOverallPick(
+        _draftState.currentRound,
+        _draftState.currentPickInRound,
+        _draftState.draftOrder.length,
+      ),
+      teamId,
+      teamAbbr: team?.abbreviation ?? '???',
+      playerId,
+      playerName: player.name,
+      position: player.position,
+      scoutedOvr: prospect?.scoutedOvr ?? 0,
+    };
+    _draftState.picks.push(pick);
+
+    // Remove from available
+    _draftState.pool.splice(poolIdx, 1);
+    _draftState.prospects = _draftState.prospects.filter(p => p.playerId !== playerId);
+
+    // Advance to next pick
+    _draftState.currentPickInRound++;
+    if (_draftState.currentPickInRound >= _draftState.draftOrder.length) {
+      _draftState.currentRound++;
+      _draftState.currentPickInRound = 0;
+      if (_draftState.currentRound > _draftState.totalRounds) {
+        _draftState.isComplete = true;
+      }
+    }
+
+    rebuildMaps();
+  },
+
+  // Internal: build serializable board state for UI
+  _buildDraftBoard(): DraftBoardState {
+    if (!_draftState) throw new Error('No active draft');
+
+    const pickingTeamId = _draftState.isComplete
+      ? -1
+      : getPickingTeam(_draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound);
+    const team = _teamMap.get(pickingTeamId);
+
+    return {
+      mode: _draftState.mode,
+      available: _draftState.prospects.slice(0, 300),
+      picks: _draftState.picks,
+      draftOrder: _draftState.draftOrder,
+      currentRound: _draftState.currentRound,
+      currentPickInRound: _draftState.currentPickInRound,
+      totalRounds: _draftState.totalRounds,
+      userTeamId: _draftState.userTeamId,
+      isUserTurn: pickingTeamId === _draftState.userTeamId,
+      isComplete: _draftState.isComplete,
+      pickingTeamId,
+      pickingTeamAbbr: team?.abbreviation ?? '???',
+      overallPick: _draftState.isComplete
+        ? _draftState.picks.length
+        : getOverallPick(_draftState.currentRound, _draftState.currentPickInRound, _draftState.draftOrder.length),
+    };
   },
 
   // ── Save / Load ────────────────────────────────────────────────────────────

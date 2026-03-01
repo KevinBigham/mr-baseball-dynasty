@@ -201,6 +201,7 @@ export interface DevelopmentEvent {
 export function developPlayer(
   player: Player,
   gen: RandomGenerator,
+  staffDevBonus?: { hitter: number; pitcher: number },
 ): [Player, RandomGenerator, DevelopmentEvent | null] {
   // Already retired — no-op
   if (
@@ -217,7 +218,11 @@ export function developPlayer(
     ? (player.pitcherAttributes?.workEthic ?? 50)
     : (player.hitterAttributes?.workEthic  ?? 50);
   // workEthicFactor: 0.6 (low=20) → 1.4 (high=80), centered at 1.0 for 50
-  const workEthicFactor = 0.60 + (workEthic / 100) * 0.80;
+  let workEthicFactor = 0.60 + (workEthic / 100) * 0.80;
+  // Apply FO staff coaching bonus (e.g., 1.1 = 10% dev boost)
+  if (staffDevBonus) {
+    workEthicFactor *= player.isPitcher ? staffDevBonus.pitcher : staffDevBonus.hitter;
+  }
 
   // ── Retirement check ──────────────────────────────────────────────────────
   // Consume two RNG draws deterministically (one float, one float)
@@ -305,6 +310,7 @@ export function developPlayer(
 export function advanceOffseason(
   players: Player[],
   gen: RandomGenerator,
+  staffDevBonus?: { hitter: number; pitcher: number },
 ): { players: Player[]; events: DevelopmentEvent[]; gen: RandomGenerator } {
   const events: DevelopmentEvent[] = [];
   const newPlayers: Player[] = [];
@@ -312,7 +318,7 @@ export function advanceOffseason(
   for (const player of players) {
     let event: DevelopmentEvent | null;
     let newPlayer: Player;
-    [newPlayer, gen, event] = developPlayer(player, gen);
+    [newPlayer, gen, event] = developPlayer(player, gen, staffDevBonus);
     newPlayers.push(newPlayer);
     if (event) events.push(event);
   }

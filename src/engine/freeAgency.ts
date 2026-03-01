@@ -1,5 +1,8 @@
 import type { Player } from '../types/player';
 import type { Team } from '../types/team';
+import type { StandingsRow } from '../types/league';
+import { computeTeamProfile } from './aiTeamIntelligence';
+import { evaluatePlayer } from './trading';
 
 // ─── Generate free agent class (end of season) ──────────────────────────────
 // Players whose contracts expire and have enough service time become FAs.
@@ -108,59 +111,139 @@ export interface AISigningRecord {
   teamId: number;
   salary: number;
   years: number;
+  reason: string;
+}
+
+/**
+ * Score how interested a team is in a specific free agent.
+ * Returns 0 = no interest, higher = more interested.
+ */
+function scoreInterest(
+  team: Team,
+  fa: Player,
+  players: Player[],
+  standings?: StandingsRow[],
+): number {
+  const profile = computeTeamProfile(team, players, standings);
+  const needs = profile.positionalNeeds;
+
+  // Base interest from player quality
+  const tradeValue = evaluatePlayer(fa);
+  let interest = tradeValue;
+
+  // Position need bonus
+  const posNeed = needs.find(n => n.position === fa.position);
+  if (posNeed) {
+    if (posNeed.severity === 'critical') interest += 25;
+    else if (posNeed.severity === 'moderate') interest += 12;
+    else interest += 5;
+  }
+
+  // Mode-based adjustments
+  if (profile.mode === 'contender') {
+    // Contenders want proven MLB-ready talent
+    if (fa.overall >= 350) interest += 15;
+    // Contenders won't sign aging vets on long deals
+    if (fa.age >= 35 && fa.overall < 350) interest -= 20;
+  } else if (profile.mode === 'rebuilder') {
+    // Rebuilders avoid expensive veterans
+    if (fa.age >= 30 && fa.overall >= 350) interest -= 30;
+    // Rebuilders prefer cheap, young options
+    if (fa.age <= 27 && fa.overall >= 280) interest += 10;
+    // Rebuilders have minimal interest in high-salary FAs
+    const salary = projectSalary(fa);
+    if (salary > 10_000_000) interest -= 20;
+  }
+
+  // Payroll check: skip if team can't afford
+  const currentPayroll = players
+    .filter(p => p.teamId === team.teamId && p.rosterData.salary > 0)
+    .reduce((s, p) => s + p.rosterData.salary, 0);
+  if (currentPayroll + projectSalary(fa) > team.budget * 1.1) {
+    interest -= 40;
+  }
+
+  // 40-man space check
+  const fortyManCount = players.filter(p => p.teamId === team.teamId && p.rosterData.isOn40Man).length;
+  if (fortyManCount >= 40) interest = -100;
+
+  return interest;
 }
 
 export function processAISignings(
   players: Player[],
   teams: Team[],
   userTeamId: number,
+  standings?: StandingsRow[],
 ): { count: number; signings: AISigningRecord[] } {
   const freeAgents = players
     .filter(p => p.rosterData.rosterStatus === 'FREE_AGENT')
     .sort((a, b) => b.overall - a.overall);
 
+  // Market factor: thin class = inflation, deep class = deflation
+  const faClassSize = freeAgents.filter(f => f.overall >= 250).length;
+  const marketFactor = faClassSize < 20 ? 1.15 : faClassSize > 60 ? 0.90 : 1.0;
+
   const signings: AISigningRecord[] = [];
+  const teamSignCounts = new Map<number, number>();
 
-  for (const team of teams) {
-    if (team.teamId === userTeamId) continue;
+  for (const fa of freeAgents) {
+    if (fa.rosterData.rosterStatus !== 'FREE_AGENT') continue;
+    if (fa.overall < 200) continue;
 
-    const teamPlayers = players.filter(p => p.teamId === team.teamId);
-    const activeCount = teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').length;
-    const fortyManCount = teamPlayers.filter(p => p.rosterData.isOn40Man).length;
+    // Score interest from all AI teams
+    const interested: Array<{ team: Team; score: number }> = [];
+    for (const team of teams) {
+      if (team.teamId === userTeamId) continue;
+      const signed = teamSignCounts.get(team.teamId) ?? 0;
+      if (signed >= 5) continue; // Max 5 signings per team
 
-    // Each team tries to fill up to 25 active roster spots
-    const needActive = Math.max(0, 25 - activeCount);
-    const fortyManSpace = 40 - fortyManCount;
-    const canSign = Math.min(needActive, fortyManSpace, 5); // Max 5 signings per team
-
-    let teamSigned = 0;
-    for (const fa of freeAgents) {
-      if (teamSigned >= canSign) break;
-      if (fa.rosterData.rosterStatus !== 'FREE_AGENT') continue;
-      if (fa.overall < 200) continue; // Skip very low rated players
-
-      const years = projectYears(fa);
-      const salary = projectSalary(fa);
-
-      signings.push({
-        playerName: fa.name,
-        position: fa.position,
-        overall: fa.overall,
-        teamAbbr: team.abbreviation,
-        teamId: team.teamId,
-        salary,
-        years,
-      });
-
-      fa.teamId = team.teamId;
-      fa.rosterData.rosterStatus = 'MLB_ACTIVE';
-      fa.rosterData.isOn40Man = true;
-      fa.rosterData.contractYearsRemaining = years;
-      fa.rosterData.salary = salary;
-      fa.rosterData.freeAgentEligible = false;
-
-      teamSigned++;
+      const score = scoreInterest(team, fa, players, standings);
+      if (score > 10) {
+        interested.push({ team, score });
+      }
     }
+
+    if (interested.length === 0) continue;
+
+    // Best-fit team wins
+    interested.sort((a, b) => b.score - a.score);
+    const winner = interested[0];
+
+    // Bidding war: multiple teams interested = salary inflation
+    const bidWarFactor = interested.length >= 3 ? 1.15 : interested.length >= 2 ? 1.05 : 1.0;
+
+    const baseSalary = projectSalary(fa);
+    const adjustedSalary = Math.round((baseSalary * marketFactor * bidWarFactor) / 100_000) * 100_000;
+    const years = projectYears(fa);
+
+    // Determine reason for signing
+    const profile = computeTeamProfile(winner.team, players, standings);
+    const posNeed = profile.positionalNeeds.find(n => n.position === fa.position);
+    let reason = 'Depth signing';
+    if (posNeed?.severity === 'critical') reason = 'Fills critical need at ' + fa.position;
+    else if (posNeed?.severity === 'moderate') reason = 'Addresses need at ' + fa.position;
+    else if (fa.overall >= 400) reason = 'Premium talent acquisition';
+
+    signings.push({
+      playerName: fa.name,
+      position: fa.position,
+      overall: fa.overall,
+      teamAbbr: winner.team.abbreviation,
+      teamId: winner.team.teamId,
+      salary: adjustedSalary,
+      years,
+      reason,
+    });
+
+    fa.teamId = winner.team.teamId;
+    fa.rosterData.rosterStatus = 'MLB_ACTIVE';
+    fa.rosterData.isOn40Man = true;
+    fa.rosterData.contractYearsRemaining = years;
+    fa.rosterData.salary = adjustedSalary;
+    fa.rosterData.freeAgentEligible = false;
+
+    teamSignCounts.set(winner.team.teamId, (teamSignCounts.get(winner.team.teamId) ?? 0) + 1);
   }
 
   return { count: signings.length, signings };
