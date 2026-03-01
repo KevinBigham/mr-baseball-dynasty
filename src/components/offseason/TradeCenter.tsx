@@ -418,13 +418,249 @@ function TradeHistoryPanel() {
   );
 }
 
+// ─── Shop Player Tab ────────────────────────────────────────────────────────
+
+function ShopPlayerTab({ onAcceptTrade }: {
+  onAcceptTrade: (offer: TradeProposal) => Promise<void>;
+}) {
+  const { userTeamId } = useGameStore();
+  const [roster, setRoster] = useState<TradePlayerInfo[]>([]);
+  const [shopResults, setShopResults] = useState<TradeProposal[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<TradePlayerInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const engine = getEngine();
+      const players = await engine.getTeamPlayers(userTeamId);
+      setRoster(players);
+    })();
+  }, [userTeamId]);
+
+  const handleShop = useCallback(async (player: TradePlayerInfo) => {
+    setSelectedPlayer(player);
+    setLoading(true);
+    const engine = getEngine();
+    const results = await engine.shopPlayer(player.playerId);
+    setShopResults(results);
+    setLoading(false);
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <div className="bloomberg-border bg-gray-900 p-4">
+        <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">
+          SELECT A PLAYER TO SHOP
+        </div>
+        <div className="max-h-48 overflow-y-auto space-y-0.5">
+          {roster.map(p => (
+            <div
+              key={p.playerId}
+              onClick={() => handleShop(p)}
+              className={`cursor-pointer px-2 py-1.5 flex items-center justify-between hover:bg-gray-800 transition-colors ${
+                selectedPlayer?.playerId === p.playerId ? 'bg-orange-900/20 border-l-2 border-orange-500' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-orange-400 text-xs font-bold tabular-nums w-6">{p.overall}</span>
+                <span className="text-gray-200 text-xs font-bold">{p.name}</span>
+                <span className="text-gray-500 text-xs">{p.position}</span>
+              </div>
+              <span className="text-gray-500 text-xs">{formatSalary(p.salary)} · TV: {p.tradeValue}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-orange-400 text-xs animate-pulse p-4 text-center">
+          Shopping {selectedPlayer?.name}...
+        </div>
+      )}
+
+      {!loading && selectedPlayer && shopResults.length === 0 && (
+        <div className="bloomberg-border bg-gray-900 p-4 text-center text-gray-500 text-xs">
+          No teams interested in {selectedPlayer.name} right now.
+        </div>
+      )}
+
+      {!loading && shopResults.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-gray-400 text-xs font-bold tracking-widest">
+            {shopResults.length} TEAM{shopResults.length !== 1 ? 'S' : ''} INTERESTED IN {selectedPlayer?.name.toUpperCase()}
+          </div>
+          {shopResults.map(offer => (
+            <div key={offer.tradeId} className="bloomberg-border bg-gray-900">
+              <div className="bloomberg-header px-4 flex items-center justify-between">
+                <span>{offer.partnerTeamAbbr} — OFFER</span>
+                <div className="flex items-center gap-2">
+                  {offer.aiAccepts && (
+                    <span className="text-green-400 text-[10px] font-bold px-1.5 py-0.5 bg-green-900/30 border border-green-800">
+                      EXECUTABLE
+                    </span>
+                  )}
+                  {offer.reason && (
+                    <span className="text-gray-500 text-[10px] font-normal">{offer.reason}</span>
+                  )}
+                </div>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-green-500 text-xs font-bold tracking-widest mb-2">YOU RECEIVE</div>
+                  {offer.offered.map(p => (
+                    <PlayerChip key={p.playerId} player={p} color="green" />
+                  ))}
+                </div>
+                <div>
+                  <div className="text-red-500 text-xs font-bold tracking-widest mb-2">YOU SEND</div>
+                  {offer.requested.map(p => (
+                    <PlayerChip key={p.playerId} player={p} color="red" />
+                  ))}
+                </div>
+              </div>
+              {offer.aiAccepts && (
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={() => onAcceptTrade(offer)}
+                    className="w-full bg-green-700 hover:bg-green-600 text-white font-bold text-xs py-2 uppercase tracking-widest"
+                  >
+                    ACCEPT TRADE
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Find Trade Tab ─────────────────────────────────────────────────────────
+
+const POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP', 'CL'];
+
+function FindTradeTab({ onAcceptTrade }: {
+  onAcceptTrade: (offer: TradeProposal) => Promise<void>;
+}) {
+  const [position, setPosition] = useState<string>('');
+  const [results, setResults] = useState<TradeProposal[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const handleSearch = useCallback(async (pos: string) => {
+    setPosition(pos);
+    setLoading(true);
+    const engine = getEngine();
+    const trades = await engine.findTradesForNeed(pos);
+    setResults(trades);
+    setLoading(false);
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <div className="bloomberg-border bg-gray-900 p-4">
+        <div className="text-gray-400 text-xs font-bold tracking-widest mb-3">
+          SELECT A POSITION NEED
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {POSITIONS.map(pos => (
+            <button
+              key={pos}
+              onClick={() => handleSearch(pos)}
+              className={`px-3 py-1.5 text-xs font-bold tracking-widest border transition-colors ${
+                position === pos
+                  ? 'border-orange-500 bg-orange-900/30 text-orange-400'
+                  : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-orange-600'
+              }`}
+            >
+              {pos}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-orange-400 text-xs animate-pulse p-4 text-center">
+          Searching for {position} trades...
+        </div>
+      )}
+
+      {!loading && position && results.length === 0 && (
+        <div className="bloomberg-border bg-gray-900 p-4 text-center text-gray-500 text-xs">
+          No trade partners available for {position} right now.
+        </div>
+      )}
+
+      {!loading && results.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-gray-400 text-xs font-bold tracking-widest">
+            {results.length} TRADE{results.length !== 1 ? 'S' : ''} AVAILABLE FOR {position}
+          </div>
+          {results.map(offer => (
+            <div key={offer.tradeId} className="bloomberg-border bg-gray-900">
+              <div className="bloomberg-header px-4 flex items-center justify-between">
+                <span>{offer.partnerTeamAbbr}</span>
+                <div className="flex items-center gap-2">
+                  {offer.aiAccepts && (
+                    <span className="text-green-400 text-[10px] font-bold px-1.5 py-0.5 bg-green-900/30 border border-green-800">
+                      EXECUTABLE
+                    </span>
+                  )}
+                  <span className={`text-xs font-normal ${offer.fairness >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {offer.fairness >= 10 ? 'GREAT DEAL' : offer.fairness >= 0 ? 'FAIR' : 'OVERPAY'}
+                  </span>
+                </div>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-green-500 text-xs font-bold tracking-widest mb-2">YOU RECEIVE</div>
+                  {offer.offered.map(p => (
+                    <PlayerChip key={p.playerId} player={p} color="green" />
+                  ))}
+                </div>
+                <div>
+                  <div className="text-red-500 text-xs font-bold tracking-widest mb-2">YOU SEND</div>
+                  {offer.requested.map(p => (
+                    <PlayerChip key={p.playerId} player={p} color="red" />
+                  ))}
+                </div>
+              </div>
+              {offer.aiAccepts && (
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={() => onAcceptTrade(offer)}
+                    className="w-full bg-green-700 hover:bg-green-600 text-white font-bold text-xs py-2 uppercase tracking-widest"
+                  >
+                    ACCEPT TRADE
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Trade Center ──────────────────────────────────────────────────────
 
-export default function TradeCenter({ onTransaction }: {
+type TradeTab = 'offers' | 'shop' | 'find' | 'propose';
+
+const TAB_LABELS: Record<TradeTab, string> = {
+  offers: 'INCOMING',
+  shop: 'SHOP PLAYER',
+  find: 'FIND TRADE',
+  propose: 'PROPOSE',
+};
+
+export default function TradeCenter({ onTransaction, onDone }: {
   onTransaction?: (tx: { type: 'signing' | 'trade'; description: string }) => void;
+  onDone?: () => void;
 } = {}) {
   const { season } = useGameStore();
   const { addTradeRecord } = useLeagueStore();
+  const [activeTab, setActiveTab] = useState<TradeTab>('offers');
   const [offers, setOffers] = useState<TradeProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -467,7 +703,7 @@ export default function TradeCenter({ onTransaction }: {
     setToast(`${newOffers.length} new offer${newOffers.length !== 1 ? 's' : ''} received`);
   }, [refreshesLeft]);
 
-  const handleAccept = useCallback(async (offer: TradeProposal) => {
+  const handleAcceptOffer = useCallback(async (offer: TradeProposal) => {
     const engine = getEngine();
     const result = await engine.acceptTradeOffer(
       offer.partnerTeamId,
@@ -509,55 +745,101 @@ export default function TradeCenter({ onTransaction }: {
         </div>
       )}
 
-      <div className="bloomberg-border bg-gray-900 px-4 py-2">
-        <div className="text-orange-500 font-bold text-xs tracking-widest">
-          TRADE CENTER — {season - 1} OFFSEASON
+      {/* Header + Tabs */}
+      <div className="bloomberg-border bg-gray-900">
+        <div className="px-4 py-2">
+          <div className="text-orange-500 font-bold text-xs tracking-widest">
+            TRADE CENTER — {season - 1} OFFSEASON
+          </div>
+        </div>
+        <div className="flex border-t border-gray-800">
+          {(Object.entries(TAB_LABELS) as [TradeTab, string][]).map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 px-3 py-2 text-[10px] font-bold tracking-widest transition-colors ${
+                activeTab === tab
+                  ? 'text-orange-400 border-b-2 border-orange-500 bg-gray-800/50'
+                  : 'text-gray-500 hover:text-gray-300 border-b-2 border-transparent'
+              }`}
+            >
+              {label}
+              {tab === 'offers' && offers.length > 0 && (
+                <span className="ml-1 text-orange-600">({offers.length})</span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Incoming Offers */}
-      {offers.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-gray-400 text-xs font-bold tracking-widest">INCOMING TRADE OFFERS</div>
-            <button
-              onClick={handleRefreshOffers}
-              disabled={refreshesLeft <= 0}
-              className="text-orange-600 hover:text-orange-400 disabled:text-gray-600 text-xs font-bold transition-colors"
-            >
-              REFRESH ({refreshesLeft})
-            </button>
-          </div>
-          {offers.map(offer => (
-            <TradeOfferCard
-              key={offer.tradeId}
-              offer={offer}
-              onAccept={() => handleAccept(offer)}
-              onDecline={() => handleDecline(offer.tradeId)}
-            />
-          ))}
-        </div>
-      )}
-
-      {offers.length === 0 && (
-        <div className="bloomberg-border bg-gray-900 px-4 py-6 text-center">
-          <div className="text-gray-500 text-xs mb-2">No incoming trade offers at this time.</div>
-          {refreshesLeft > 0 && (
-            <button
-              onClick={handleRefreshOffers}
-              className="text-orange-600 hover:text-orange-400 text-xs font-bold transition-colors"
-            >
-              CHECK FOR NEW OFFERS ({refreshesLeft} left)
-            </button>
+      {/* Tab Content */}
+      {activeTab === 'offers' && (
+        <>
+          {offers.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-gray-400 text-xs font-bold tracking-widest">INCOMING TRADE OFFERS</div>
+                <button
+                  onClick={handleRefreshOffers}
+                  disabled={refreshesLeft <= 0}
+                  className="text-orange-600 hover:text-orange-400 disabled:text-gray-600 text-xs font-bold transition-colors"
+                >
+                  REFRESH ({refreshesLeft})
+                </button>
+              </div>
+              {offers.map(offer => (
+                <TradeOfferCard
+                  key={offer.tradeId}
+                  offer={offer}
+                  onAccept={() => handleAcceptOffer(offer)}
+                  onDecline={() => handleDecline(offer.tradeId)}
+                />
+              ))}
+            </div>
           )}
-        </div>
+
+          {offers.length === 0 && (
+            <div className="bloomberg-border bg-gray-900 px-4 py-6 text-center">
+              <div className="text-gray-500 text-xs mb-2">No incoming trade offers at this time.</div>
+              {refreshesLeft > 0 && (
+                <button
+                  onClick={handleRefreshOffers}
+                  className="text-orange-600 hover:text-orange-400 text-xs font-bold transition-colors"
+                >
+                  CHECK FOR NEW OFFERS ({refreshesLeft} left)
+                </button>
+              )}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Propose Trade */}
-      <ProposeTrade teams={teams} />
+      {activeTab === 'shop' && (
+        <ShopPlayerTab onAcceptTrade={handleAcceptOffer} />
+      )}
 
-      {/* Trade History */}
+      {activeTab === 'find' && (
+        <FindTradeTab onAcceptTrade={handleAcceptOffer} />
+      )}
+
+      {activeTab === 'propose' && (
+        <ProposeTrade teams={teams} />
+      )}
+
+      {/* Trade History (always visible) */}
       <TradeHistoryPanel />
+
+      {/* Advance button (when in offseason phase flow) */}
+      {onDone && (
+        <div className="bloomberg-border bg-gray-900 px-4 py-3 text-center">
+          <button
+            onClick={onDone}
+            className="bg-orange-600 hover:bg-orange-500 text-black font-bold px-6 py-2 text-xs tracking-widest"
+          >
+            ADVANCE TO OFFSEASON SUMMARY →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -31,6 +31,8 @@ import LoadingFallback from '../layout/LoadingFallback';
 import AllStarBreak from './AllStarBreak';
 import MidSeasonCheckIn from './MidSeasonCheckIn';
 import TradeDeadline from './TradeDeadline';
+import TutorialOverlay from '../tutorial/TutorialOverlay';
+import { shouldAutoStartTutorial } from '../../engine/tutorial';
 
 const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
 const PostseasonReport   = lazy(() => import('./PostseasonReport'));
@@ -41,6 +43,7 @@ export default function Dashboard() {
     season, userTeamId, isSimulating, simProgress, gamePhase, seasonPhase,
     setOwnerArchetype, ownerPatience, seasonsManaged,
     adjustOwnerPatience, adjustTeamMorale, setGamePhase, setSeasonPhase,
+    tutorialActive, setTutorialActive, difficulty,
   } = useGameStore();
 
   const {
@@ -62,6 +65,14 @@ export default function Dashboard() {
     setOwnerArchetype(getOwnerArchetype(userTeamId));
   }, [userTeamId, setOwnerArchetype]);
 
+  // Auto-start tutorial for rookie difficulty, first season
+  useEffect(() => {
+    if (shouldAutoStartTutorial(difficulty, seasonsManaged) && !tutorialActive) {
+      setTutorialActive(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Generate MFSN pre-season predictions
   useEffect(() => {
     if (!mfsnReport || mfsnReport.season !== season) {
@@ -73,8 +84,20 @@ export default function Dashboard() {
 
   const showPresser = presserAvailable && !presserDone && sim.pressCtx !== null;
 
+  // Determine effective phase for tutorial
+  const tutorialPhase = gamePhase === 'offseason'
+    ? offseason.currentPhase
+    : gamePhase;
+
   return (
     <div className="p-4 space-y-4">
+
+      {/* ── Tutorial Overlay ─────────────────────────────────────── */}
+      <TutorialOverlay
+        currentPhase={tutorialPhase}
+        enabled={tutorialActive}
+        onDisable={() => setTutorialActive(false)}
+      />
 
       {/* ── Press Conference modal ─────────────────────────────────── */}
       {showPresser && sim.pressCtx && (
@@ -252,14 +275,7 @@ export default function Dashboard() {
 
         {/* Offseason */}
         {gamePhase === 'offseason' && (
-          <OffseasonDashboard
-            showSummary={offseason.showOffseasonSummary}
-            offseasonTxLog={offseason.offseasonTxLog}
-            aiSigningDetails={offseason.aiSigningDetails}
-            onAdvance={offseason.advanceOffseason}
-            onFinish={offseason.finishOffseason}
-            onTransaction={offseason.logOffseasonTx}
-          />
+          <OffseasonDashboard flow={offseason} />
         )}
       </Suspense>
 

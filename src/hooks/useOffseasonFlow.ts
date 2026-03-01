@@ -1,5 +1,8 @@
 /**
- * useOffseasonFlow — extracts offseason callbacks and state from Dashboard.
+ * useOffseasonFlow — Phase-aware offseason state machine.
+ *
+ * Progresses through 7 phases:
+ *   arbitration → waivers → annual_draft → rule5 → free_agency → trading → summary
  */
 
 import { useState, useCallback } from 'react';
@@ -9,33 +12,99 @@ import { saveGame } from '../db/schema';
 import { getTeamName } from '../data/teamOptions';
 import type { AISigningRecord } from '../engine/freeAgency';
 import type { UserTransaction } from '../components/offseason/OffseasonSummary';
+import type { ArbitrationCase } from '../engine/finances';
+import type { WaiverClaim } from '../engine/waivers';
+import type { Rule5Selection } from '../engine/draft/rule5Draft';
+import {
+  type OffseasonPhase,
+  OFFSEASON_PHASE_ORDER,
+} from '../types/offseason';
 
-export function useOffseasonFlow(onClearSim: () => void) {
+export interface OffseasonFlowState {
+  currentPhase: OffseasonPhase;
+  arbitrationCases: ArbitrationCase[];
+  waiverClaims: WaiverClaim[];
+  draftedCount: number;
+  rule5Selections: Rule5Selection[];
+  aiSigningDetails: AISigningRecord[];
+  offseasonTxLog: UserTransaction[];
+  enterOffseason: () => Promise<void>;
+  advanceToNextPhase: () => Promise<void>;
+  setDraftedCount: (n: number) => void;
+  finishOffseason: () => Promise<void>;
+  logOffseasonTx: (tx: UserTransaction) => void;
+}
+
+export function useOffseasonFlow(onClearSim: () => void): OffseasonFlowState {
   const { season, userTeamId, setGamePhase } = useGameStore();
 
-  const [offseasonTxLog,       setOffseasonTxLog]       = useState<UserTransaction[]>([]);
-  const [showOffseasonSummary, setShowOffseasonSummary] = useState(false);
-  const [aiSigningDetails,     setAiSigningDetails]     = useState<AISigningRecord[]>([]);
+  const [currentPhase, setCurrentPhase] = useState<OffseasonPhase>('arbitration');
+  const [arbitrationCases, setArbitrationCases] = useState<ArbitrationCase[]>([]);
+  const [waiverClaims, setWaiverClaims] = useState<WaiverClaim[]>([]);
+  const [draftedCount, setDraftedCount] = useState(0);
+  const [rule5Selections, setRule5Selections] = useState<Rule5Selection[]>([]);
+  const [aiSigningDetails, setAiSigningDetails] = useState<AISigningRecord[]>([]);
+  const [offseasonTxLog, setOffseasonTxLog] = useState<UserTransaction[]>([]);
 
+  /** Start offseason: call engine, fetch arb cases, enter first phase */
   const enterOffseason = useCallback(async () => {
     const engine = getEngine();
     await engine.startOffseason();
+    const cases = await engine.getArbitrationCases();
+    setArbitrationCases(cases);
+    setCurrentPhase('arbitration');
     setGamePhase('offseason');
   }, [setGamePhase]);
 
-  const advanceOffseason = useCallback(async () => {
+  /** Advance to the next offseason phase, running side-effects on transition */
+  const advanceToNextPhase = useCallback(async () => {
     const engine = getEngine();
-    const result = await engine.finishOffseason();
-    setAiSigningDetails(result.signingDetails);
-    setShowOffseasonSummary(true);
-  }, []);
+    const idx = OFFSEASON_PHASE_ORDER.indexOf(currentPhase);
+    const nextPhase = OFFSEASON_PHASE_ORDER[idx + 1];
 
+    if (!nextPhase) return; // already at summary
+
+    // Side-effects when leaving a phase
+    if (currentPhase === 'arbitration') {
+      // Arb cases already resolved individually via resolveArbitrationCase()
+    }
+
+    if (currentPhase === 'waivers') {
+      // Waivers are processed when entering the phase; nothing to do leaving
+    }
+
+    // Side-effects when entering a phase
+    if (nextPhase === 'waivers') {
+      const claims = await engine.processWaivers();
+      setWaiverClaims(claims);
+    }
+
+    if (nextPhase === 'rule5') {
+      // Rule 5 panel handles fetching eligible + conducting draft itself
+    }
+
+    if (nextPhase === 'summary') {
+      // Finalize: AI signings
+      const result = await engine.finishOffseason();
+      setAiSigningDetails(result.signingDetails);
+    }
+
+    setCurrentPhase(nextPhase);
+  }, [currentPhase]);
+
+  /** Leave summary → preseason, auto-save */
   const finishOffseason = useCallback(async () => {
     setGamePhase('preseason');
     onClearSim();
-    setShowOffseasonSummary(false);
-    setOffseasonTxLog([]);
+
+    // Reset all phase state
+    setCurrentPhase('arbitration');
+    setArbitrationCases([]);
+    setWaiverClaims([]);
+    setDraftedCount(0);
+    setRule5Selections([]);
     setAiSigningDetails([]);
+    setOffseasonTxLog([]);
 
     // Auto-save after offseason
     try {
@@ -53,7 +122,17 @@ export function useOffseasonFlow(onClearSim: () => void) {
   }, []);
 
   return {
-    offseasonTxLog, showOffseasonSummary, aiSigningDetails,
-    enterOffseason, advanceOffseason, finishOffseason, logOffseasonTx,
+    currentPhase,
+    arbitrationCases,
+    waiverClaims,
+    draftedCount,
+    rule5Selections,
+    aiSigningDetails,
+    offseasonTxLog,
+    enterOffseason,
+    advanceToNextPhase,
+    setDraftedCount,
+    finishOffseason,
+    logOffseasonTx,
   };
 }

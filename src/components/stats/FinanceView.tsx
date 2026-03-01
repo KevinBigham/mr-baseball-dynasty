@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import type { RosterPlayer } from '../../types/league';
+import type { PayrollReport } from '../../engine/finances';
 
 // MLB luxury tax threshold (2026 projection)
 const LUXURY_TAX = 237_000_000;
@@ -69,6 +70,7 @@ interface FinanceData {
   roster: RosterPlayer[];
   budget: number;
   teamName: string;
+  payrollReport: PayrollReport | null;
 }
 
 export default function FinanceView() {
@@ -82,9 +84,10 @@ export default function FinanceView() {
     setLoading(true);
     (async () => {
       const engine = getEngine();
-      const [roster, teams] = await Promise.all([
+      const [roster, teams, report] = await Promise.all([
         engine.getFullRoster(userTeamId),
         engine.getLeagueTeams(),
+        engine.getPayrollReport(userTeamId).catch(() => null),
       ]);
 
       const team = teams.find(t => t.teamId === userTeamId);
@@ -101,8 +104,9 @@ export default function FinanceView() {
 
       setData({
         roster: allPlayers.sort((a, b) => b.salary - a.salary),
-        budget: team?.budget ?? 150_000_000,
+        budget: report?.budget ?? team?.budget ?? 150_000_000,
         teamName: team?.name ?? 'Your Team',
+        payrollReport: report,
       });
       setLoading(false);
     })();
@@ -112,10 +116,10 @@ export default function FinanceView() {
   if (loading) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading finances...</div>;
   if (!data) return null;
 
-  const { roster, budget } = data;
+  const { roster, budget, payrollReport: report } = data;
 
   // Payroll projections by year
-  const currentPayroll = roster.reduce((s, p) => s + p.salary, 0);
+  const currentPayroll = report?.totalPayroll ?? roster.reduce((s, p) => s + p.salary, 0);
   const projPayroll = (yearsAhead: number) =>
     roster.filter(p => p.contractYearsRemaining > yearsAhead).reduce((s, p) => s + p.salary, 0);
 
@@ -185,6 +189,40 @@ export default function FinanceView() {
           </div>
         </div>
       </div>
+
+      {/* ── Tax Penalty Detail ──────────────────────────────────────────── */}
+      {report && report.cbtTier > 0 && (
+        <div className="bloomberg-border bg-gray-900 p-4">
+          <div className="text-red-400 text-xs font-bold tracking-widest mb-2">
+            LUXURY TAX PENALTIES
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <div className="text-gray-500 text-[10px]">TAX RATE</div>
+              <div className="text-red-400 font-bold text-sm">{(report.taxRate * 100).toFixed(0)}%</div>
+            </div>
+            <div>
+              <div className="text-gray-500 text-[10px]">TAX PENALTY</div>
+              <div className="text-red-400 font-bold text-sm">{fmt$M(report.taxPenalty)}</div>
+            </div>
+            {report.isRepeater && (
+              <div>
+                <div className="text-gray-500 text-[10px]">REPEATER SURCHARGE</div>
+                <div className="text-red-400 font-bold text-sm">{fmt$M(report.repeaterSurcharge)}</div>
+              </div>
+            )}
+            {report.draftPickPenalty > 0 && (
+              <div>
+                <div className="text-gray-500 text-[10px]">DRAFT PICK PENALTY</div>
+                <div className="text-red-400 font-bold text-sm">-{report.draftPickPenalty} spots</div>
+              </div>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-gray-500">
+            Total penalty: <span className="text-red-400 font-bold">{fmt$M(report.totalPenalty)}</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Year projection tabs ──────────────────────────────────────────── */}
       <div className="flex gap-1">

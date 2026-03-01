@@ -1,4 +1,7 @@
 import type { AISigningRecord } from '../../engine/freeAgency';
+import type { ArbitrationCase } from '../../engine/finances';
+import type { WaiverClaim } from '../../engine/waivers';
+import type { Rule5Selection } from '../../engine/draft/rule5Draft';
 
 export interface UserTransaction {
   type: 'signing' | 'trade';
@@ -8,6 +11,10 @@ export interface UserTransaction {
 interface Props {
   userTransactions: UserTransaction[];
   aiSignings: AISigningRecord[];
+  arbitrationCases?: ArbitrationCase[];
+  waiverClaims?: WaiverClaim[];
+  draftedCount?: number;
+  rule5Selections?: Rule5Selection[];
   onContinue: () => void;
   season: number;
 }
@@ -18,7 +25,10 @@ function formatSalary(s: number): string {
   return `$${s}`;
 }
 
-export default function OffseasonSummary({ userTransactions, aiSignings, onContinue, season }: Props) {
+export default function OffseasonSummary({
+  userTransactions, aiSignings, onContinue, season,
+  arbitrationCases = [], waiverClaims = [], draftedCount = 0, rule5Selections = [],
+}: Props) {
   const notableSignings = [...aiSignings]
     .sort((a, b) => b.overall - a.overall)
     .slice(0, 10);
@@ -96,6 +106,85 @@ export default function OffseasonSummary({ userTransactions, aiSignings, onConti
                   </div>
                 ))
               }
+            </div>
+          </div>
+        )}
+
+        {/* Arbitration results */}
+        {arbitrationCases.length > 0 && (
+          <div>
+            <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">
+              ARBITRATION RESULTS ({arbitrationCases.length})
+            </div>
+            <div className="space-y-0.5">
+              {arbitrationCases.map((c, i) => (
+                <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-gray-800/50 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 w-6">{c.position}</span>
+                    <span className="text-gray-300 font-bold">{c.playerName}</span>
+                  </div>
+                  <span className="text-gray-500 tabular-nums">{formatSalary(c.hearingResult)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Waiver wire */}
+        {waiverClaims.length > 0 && (
+          <div>
+            <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">
+              WAIVER WIRE ({waiverClaims.length})
+            </div>
+            <div className="space-y-0.5">
+              {waiverClaims.map((claim, i) => (
+                <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-gray-800/50 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${
+                      claim.outcome === 'claimed' ? 'text-green-400' :
+                      claim.outcome === 'outrighted' ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
+                      {claim.outcome.toUpperCase()}
+                    </span>
+                    <span className="text-gray-300">{claim.playerName}</span>
+                  </div>
+                  {claim.outcome === 'claimed' && (
+                    <span className="text-green-400">→ {claim.claimingTeamAbbr}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Amateur Draft */}
+        {draftedCount > 0 && (
+          <div>
+            <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">AMATEUR DRAFT</div>
+            <div className="text-gray-500 text-xs">{draftedCount} players drafted across all teams.</div>
+          </div>
+        )}
+
+        {/* Rule 5 */}
+        {rule5Selections.length > 0 && (
+          <div>
+            <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">
+              RULE 5 SELECTIONS ({rule5Selections.length})
+            </div>
+            <div className="space-y-0.5">
+              {rule5Selections.map((sel, i) => (
+                <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-gray-800/50 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 w-6">{sel.position}</span>
+                    <span className="text-gray-300 font-bold">{sel.playerName}</span>
+                  </div>
+                  <div className="text-xs">
+                    <span className="text-gray-500">{sel.originalTeamAbbr}</span>
+                    <span className="text-gray-600 mx-1">→</span>
+                    <span className="text-green-400">{sel.selectingTeamAbbr}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
