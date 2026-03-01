@@ -5,6 +5,7 @@
  * Post-sim: reveals the resolution of this season's chapter
  */
 
+import { useState } from 'react';
 import type { SeasonArc } from '../../engine/storyboard';
 
 export default function StoryboardPanel({
@@ -14,6 +15,7 @@ export default function StoryboardPanel({
   arc:   SeasonArc;
   phase: 'pre' | 'post';
 }) {
+  const [showReasoning, setShowReasoning] = useState(false);
   return (
     <div
       className="bloomberg-border overflow-hidden relative"
@@ -58,6 +60,30 @@ export default function StoryboardPanel({
         <div className="text-gray-300 text-xs leading-relaxed">
           {arc.chapterDesc}
         </div>
+
+        {/* Why this arc — collapsible reasoning */}
+        {arc.reasoning && arc.reasoning.length > 0 && (
+          <div className="mt-2">
+            <button
+              onClick={() => setShowReasoning(r => !r)}
+              className="text-gray-600 text-xs hover:text-gray-400 transition-colors"
+            >
+              {showReasoning ? '▲ HIDE' : '▼ WHY THIS ARC?'}
+            </button>
+            {showReasoning && (
+              <div
+                className="mt-1.5 px-3 py-2 rounded space-y-0.5"
+                style={{ border: `1px dashed ${arc.color}25`, background: 'rgba(0,0,0,0.3)' }}
+              >
+                {arc.reasoning.map((r, i) => (
+                  <div key={i} className="text-gray-500 text-xs leading-relaxed">
+                    · {r}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Post-sim resolution */}
         {phase === 'post' && arc.resolution && (

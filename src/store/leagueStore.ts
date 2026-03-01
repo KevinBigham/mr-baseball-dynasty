@@ -60,6 +60,9 @@ interface LeagueStore {
   // ── Weekly MRBD Card ──────────────────────────────────────────────────────────
   weeklyStories:    WeeklyStory[];
 
+  // ── Trade History ───────────────────────────────────────────────────────────
+  tradeHistory:     TradeHistoryRecord[];
+
   setStandings:           (d: StandingsData) => void;
   setRoster:              (d: RosterData) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
@@ -86,7 +89,19 @@ interface LeagueStore {
   addMoments:             (items: SeasonMoment[]) => void;
   setWeeklyStories:       (stories: WeeklyStory[]) => void;
 
+  addTradeRecord:         (record: TradeHistoryRecord) => void;
+
   resetAll:               () => void;
+}
+
+// ─── Trade History ────────────────────────────────────────────────────────────
+
+export interface TradeHistoryRecord {
+  season: number;
+  partnerTeamAbbr: string;
+  sent: string[];
+  received: string[];
+  type: 'incoming' | 'proposed';
 }
 
 // ─── Key moment generator ─────────────────────────────────────────────────────
@@ -141,6 +156,7 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   poachEvent:       null,
   moments:          [],
   weeklyStories:    [],
+  tradeHistory:     [],
 
   setStandings:       d => set({ standings: d }),
   setRoster:          d => set({ roster: d }),
@@ -179,6 +195,10 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   })),
   setWeeklyStories: stories => set({ weeklyStories: stories }),
 
+  addTradeRecord: record => set(state => ({
+    tradeHistory: [record, ...state.tradeHistory].slice(0, 50),
+  })),
+
   resetAll: () => set({
     standings: null,
     roster: null,
@@ -195,5 +215,6 @@ export const useLeagueStore = create<LeagueStore>(set => ({
     poachEvent: null,
     moments: [],
     weeklyStories: [],
+    tradeHistory: [],
   }),
 }));

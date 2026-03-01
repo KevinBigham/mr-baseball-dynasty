@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
-export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'frontOffice';
+export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice';
 export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason';
 
 interface GameStore {

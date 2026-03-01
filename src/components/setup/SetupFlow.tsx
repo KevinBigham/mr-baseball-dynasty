@@ -5,6 +5,7 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, generateFOCandidates } from '../../data/frontOffice';
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
+import type { OwnerArchetype } from '../../engine/narrative';
 
 // ─── Team list ─────────────────────────────────────────────────────────────────
 
@@ -280,6 +281,149 @@ function StartModeScreen() {
             style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}>
             ← Back
           </button>
+          <button onClick={() => setSetupScreen('difficulty')}
+            className="flex-[2] py-3 text-sm font-black uppercase tracking-widest"
+            style={{ background: '#ea580c', color: '#000', borderRadius: 6 }}>
+            SET DIFFICULTY →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Screen: Difficulty & Owner ────────────────────────────────────────────────
+
+const DIFFICULTIES: Array<{
+  id: 'rookie' | 'normal' | 'hard';
+  label: string;
+  icon: string;
+  foBudget: number;
+  patience: string;
+  desc: string;
+}> = [
+  { id: 'rookie', label: 'ROOKIE', icon: '🟢', foBudget: 22, patience: 'Forgiving', desc: 'Training wheels — generous budget, patient ownership. Learn the ropes without pressure.' },
+  { id: 'normal', label: 'NORMAL', icon: '🟡', foBudget: 15, patience: 'Moderate', desc: 'The real deal — balanced budget and expectations. A fair challenge for any GM.' },
+  { id: 'hard',   label: 'HARD',   icon: '🔴', foBudget: 10, patience: 'Demanding', desc: 'Prove yourself — tight budget, impatient owner. Every decision matters.' },
+];
+
+const ARCHETYPES: Array<{
+  id: OwnerArchetype;
+  label: string;
+  icon: string;
+  desc: string;
+  expectation: string;
+}> = [
+  { id: 'win_now',         label: 'WIN-NOW',         icon: '🏆', desc: 'Aggressive ownership that demands results now.',              expectation: 'Expects playoff appearances every year' },
+  { id: 'patient_builder', label: 'PATIENT BUILDER',  icon: '🌱', desc: 'Long-term vision with emphasis on development.',             expectation: 'Focuses on farm system and sustained success' },
+  { id: 'penny_pincher',   label: 'COST-CONSCIOUS',   icon: '💰', desc: 'Payroll discipline above all — do more with less.',          expectation: 'Stay under budget, find value in the margins' },
+];
+
+function DifficultyScreen() {
+  const { difficulty, setDifficulty, ownerArchetype, setOwnerArchetype, setFoBudget, setSetupScreen } = useGameStore();
+
+  const handleDifficulty = (d: 'rookie' | 'normal' | 'hard') => {
+    setDifficulty(d);
+    const diff = DIFFICULTIES.find(x => x.id === d);
+    if (diff) setFoBudget(diff.foBudget);
+  };
+
+  return (
+    <div className="min-h-screen p-6 overflow-auto"
+      style={{ background: 'radial-gradient(ellipse at 50% 0%, #2a1a1a 0%, #0a0505 70%)' }}>
+      <div className="max-w-lg mx-auto space-y-6">
+        <div className="text-center pt-2 space-y-1">
+          <div className="text-gray-500 text-xs tracking-widest uppercase">Franchise Setup</div>
+          <div className="text-orange-400 font-black text-2xl tracking-wider">DIFFICULTY</div>
+          <div className="text-gray-600 text-xs">Set the challenge level and ownership style</div>
+        </div>
+
+        {/* Difficulty cards */}
+        <div className="space-y-3">
+          <div className="text-gray-500 text-xs font-bold tracking-widest uppercase">CHALLENGE LEVEL</div>
+          {DIFFICULTIES.map(d => {
+            const selected = difficulty === d.id;
+            return (
+              <div
+                key={d.id}
+                onClick={() => handleDifficulty(d.id)}
+                className="rounded-lg p-4 transition-all duration-100 cursor-pointer"
+                style={{
+                  background: selected ? 'rgba(234,88,12,0.12)' : 'rgba(255,255,255,0.03)',
+                  border: selected ? '1px solid rgba(234,88,12,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{d.icon}</span>
+                      <span className="font-black text-sm" style={{ color: selected ? '#f97316' : '#e2e8f0' }}>
+                        {d.label}
+                      </span>
+                      {d.id === 'normal' && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                          style={{ background: 'rgba(234,88,12,0.2)', color: '#f97316', border: '1px solid rgba(234,88,12,0.4)' }}>
+                          RECOMMENDED
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-gray-400 text-xs leading-relaxed">{d.desc}</div>
+                    <div className="flex gap-4 mt-2">
+                      <span className="text-gray-600 text-xs">FO Budget: ${d.foBudget}M</span>
+                      <span className="text-gray-600 text-xs">Owner: {d.patience}</span>
+                    </div>
+                  </div>
+                  {selected && (
+                    <div className="text-orange-500 font-black text-lg shrink-0">✓</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Owner archetype */}
+        <div className="space-y-3">
+          <div className="text-gray-500 text-xs font-bold tracking-widest uppercase">OWNER ARCHETYPE</div>
+          {ARCHETYPES.map(a => {
+            const selected = ownerArchetype === a.id;
+            return (
+              <div
+                key={a.id}
+                onClick={() => setOwnerArchetype(a.id)}
+                className="rounded-lg p-4 transition-all duration-100 cursor-pointer"
+                style={{
+                  background: selected ? 'rgba(167,139,250,0.10)' : 'rgba(255,255,255,0.03)',
+                  border: selected ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{a.icon}</span>
+                      <span className="font-black text-sm" style={{ color: selected ? '#a78bfa' : '#e2e8f0' }}>
+                        {a.label}
+                      </span>
+                    </div>
+                    <div className="text-gray-400 text-xs leading-relaxed">{a.desc}</div>
+                    <div className="text-gray-600 text-xs mt-1">{a.expectation}</div>
+                  </div>
+                  {selected && (
+                    <div className="font-black text-lg shrink-0" style={{ color: '#a78bfa' }}>✓</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Nav */}
+        <div className="flex gap-3 pb-6">
+          <button onClick={() => setSetupScreen('startMode')}
+            className="flex-1 py-2 text-xs font-bold text-gray-500 hover:text-gray-300"
+            style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}>
+            ← Back
+          </button>
           <button onClick={() => setSetupScreen('frontOffice')}
             className="flex-[2] py-3 text-sm font-black uppercase tracking-widest"
             style={{ background: '#ea580c', color: '#000', borderRadius: 6 }}>
@@ -523,11 +667,11 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
             }
           </button>
           <button
-            onClick={() => setSetupScreen('startMode')}
+            onClick={() => setSetupScreen('difficulty')}
             className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-300 transition-colors"
             style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}
           >
-            ← Back to Start Mode
+            ← Back to Difficulty
           </button>
         </div>
       </div>
@@ -583,6 +727,7 @@ export default function SetupFlow() {
     case 'title':       return <TitleScreen />;
     case 'teamSelect':  return <TeamSelectScreen />;
     case 'startMode':   return <StartModeScreen />;
+    case 'difficulty':  return <DifficultyScreen />;
     case 'frontOffice': return <FrontOfficeScreen onStartGame={handleStartGame} />;
     default:            return <TitleScreen />;
   }

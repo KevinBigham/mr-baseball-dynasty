@@ -100,16 +100,26 @@ export function signFreeAgent(
 }
 
 // ─── AI team free agent signings ─────────────────────────────────────────────
+export interface AISigningRecord {
+  playerName: string;
+  position: string;
+  overall: number;
+  teamAbbr: string;
+  teamId: number;
+  salary: number;
+  years: number;
+}
+
 export function processAISignings(
   players: Player[],
   teams: Team[],
   userTeamId: number,
-): number {
+): { count: number; signings: AISigningRecord[] } {
   const freeAgents = players
     .filter(p => p.rosterData.rosterStatus === 'FREE_AGENT')
     .sort((a, b) => b.overall - a.overall);
 
-  let signed = 0;
+  const signings: AISigningRecord[] = [];
 
   for (const team of teams) {
     if (team.teamId === userTeamId) continue;
@@ -132,6 +142,16 @@ export function processAISignings(
       const years = projectYears(fa);
       const salary = projectSalary(fa);
 
+      signings.push({
+        playerName: fa.name,
+        position: fa.position,
+        overall: fa.overall,
+        teamAbbr: team.abbreviation,
+        teamId: team.teamId,
+        salary,
+        years,
+      });
+
       fa.teamId = team.teamId;
       fa.rosterData.rosterStatus = 'MLB_ACTIVE';
       fa.rosterData.isOn40Man = true;
@@ -140,9 +160,8 @@ export function processAISignings(
       fa.rosterData.freeAgentEligible = false;
 
       teamSigned++;
-      signed++;
     }
   }
 
-  return signed;
+  return { count: signings.length, signings };
 }

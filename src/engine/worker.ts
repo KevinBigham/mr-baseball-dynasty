@@ -28,6 +28,7 @@ import {
 import {
   generateFreeAgentClass, signFreeAgent as doSign,
   processAISignings, projectSalary, projectYears,
+  type AISigningRecord,
 } from './freeAgency';
 import {
   generateTradeOffers, executeTrade as doTrade,
@@ -526,17 +527,17 @@ const api = {
     return result;
   },
 
-  async finishOffseason(): Promise<{ aiSignings: number }> {
+  async finishOffseason(): Promise<{ aiSignings: number; signingDetails: AISigningRecord[] }> {
     const state = requireState();
-    const aiSignings = processAISignings(state.players, state.teams, state.userTeamId);
+    const result = processAISignings(state.players, state.teams, state.userTeamId);
     rebuildMaps();
-    return { aiSignings };
+    return { aiSignings: result.count, signingDetails: result.signings };
   },
 
   // ── Trading ──────────────────────────────────────────────────────────────
   async getTradeOffers(): Promise<TradeProposal[]> {
     const state = requireState();
-    return generateTradeOffers(state.userTeamId, state.players, state.teams);
+    return generateTradeOffers(state.userTeamId, state.players, state.teams, _playerSeasonStats);
   },
 
   async getTeamPlayers(teamId: number): Promise<TradePlayerInfo[]> {
@@ -547,17 +548,39 @@ const api = {
         p.overall >= 150)
       .sort((a, b) => b.overall - a.overall)
       .slice(0, 30)
-      .map(p => ({
-        playerId: p.playerId,
-        name: p.name,
-        position: p.position,
-        age: p.age,
-        overall: p.overall,
-        potential: p.potential,
-        salary: p.rosterData.salary,
-        contractYearsRemaining: p.rosterData.contractYearsRemaining,
-        tradeValue: evaluatePlayer(p),
-      }));
+      .map(p => {
+        const isPitcher = ['SP', 'RP', 'CL'].includes(p.position);
+        const raw = _playerSeasonStats.get(p.playerId);
+        const stats: TradePlayerInfo['stats'] = {};
+        if (raw) {
+          if (isPitcher) {
+            stats.era = raw.outs > 0 ? Number(((raw.er / raw.outs) * 27).toFixed(2)) : undefined;
+            stats.k9 = raw.outs > 0 ? Number(((raw.ka / (raw.outs / 3)) * 9).toFixed(1)) : undefined;
+            stats.whip = raw.outs > 0 ? Number(((raw.bba + raw.ha) / (raw.outs / 3)).toFixed(2)) : undefined;
+          } else {
+            stats.avg = raw.ab > 0 ? Number((raw.h / raw.ab).toFixed(3)) : undefined;
+            stats.hr = raw.hr;
+            if (raw.ab > 0 && raw.pa > 0) {
+              const obp = (raw.h + raw.bb + raw.hbp) / raw.pa;
+              const slg = (raw.h - raw.doubles - raw.triples - raw.hr + raw.doubles * 2 + raw.triples * 3 + raw.hr * 4) / raw.ab;
+              stats.ops = Number((obp + slg).toFixed(3));
+            }
+          }
+        }
+        return {
+          playerId: p.playerId,
+          name: p.name,
+          position: p.position,
+          age: p.age,
+          overall: p.overall,
+          potential: p.potential,
+          salary: p.rosterData.salary,
+          contractYearsRemaining: p.rosterData.contractYearsRemaining,
+          tradeValue: evaluatePlayer(p),
+          isPitcher,
+          stats,
+        };
+      });
   },
 
   async proposeTrade(
@@ -584,6 +607,53 @@ const api = {
     const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
     if (result.ok) rebuildMaps();
     return result;
+  },
+
+  async getTeamNeeds(teamId: number): Promise<{
+    needs: Array<{ position: string; severity: 'critical' | 'moderate' | 'mild' }>;
+    strengths: string[];
+  }> {
+    const state = requireState();
+    const teamPlayers = state.players.filter(
+      p => p.teamId === teamId &&
+      (p.rosterData.rosterStatus === 'MLB_ACTIVE' || p.rosterData.rosterStatus.startsWith('MINORS_'))
+    );
+
+    const positionSlots = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP'];
+    const posCount: Record<string, number> = {};
+    const posOvr: Record<string, number> = {};
+
+    for (const pos of positionSlots) {
+      const atPos = teamPlayers.filter(p => p.position === pos);
+      posCount[pos] = atPos.length;
+      posOvr[pos] = atPos.length > 0
+        ? atPos.reduce((s, p) => s + p.overall, 0) / atPos.length
+        : 0;
+    }
+
+    const needs: Array<{ position: string; severity: 'critical' | 'moderate' | 'mild' }> = [];
+    const strengths: string[] = [];
+
+    for (const pos of positionSlots) {
+      const count = posCount[pos];
+      const avgOvr = posOvr[pos];
+
+      if (pos === 'SP') {
+        if (count < 3) needs.push({ position: pos, severity: 'critical' });
+        else if (count < 5) needs.push({ position: pos, severity: 'moderate' });
+        else if (avgOvr > 350) strengths.push(pos);
+      } else if (pos === 'RP') {
+        if (count < 3) needs.push({ position: pos, severity: 'critical' });
+        else if (count < 5) needs.push({ position: pos, severity: 'moderate' });
+        else if (avgOvr > 300) strengths.push('Bullpen');
+      } else {
+        if (count === 0) needs.push({ position: pos, severity: 'critical' });
+        else if (count === 1 && avgOvr < 280) needs.push({ position: pos, severity: 'moderate' });
+        else if (avgOvr > 350) strengths.push(pos);
+      }
+    }
+
+    return { needs: needs.slice(0, 5), strengths: [...new Set(strengths)].slice(0, 4) };
   },
 
   // ── League / Team Info ───────────────────────────────────────────────────

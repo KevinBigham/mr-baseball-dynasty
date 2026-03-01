@@ -48,6 +48,18 @@ function OwnerPatiencePanel() {
           </div>
         </div>
 
+        {/* Owner expectation */}
+        <div className="px-2.5 py-1.5 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600 text-[10px] uppercase">Expects</span>
+            <span className="text-xs font-bold" style={{ color: archetype.color }}>
+              {ownerArchetype === 'win_now' ? 'Playoff appearance' :
+               ownerArchetype === 'patient_builder' ? 'Development progress' :
+               'Stay under budget'}
+            </span>
+          </div>
+        </div>
+
         {/* Progress bar */}
         <div className="space-y-1">
           <div className="flex justify-between items-center">

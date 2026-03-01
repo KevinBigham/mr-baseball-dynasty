@@ -13,7 +13,7 @@ import {
 import { initRivals, updateRivals } from '../../engine/rivalry';
 import { generatePreseasonPredictions, resolvePredictions } from '../../engine/predictions';
 import { shouldTriggerPoach, generatePoachEvent } from '../../engine/staffPoaching';
-import { generateSeasonArc } from '../../engine/storyboard';
+import { generateSeasonArc, detectArcType } from '../../engine/storyboard';
 import { generateSeasonMoments } from '../../engine/moments';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
@@ -33,6 +33,8 @@ import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
 import type { PressContext } from '../../data/pressConference';
 import FreeAgencyPanel from '../offseason/FreeAgencyPanel';
 import TradeCenter from '../offseason/TradeCenter';
+import OffseasonSummary, { type UserTransaction } from '../offseason/OffseasonSummary';
+import type { AISigningRecord } from '../../engine/freeAgency';
 import PlayoffBracketView from './PlayoffBracket';
 import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
 import { saveGame } from '../../db/schema';
@@ -144,6 +146,9 @@ export default function Dashboard() {
   const [postSimArcPO,     setPostSimArcPO]     = useState<boolean | undefined>(undefined);
   const [postSimArcChamp,  setPostSimArcChamp]  = useState<boolean | undefined>(undefined);
   const [playoffBracket,   setPlayoffBracket]   = useState<PlayoffBracket | null>(null);
+  const [offseasonTxLog,   setOffseasonTxLog]   = useState<UserTransaction[]>([]);
+  const [showOffseasonSummary, setShowOffseasonSummary] = useState(false);
+  const [aiSigningDetails, setAiSigningDetails]  = useState<AISigningRecord[]>([]);
 
   // ── Set owner archetype on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -327,11 +332,22 @@ export default function Dashboard() {
     setGamePhase('offseason');
   }, [setGamePhase]);
 
-  // ── Finish offseason → preseason ────────────────────────────────────────────
+  // ── Advance offseason → show summary ─────────────────────────────────────────
+  const advanceOffseason = useCallback(async () => {
+    const engine = getEngine();
+    const result = await engine.finishOffseason();
+    setAiSigningDetails(result.signingDetails);
+    setShowOffseasonSummary(true);
+  }, []);
+
+  // ── Continue from summary → preseason ─────────────────────────────────────
   const finishOffseason = useCallback(async () => {
     setGamePhase('preseason');
     setLastResult(null);
     setPlayoffBracket(null);
+    setShowOffseasonSummary(false);
+    setOffseasonTxLog([]);
+    setAiSigningDetails([]);
 
     // Auto-save after offseason
     try {
@@ -343,6 +359,11 @@ export default function Dashboard() {
       }
     } catch { /* non-fatal */ }
   }, [setGamePhase, userTeamId, season]);
+
+  // ── Track user offseason transaction ────────────────────────────────────────
+  const logOffseasonTx = useCallback((tx: UserTransaction) => {
+    setOffseasonTxLog(prev => [...prev, tx]);
+  }, []);
 
   // ── Breakout watch at start of season ─────────────────────────────────────
   const refreshBreakoutWatch = useCallback(async () => {
@@ -366,6 +387,7 @@ export default function Dashboard() {
         <PressConference
           context={pressCtx}
           onClose={() => setPresserAvailable(false)}
+          arcType={detectArcType(franchiseHistory, ownerPatience, seasonsManaged)}
         />
       )}
 
@@ -649,7 +671,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Offseason: Free Agency + Trades ────────────────────────────────────── */}
-      {gamePhase === 'offseason' && (
+      {gamePhase === 'offseason' && !showOffseasonSummary && (
         <div className="space-y-4">
           <div className="bloomberg-border bg-gray-900 px-4 py-2">
             <div className="text-orange-500 font-bold text-xs tracking-widest">
@@ -657,9 +679,19 @@ export default function Dashboard() {
             </div>
             <div className="text-gray-500 text-xs">Sign free agents, make trades, and manage your roster before next season.</div>
           </div>
-          <FreeAgencyPanel onDone={finishOffseason} />
-          <TradeCenter />
+          <FreeAgencyPanel onDone={advanceOffseason} onTransaction={logOffseasonTx} />
+          <TradeCenter onTransaction={logOffseasonTx} />
         </div>
+      )}
+
+      {/* ── Offseason Summary ─────────────────────────────────────────────────── */}
+      {gamePhase === 'offseason' && showOffseasonSummary && (
+        <OffseasonSummary
+          userTransactions={offseasonTxLog}
+          aiSignings={aiSigningDetails}
+          onContinue={finishOffseason}
+          season={season}
+        />
       )}
 
       {/* ── Post-sim Storyboard arc resolution ────────────────────────────────── */}

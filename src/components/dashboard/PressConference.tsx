@@ -15,6 +15,24 @@ import {
   type PressContext,
 } from '../../data/pressConference';
 import { getTopRival } from '../../engine/rivalry';
+import type { ArcType } from '../../engine/storyboard';
+
+// ─── Arc-aware intro flavor text ──────────────────────────────────────────────
+const ARC_FLAVOR: Partial<Record<ArcType, string>> = {
+  dynasty_peak:    'Your dynasty is the talk of baseball. The reporters lean in.',
+  dynasty_defense: 'As defending champions, every question carries extra weight.',
+  dynasty_rising:  'The franchise trajectory has caught the attention of the national media.',
+  contender:       'Expectations were high going in. The press wants accountability.',
+  window_closing:  'With the core aging, the questions carry urgency this year.',
+  last_stand:      'The hot seat narrative dominates the room before you even sit down.',
+  rebuild_begins:  'Fans are wondering about the direction. The press reflects that.',
+  rebuild_progress:'The rebuild story is evolving. Progress is being tracked.',
+  bounce_back:     'After last year\'s disappointment, the room is watching for signals.',
+  dark_horse:      'Nobody expected this team here. The press is intrigued.',
+  underdog:        'The underdog label follows this franchise into every press room.',
+  transition:      'A franchise in transition. The media wants to know what comes next.',
+  year_one:        'Your first press conference. The blank slate works in your favor.',
+};
 
 // ─── Tone badge ───────────────────────────────────────────────────────────────
 
@@ -137,9 +155,11 @@ function QuestionCard({
 export default function PressConference({
   context,
   onClose,
+  arcType,
 }: {
   context: PressContext;
   onClose: () => void;
+  arcType?: ArcType;
 }) {
   const { adjustOwnerPatience, adjustTeamMorale } = useGameStore();
   const { addNewsItems, setPresserDone }           = useLeagueStore();
@@ -229,6 +249,13 @@ export default function PressConference({
             {done ? 'Complete' : `Question ${step + 1} of ${questions.length}`}
           </div>
         </div>
+
+        {/* Arc-aware flavor intro */}
+        {arcType && ARC_FLAVOR[arcType] && step === 0 && !done && (
+          <div className="px-6 py-2 border-b border-gray-800/50">
+            <div className="text-gray-500 text-xs italic leading-relaxed">{ARC_FLAVOR[arcType]}</div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="px-6 py-5">

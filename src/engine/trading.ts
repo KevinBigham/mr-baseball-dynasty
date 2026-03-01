@@ -1,4 +1,4 @@
-import type { Player } from '../types/player';
+import type { Player, PlayerSeasonStats } from '../types/player';
 import type { Team } from '../types/team';
 
 // ─── Trade types ────────────────────────────────────────────────────────────
@@ -23,6 +23,11 @@ export interface TradePlayerInfo {
   salary: number;
   contractYearsRemaining: number;
   tradeValue: number;
+  isPitcher: boolean;
+  stats: {
+    avg?: number; hr?: number; ops?: number;
+    era?: number; k9?: number; whip?: number;
+  };
 }
 
 export interface TradeResult {
@@ -74,7 +79,24 @@ export function evaluatePlayer(player: Player): number {
   return Math.round(Math.max(0, Math.min(100, value)));
 }
 
-function playerToTradeInfo(player: Player): TradePlayerInfo {
+function playerToTradeInfo(player: Player, raw?: PlayerSeasonStats): TradePlayerInfo {
+  const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
+  const stats: TradePlayerInfo['stats'] = {};
+  if (raw) {
+    if (isPitcher) {
+      stats.era = raw.outs > 0 ? Number(((raw.er / raw.outs) * 27).toFixed(2)) : undefined;
+      stats.k9 = raw.outs > 0 ? Number(((raw.ka / (raw.outs / 3)) * 9).toFixed(1)) : undefined;
+      stats.whip = raw.outs > 0 ? Number(((raw.bba + raw.ha) / (raw.outs / 3)).toFixed(2)) : undefined;
+    } else {
+      stats.avg = raw.ab > 0 ? Number((raw.h / raw.ab).toFixed(3)) : undefined;
+      stats.hr = raw.hr;
+      if (raw.ab > 0 && raw.pa > 0) {
+        const obp = (raw.h + raw.bb + raw.hbp) / raw.pa;
+        const slg = (raw.h - raw.doubles - raw.triples - raw.hr + raw.doubles * 2 + raw.triples * 3 + raw.hr * 4) / raw.ab;
+        stats.ops = Number((obp + slg).toFixed(3));
+      }
+    }
+  }
   return {
     playerId: player.playerId,
     name: player.name,
@@ -85,6 +107,8 @@ function playerToTradeInfo(player: Player): TradePlayerInfo {
     salary: player.rosterData.salary,
     contractYearsRemaining: player.rosterData.contractYearsRemaining,
     tradeValue: evaluatePlayer(player),
+    isPitcher,
+    stats,
   };
 }
 
@@ -94,6 +118,7 @@ export function generateTradeOffers(
   userTeamId: number,
   players: Player[],
   teams: Team[],
+  statsMap?: Map<number, PlayerSeasonStats>,
 ): TradeProposal[] {
   const userPlayers = players.filter(
     p => p.teamId === userTeamId &&
@@ -148,8 +173,8 @@ export function generateTradeOffers(
       partnerTeamId: partnerTeam.teamId,
       partnerTeamName: partnerTeam.name,
       partnerTeamAbbr: partnerTeam.abbreviation,
-      offered: offered.map(playerToTradeInfo),
-      requested: [playerToTradeInfo(targetPlayer)],
+      offered: offered.map(p => playerToTradeInfo(p, statsMap?.get(p.playerId))),
+      requested: [playerToTradeInfo(targetPlayer, statsMap?.get(targetPlayer.playerId))],
       fairness: Math.round(Math.max(-100, Math.min(100, fairness))),
     });
   }
