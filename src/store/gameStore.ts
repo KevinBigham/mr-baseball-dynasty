@@ -3,7 +3,8 @@ import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
 export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice';
-export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason';
+export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason' | 'fired';
+export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
 interface GameStore {
   // ── Core game state ──────────────────────────────────────────────────────────
@@ -14,6 +15,7 @@ interface GameStore {
   gameStarted:   boolean;
   seasonsManaged: number;
   gamePhase:     GamePhase;
+  seasonPhase:   SeasonPhase;
 
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
@@ -39,6 +41,7 @@ interface GameStore {
   setSimProgress:     (v: number) => void;
   setGameStarted:     (v: boolean) => void;
   setGamePhase:       (p: GamePhase) => void;
+  setSeasonPhase:     (p: SeasonPhase) => void;
   incrementSeasonsManaged: () => void;
 
   setSetupScreen:     (s: SetupScreen) => void;
@@ -72,6 +75,7 @@ export const useGameStore = create<GameStore>(set => ({
   gameStarted:     false,
   seasonsManaged:  0,
   gamePhase:       'preseason',
+  seasonPhase:     'early',
 
   setupScreen:     'title',
   startMode:       'instant',
@@ -93,6 +97,7 @@ export const useGameStore = create<GameStore>(set => ({
   setSimProgress:  v           => set({ simProgress: v }),
   setGameStarted:  v           => set({ gameStarted: v }),
   setGamePhase:    p           => set({ gamePhase: p }),
+  setSeasonPhase:  p           => set({ seasonPhase: p }),
   incrementSeasonsManaged: ()  => set(state => ({ seasonsManaged: state.seasonsManaged + 1 })),
 
   // ── Setup setters ─────────────────────────────────────────────────────────────
@@ -137,6 +142,7 @@ export const useGameStore = create<GameStore>(set => ({
     gameStarted: false,
     seasonsManaged: 0,
     gamePhase: 'preseason' as GamePhase,
+    seasonPhase: 'early' as SeasonPhase,
     setupScreen: 'title' as SetupScreen,
     startMode: 'instant' as StartModeId,
     frontOffice: [],

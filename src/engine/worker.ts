@@ -35,6 +35,7 @@ import {
   evaluateProposedTrade, evaluatePlayer,
   type TradeProposal, type TradeResult, type TradePlayerInfo,
 } from './trading';
+import { processSeasonInjuries } from './injuries';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -42,6 +43,7 @@ let _state: LeagueState | null = null;
 let _playerMap = new Map<number, Player>();
 let _teamMap = new Map<number, Team>();
 let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonStats>();
+let _careerHistory = new Map<number, import('../types/player').PlayerSeasonStats[]>();
 let _seasonResults: SeasonResult[] = [];
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -85,6 +87,12 @@ function playerToRosterPlayer(p: Player, stats: import('../types/player').Player
     serviceTimeDays: p.rosterData.serviceTimeDays,
     salary: p.rosterData.salary,
     contractYearsRemaining: p.rosterData.contractYearsRemaining,
+    injuryInfo: p.rosterData.currentInjury ? {
+      type: p.rosterData.currentInjury.type,
+      severity: p.rosterData.currentInjury.severity,
+      daysRemaining: p.rosterData.currentInjury.recoveryDaysRemaining,
+      description: p.rosterData.currentInjury.description,
+    } : undefined,
     stats: p.isPitcher
       ? { w: s?.w, l: s?.l, sv: s?.sv, era: Number(era.toFixed(2)), ip: Number(ip.toFixed(1)), k9: Number(k9.toFixed(1)), bb9: Number(bb9.toFixed(1)), whip: Number(whip.toFixed(2)) }
       : { pa: s?.pa, avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)), slg: Number(slg.toFixed(3)), hr: s?.hr, rbi: s?.rbi, sb: s?.sb, k: s?.k, bb: s?.bb },
@@ -111,6 +119,7 @@ const api = {
       userTeamId,
     };
     _playerSeasonStats = new Map();
+    _careerHistory = new Map();
     _seasonResults = [];
     rebuildMaps();
 
@@ -149,6 +158,30 @@ const api = {
       _playerSeasonStats.set(ps.playerId, ps);
     }
 
+    // Accumulate career history
+    for (const ps of result.playerSeasons) {
+      const record = { ...ps, season: state.season };
+      const history = _careerHistory.get(ps.playerId) ?? [];
+      history.push(record);
+      _careerHistory.set(ps.playerId, history);
+    }
+
+    // ── Injuries (post-process — deterministic based on seed) ─────────────────
+    const injurySeed = Number(gen.next()[0]);
+    [, gen] = gen.next();
+    // Clear any lingering injuries from previous season before processing
+    for (const p of state.players) {
+      if (p.rosterData.currentInjury) {
+        p.rosterData.currentInjury = undefined;
+        if (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60') {
+          p.rosterData.rosterStatus = 'MLB_ACTIVE';
+        }
+      }
+    }
+    const injuryEvents = processSeasonInjuries(
+      state.players, state.schedule.length, injurySeed, state.season,
+    );
+
     // ── Awards (computed before aging — players are at their in-season state) ──
     const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
     const divisionChampions = computeDivisionChampions(state.teams);
@@ -176,6 +209,7 @@ const api = {
       awards,
       divisionChampions,
       developmentEvents: offseasonResult.events,
+      injuryEvents,
     };
 
     return fullResult;
@@ -405,7 +439,7 @@ const api = {
         tradeValue: evaluatePlayer(player),
       },
       seasonStats,
-      careerStats: { seasons: 1, ...(seasonStats ?? {}) },
+      careerStats: _careerHistory.get(playerId) ?? [],
     };
   },
 
@@ -855,10 +889,23 @@ const api = {
 
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
-    return _state;
+    if (!_state) return null;
+    // Serialize career history into the state for persistence
+    const careerHistory: Record<string, import('../types/player').PlayerSeasonStats[]> = {};
+    for (const [playerId, seasons] of _careerHistory) {
+      careerHistory[String(playerId)] = seasons;
+    }
+    return { ..._state, careerHistory };
   },
 
   async loadState(state: LeagueState): Promise<void> {
+    // Restore career history from serialized state
+    _careerHistory = new Map();
+    if (state.careerHistory) {
+      for (const [key, seasons] of Object.entries(state.careerHistory)) {
+        _careerHistory.set(Number(key), seasons);
+      }
+    }
     _state = state;
     _playerSeasonStats = new Map();
     rebuildMaps();

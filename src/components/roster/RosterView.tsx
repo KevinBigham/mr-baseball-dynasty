@@ -7,6 +7,7 @@ import type { RosterPlayer } from '../../types/league';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import DepthChart from './DepthChart';
 import ProspectPipeline from './ProspectPipeline';
+import ILManagement from './ILManagement';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
@@ -641,6 +642,13 @@ export default function RosterView() {
               {filteredPlayers.length} player{filteredPlayers.length !== 1 ? 's' : ''}
             </span>
           </div>
+
+          {/* IL Management panel (when IL tab is active) */}
+          {rosterTab === 'IL' && fullRoster && (
+            <div className="mb-4">
+              <ILManagement ilPlayers={fullRoster.il} />
+            </div>
+          )}
 
           {/* Position players table */}
           {hitters.length > 0 && (

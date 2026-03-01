@@ -4,6 +4,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
+import CareerStatsTable from './CareerStatsTable';
 
 // ─── Scouting grade box ───────────────────────────────────────────────────────
 
@@ -692,6 +693,9 @@ export default function PlayerProfile() {
           </div>
         </div>
       )}
+
+      {/* ── Career Stats Table ────────────────────────────────────────────── */}
+      <CareerStatsTable seasons={data.careerStats} isPitcher={isPitcher} />
     </div>
   );
 }

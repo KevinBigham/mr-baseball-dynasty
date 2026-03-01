@@ -3,6 +3,7 @@ import type { Team, TeamSeasonStats } from './team';
 import type { ScheduleEntry, BoxScore } from './game';
 import type { SeasonAwards, DivisionChampion } from '../engine/player/awards';
 import type { DevelopmentEvent } from '../engine/player/development';
+import type { InjuryEvent } from '../engine/injuries';
 
 export interface LeagueEnvironment {
   // Calibration factors (1.0 = neutral)
@@ -19,6 +20,7 @@ export interface LeagueState {
   environment: LeagueEnvironment;
   prngState: number[];  // Serialized PRNG state
   userTeamId: number;
+  careerHistory?: Record<string, PlayerSeasonStats[]>;
 }
 
 export interface SeasonResult {
@@ -35,6 +37,7 @@ export interface SeasonResult {
   awards?: SeasonAwards;
   divisionChampions?: DivisionChampion[];
   developmentEvents?: DevelopmentEvent[];
+  injuryEvents?: InjuryEvent[];
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────
@@ -74,6 +77,13 @@ export interface RosterPlayer {
   serviceTimeDays: number;
   salary: number;
   contractYearsRemaining: number;
+  // Injury info (if currently on IL)
+  injuryInfo?: {
+    type: string;
+    severity: string;
+    daysRemaining: number;
+    description: string;
+  };
   // Season stats (current season)
   stats: {
     // Hitting
@@ -153,10 +163,7 @@ export interface PlayerProfileData {
     // batting or pitching stats depending on player type
     [key: string]: number;
   } | null;
-  careerStats: {
-    seasons: number;
-    [key: string]: number;
-  };
+  careerStats: PlayerSeasonStats[];
 }
 
 export interface AwardCandidate {

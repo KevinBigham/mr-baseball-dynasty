@@ -13,6 +13,10 @@ import { getEngine } from '../../engine/engineClient';
 import { saveGame } from '../../db/schema';
 import SaveManager from './SaveManager';
 import CompareModal from '../stats/CompareModal';
+import ErrorBoundary from './ErrorBoundary';
+import OfflineIndicator from './OfflineIndicator';
+import FiredScreen from '../dashboard/FiredScreen';
+import MobileNav from './MobileNav';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
@@ -26,7 +30,7 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
 
 export default function Shell() {
   const { activeTab, setActiveTab } = useUIStore();
-  const { season, userTeamId, isSimulating, simProgress, resetAll: resetGame } = useGameStore();
+  const { season, userTeamId, isSimulating, simProgress, gamePhase, resetAll: resetGame } = useGameStore();
   const { resetAll: resetLeague } = useLeagueStore();
   const [saveFlash, setSaveFlash] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
@@ -65,6 +69,14 @@ export default function Shell() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
+      {/* ── Skip to content (a11y) ────────────────────────────────── */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-orange-600 focus:text-black focus:px-4 focus:py-2 focus:text-xs focus:font-bold"
+      >
+        Skip to content
+      </a>
+
       {/* ── New Game Confirmation Modal ────────────────────────────── */}
       {showNewGameConfirm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -92,11 +104,11 @@ export default function Shell() {
       )}
 
       {/* ── Header bar ──────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-2 bg-black border-b border-gray-800 shrink-0">
-        <div className="flex items-center gap-4">
-          <span className="text-orange-500 font-bold text-sm tracking-widest">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-600 text-xs">⚾</span>
-          <span className="text-gray-500 text-xs">SEASON {season}</span>
+      <header className="flex items-center justify-between px-2 sm:px-4 py-2 bg-black border-b border-gray-800 shrink-0" role="banner">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <span className="text-orange-500 font-bold text-xs sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
+          <span className="text-gray-600 text-xs hidden sm:inline">⚾</span>
+          <span className="text-gray-500 text-xs hidden sm:inline">SEASON {season}</span>
         </div>
         {isSimulating && (
           <div className="flex items-center gap-2">
@@ -109,33 +121,40 @@ export default function Shell() {
             <span className="text-orange-400 text-xs animate-pulse">SIMULATING…</span>
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          <OfflineIndicator />
           {saveFlash && (
             <span className="text-green-400 text-xs font-bold tracking-wider animate-pulse">SAVED</span>
           )}
           <button
             onClick={handleSave}
-            className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-3 py-1 uppercase tracking-wider transition-colors"
+            className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            aria-label="Save game"
           >
             SAVE
           </button>
           <button
             onClick={() => setShowSaveManager(true)}
-            className="border border-gray-700 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-xs px-3 py-1 uppercase tracking-wider transition-colors"
+            className="border border-gray-700 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            aria-label="Load game"
           >
             LOAD
           </button>
           <button
             onClick={() => setShowNewGameConfirm(true)}
-            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-3 py-1 uppercase tracking-wider transition-colors"
+            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0 hidden sm:block"
+            aria-label="Start new game"
           >
             NEW GAME
           </button>
         </div>
       </header>
 
-      {/* ── Nav bar ─────────────────────────────────────────────────── */}
-      <nav className="flex border-b border-gray-800 bg-gray-950 shrink-0">
+      {/* ── Mobile Nav (hamburger) ─────────────────────────────────── */}
+      <MobileNav />
+
+      {/* ── Desktop Nav bar ─────────────────────────────────────────── */}
+      <nav className="hidden sm:flex border-b border-gray-800 bg-gray-950 shrink-0" role="navigation" aria-label="Main navigation">
         {NAV_TABS.map(tab => (
           <button
             key={tab.id}
@@ -146,6 +165,7 @@ export default function Shell() {
                 ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
                 : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
             ].join(' ')}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
           >
             {tab.label}
           </button>
@@ -153,8 +173,10 @@ export default function Shell() {
       </nav>
 
       {/* ── Main content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto">
-        {renderContent()}
+      <main id="main-content" className="flex-1 overflow-auto" role="main">
+        <ErrorBoundary partial>
+          {renderContent()}
+        </ErrorBoundary>
       </main>
 
       {/* ── Save/Load Manager Modal ────────────────────────────────── */}
@@ -164,6 +186,9 @@ export default function Shell() {
 
       {/* ── Player Comparison Modal ──────────────────────────────── */}
       <CompareModal />
+
+      {/* ── Fired Screen ──────────────────────────────────────────── */}
+      {gamePhase === 'fired' && <FiredScreen />}
     </div>
   );
 }

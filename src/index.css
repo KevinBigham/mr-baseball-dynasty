@@ -61,3 +61,22 @@
     @apply px-4 py-2 border border-orange-600 text-orange-400 hover:bg-orange-900/30 text-xs uppercase tracking-widest transition-colors;
   }
 }
+
+/* ── Focus-visible styles (a11y) ─────────────────────────────── */
+@layer base {
+  *:focus-visible {
+    outline: 2px solid #f97316;
+    outline-offset: 2px;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

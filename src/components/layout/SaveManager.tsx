@@ -5,14 +5,15 @@
  * Uses Dexie backend from db/schema.ts which is already fully implemented.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { listSaves, saveGame, loadGame, deleteSave, type SaveSlot } from '../../db/schema';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
+import { exportSave, importSave } from '../../utils/saveExport';
 
-type Tab = 'save' | 'load';
+type Tab = 'save' | 'load' | 'transfer';
 type SaveMeta = Omit<SaveSlot, 'stateBlob'>;
 
 function timeAgo(ts: number): string {
@@ -40,6 +41,10 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refreshSaves = useCallback(async () => {
     setLoading(true);
@@ -101,6 +106,42 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const engine = getEngine();
+      const state = await engine.getFullState();
+      if (state) {
+        await exportSave(state);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+    setExporting(false);
+  };
+
+  const handleImport = async (file: File) => {
+    setImporting(true);
+    setError(null);
+    setImportSuccess(false);
+    try {
+      const state = await importSave(file);
+      const engine = getEngine();
+      await engine.loadState(state);
+      setGameStarted(true);
+      setSeason(state.season ?? 1);
+      setUserTeamId(state.userTeamId ?? 1);
+      resetLeague();
+      setImportSuccess(true);
+      setActiveTab('dashboard');
+      setTimeout(() => onClose(), 1500);
+    } catch (e) {
+      setError(String(e));
+    }
+    setImporting(false);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
       <div className="bloomberg-border bg-gray-900 w-full max-w-lg max-h-[80vh] flex flex-col">
@@ -117,7 +158,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
 
         {/* Tabs */}
         <div className="flex border-b border-gray-800">
-          {(['save', 'load'] as Tab[]).map(t => (
+          {(['save', 'load', 'transfer'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -128,7 +169,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
                   : 'text-gray-500 hover:text-gray-300',
               ].join(' ')}
             >
-              {t === 'save' ? 'SAVE GAME' : 'LOAD GAME'}
+              {t === 'save' ? 'SAVE' : t === 'load' ? 'LOAD' : 'EXPORT/IMPORT'}
             </button>
           ))}
         </div>
@@ -254,6 +295,54 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
                   Click a save to load it. Narrative data (rivals, moments) will be reset.
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === 'transfer' && (
+            <div className="space-y-6">
+              {/* Export */}
+              <div className="space-y-3">
+                <div className="text-gray-500 text-xs font-bold tracking-wider">EXPORT</div>
+                <div className="text-gray-600 text-xs">
+                  Download your current game as a compressed .mrbd.gz file.
+                  Share it or keep it as a backup.
+                </div>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="w-full bg-blue-800 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-xs py-3 uppercase tracking-widest transition-colors"
+                >
+                  {exporting ? 'EXPORTING…' : 'EXPORT SAVE FILE'}
+                </button>
+              </div>
+
+              <div className="border-t border-gray-800" />
+
+              {/* Import */}
+              <div className="space-y-3">
+                <div className="text-gray-500 text-xs font-bold tracking-wider">IMPORT</div>
+                <div className="text-gray-600 text-xs">
+                  Load a .mrbd.gz save file from your computer. This will replace your current game.
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".gz,.mrbd.gz,.json"
+                  className="hidden"
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImport(file);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                  className="w-full border border-gray-600 hover:border-blue-500 text-gray-400 hover:text-blue-400 disabled:text-gray-700 font-bold text-xs py-3 uppercase tracking-widest transition-colors"
+                >
+                  {importing ? 'IMPORTING…' : importSuccess ? 'IMPORTED!' : 'CHOOSE FILE TO IMPORT'}
+                </button>
+              </div>
             </div>
           )}
         </div>
