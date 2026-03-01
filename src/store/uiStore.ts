@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type NavTab = 'dashboard' | 'standings' | 'roster' | 'stats' | 'profile';
+export type NavTab = 'dashboard' | 'standings' | 'roster' | 'stats' | 'profile' | 'finance';
 
 interface UIStore {
   activeTab: NavTab;

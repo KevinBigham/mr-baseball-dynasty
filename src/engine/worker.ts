@@ -510,6 +510,25 @@ const api = {
     return result;
   },
 
+  // ── League / Team Info ───────────────────────────────────────────────────
+  async getLeagueTeams(): Promise<Array<{
+    teamId: number; name: string; abbreviation: string;
+    league: string; division: string; budget: number;
+    wins: number; losses: number;
+  }>> {
+    const state = requireState();
+    return state.teams.map(t => ({
+      teamId: t.teamId,
+      name: t.name,
+      abbreviation: t.abbreviation,
+      league: t.league,
+      division: t.division,
+      budget: t.budget,
+      wins: t.seasonRecord.wins,
+      losses: t.seasonRecord.losses,
+    }));
+  },
+
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
     return _state;

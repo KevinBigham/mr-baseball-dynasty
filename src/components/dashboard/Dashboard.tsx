@@ -25,6 +25,7 @@ import DevGradeCard      from './DevGradeCard';
 import StaffPoachModal   from './StaffPoachModal';
 import ReputationCard    from './ReputationCard';
 import StoryboardPanel   from './StoryboardPanel';
+import PreseasonPanel   from './PreseasonPanel';
 import MomentsPanel      from './MomentsPanel';
 import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
 import type { PressContext } from '../../data/pressConference';
@@ -428,6 +429,9 @@ export default function Dashboard() {
             )}
             phase="pre"
           />
+
+          {/* Preseason roster panel */}
+          <PreseasonPanel />
 
           {/* Opening Day card */}
           <div className="bloomberg-border bg-gray-900 px-4 py-3 flex items-center justify-between">
