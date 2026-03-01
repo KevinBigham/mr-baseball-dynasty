@@ -11,6 +11,8 @@ import FinanceView from '../stats/FinanceView';
 import HistoryView from '../stats/HistoryView';
 import { getEngine } from '../../engine/engineClient';
 import { saveGame } from '../../db/schema';
+import SaveManager from './SaveManager';
+import CompareModal from '../stats/CompareModal';
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
@@ -28,6 +30,7 @@ export default function Shell() {
   const { resetAll: resetLeague } = useLeagueStore();
   const [saveFlash, setSaveFlash] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [showSaveManager, setShowSaveManager] = useState(false);
 
   const handleSave = useCallback(async () => {
     try {
@@ -117,14 +120,17 @@ export default function Shell() {
             SAVE
           </button>
           <button
+            onClick={() => setShowSaveManager(true)}
+            className="border border-gray-700 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-xs px-3 py-1 uppercase tracking-wider transition-colors"
+          >
+            LOAD
+          </button>
+          <button
             onClick={() => setShowNewGameConfirm(true)}
             className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-3 py-1 uppercase tracking-wider transition-colors"
           >
             NEW GAME
           </button>
-          <span className="text-gray-600 text-xs hidden sm:block">
-            v0.1 — ENGINE PROOF
-          </span>
         </div>
       </header>
 
@@ -150,6 +156,14 @@ export default function Shell() {
       <main className="flex-1 overflow-auto">
         {renderContent()}
       </main>
+
+      {/* ── Save/Load Manager Modal ────────────────────────────────── */}
+      {showSaveManager && (
+        <SaveManager onClose={() => setShowSaveManager(false)} />
+      )}
+
+      {/* ── Player Comparison Modal ──────────────────────────────── */}
+      <CompareModal />
     </div>
   );
 }

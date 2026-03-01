@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
-import type { PlayerProfileData } from '../../types/league';
+import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
+import type { PlayerProfileData, RosterPlayer } from '../../types/league';
 
 // ─── Scouting grade box ───────────────────────────────────────────────────────
 
@@ -64,10 +65,8 @@ function ServiceBar({ days }: { days: number }) {
         <span className={`text-xs font-bold ${statusColor}`}>{status}</span>
       </div>
       <div className="relative w-full h-3 bg-gray-800 rounded overflow-hidden mb-1">
-        {/* FA eligibility track */}
         <div className="absolute h-full bg-gray-700 w-full" />
         <div className="absolute h-full bg-orange-600 transition-all" style={{ width: `${faPct}%` }} />
-        {/* Arb line at 50% */}
         <div className="absolute top-0 h-full w-px bg-yellow-400/50" style={{ left: '50%' }} />
       </div>
       <div className="flex justify-between text-gray-700 text-xs">
@@ -97,31 +96,345 @@ function StatGrid({ stats }: { stats: Array<{ label: string; value: string | num
   );
 }
 
-// ─── Development phase badge ──────────────────────────────────────────────────
+// ─── Development Phase Timeline ──────────────────────────────────────────────
 
-function PhaseBadge({ age, overall, potential }: { age: number; overall: number; potential: number }) {
-  let phase: string;
-  let color: string;
+const PHASES = [
+  { id: 'prospect',  label: 'PROSPECT',  color: '#a78bfa', ages: '≤22' },
+  { id: 'ascending', label: 'ASCENDING', color: '#60a5fa', ages: '23-26' },
+  { id: 'prime',     label: 'PRIME',     color: '#4ade80', ages: '27-30' },
+  { id: 'veteran',   label: 'VETERAN',   color: '#fbbf24', ages: '31-34' },
+  { id: 'declining', label: 'DECLINING', color: '#6b7280', ages: '35+' },
+];
 
+function detectPhase(age: number, overall: number, potential: number): string {
   const gap = potential - overall;
-  if (age <= 22)        { phase = 'PROSPECT';  color = 'text-purple-400 border-purple-700'; }
-  else if (age <= 26 && gap > 30) { phase = 'ASCENDING'; color = 'text-blue-400 border-blue-700'; }
-  else if (age <= 30)  { phase = 'PRIME';     color = 'text-green-400 border-green-700'; }
-  else if (age <= 34)  { phase = 'VETERAN';   color = 'text-yellow-400 border-yellow-700'; }
-  else                 { phase = 'DECLINING'; color = 'text-gray-500 border-gray-700'; }
+  if (age <= 22)       return 'prospect';
+  if (age <= 26 && gap > 30) return 'ascending';
+  if (age <= 30)       return 'prime';
+  if (age <= 34)       return 'veteran';
+  return 'declining';
+}
+
+function PhaseTimeline({ age, overall, potential }: { age: number; overall: number; potential: number }) {
+  const current = detectPhase(age, overall, potential);
+  const currentIdx = PHASES.findIndex(p => p.id === current);
 
   return (
-    <span className={`border text-xs px-2 py-0.5 font-bold tracking-widest ${color}`}>
-      {phase}
-    </span>
+    <div className="bloomberg-border">
+      <div className="bloomberg-header">DEVELOPMENT ARC</div>
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-1">
+          {PHASES.map((phase, i) => {
+            const isActive = phase.id === current;
+            const isPast = i < currentIdx;
+            return (
+              <div key={phase.id} className="flex-1 flex flex-col items-center">
+                {/* Dot */}
+                <div className="flex items-center w-full">
+                  {i > 0 && (
+                    <div
+                      className="flex-1 h-0.5"
+                      style={{ background: isPast || isActive ? phase.color : '#374151' }}
+                    />
+                  )}
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0 transition-all"
+                    style={{
+                      background: isActive ? phase.color : isPast ? phase.color : '#1f2937',
+                      border: `2px solid ${isActive || isPast ? phase.color : '#374151'}`,
+                      boxShadow: isActive ? `0 0 8px ${phase.color}60` : undefined,
+                    }}
+                  />
+                  {i < PHASES.length - 1 && (
+                    <div
+                      className="flex-1 h-0.5"
+                      style={{ background: isPast ? PHASES[i + 1].color : '#374151' }}
+                    />
+                  )}
+                </div>
+                {/* Label */}
+                <div
+                  className="text-center mt-1.5"
+                  style={{ opacity: isActive ? 1 : isPast ? 0.5 : 0.3 }}
+                >
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: isActive ? phase.color : '#9ca3af', fontSize: isActive ? 11 : 9 }}
+                  >
+                    {phase.label}
+                  </div>
+                  <div className="text-gray-700" style={{ fontSize: 9 }}>{phase.ages}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trade Value Meter ──────────────────────────────────────────────────────
+
+function TradeValueMeter({ value }: { value: number }) {
+  const { label, color } =
+    value >= 80 ? { label: 'ELITE ASSET',     color: '#fbbf24' } :
+    value >= 60 ? { label: 'PREMIUM',          color: '#4ade80' } :
+    value >= 40 ? { label: 'SOLID VALUE',      color: '#60a5fa' } :
+    value >= 20 ? { label: 'ROLE PLAYER',      color: '#fb923c' } :
+                  { label: 'MINIMAL',          color: '#6b7280' };
+
+  return (
+    <div className="bloomberg-border">
+      <div className="bloomberg-header">TRADE VALUE</div>
+      <div className="px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold" style={{ color }}>{label}</span>
+          <span className="font-black text-lg tabular-nums" style={{ color }}>
+            {value}<span className="text-gray-600 font-normal text-xs">/100</span>
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${value}%`, background: color }}
+          />
+        </div>
+        <div className="text-gray-700 text-xs">
+          Based on overall, potential, age, and contract value
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Trait Badges ────────────────────────────────────────────────────────────
+
+function TraitBadges({ traits }: { traits: PlayerTrait[] }) {
+  if (traits.length === 0) return null;
+  return (
+    <div className="bloomberg-border">
+      <div className="bloomberg-header">DEVELOPMENT TRAITS</div>
+      <div className="px-4 py-3 space-y-2">
+        {traits.map(t => (
+          <div
+            key={t.id}
+            className="rounded-lg px-3 py-2"
+            style={{
+              background: `${t.color}08`,
+              border: `1px solid ${t.color}30`,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">{t.emoji}</span>
+              <span className="text-xs font-bold" style={{ color: t.color }}>{t.label}</span>
+            </div>
+            <div className="text-gray-500 text-xs mt-1 leading-relaxed">{t.desc}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Contract Extension Panel ────────────────────────────────────────────────
+
+function ExtensionPanel({ player, onExtended }: {
+  player: PlayerProfileData['player'];
+  onExtended: () => void;
+}) {
+  const serviceYears = Math.floor(player.serviceTimeDays / 172);
+
+  const [years, setYears] = useState(3);
+  const [salary, setSalary] = useState(player.salary);
+  const [result, setResult] = useState<{ accepted: boolean; counterYears?: number; counterSalary?: number } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const minSalary = Math.round(player.salary * 0.5);
+  const maxSalary = Math.round(player.salary * 3);
+  const maxYears = Math.min(8, Math.max(1, 42 - player.age));
+  const totalValue = years * salary;
+
+  // Acceptance estimate (mirrors the engine formula but is just a UI hint)
+  const estimatedProb = (() => {
+    let prob = serviceYears < 3 ? 70 : 55;
+    if (salary >= player.salary * 1.2) prob += 15;
+    if (years > 2) prob += Math.min(20, (years - 2) * 10);
+    if (salary < player.salary) prob -= 20;
+    if (player.age <= 25) prob -= 10;
+    return Math.max(5, Math.min(95, prob));
+  })();
+
+  const probColor = estimatedProb >= 70 ? '#4ade80' : estimatedProb >= 40 ? '#fbbf24' : '#ef4444';
+
+  const handleOffer = useCallback(async () => {
+    setSubmitting(true);
+    try {
+      const engine = getEngine();
+      const res = await engine.offerExtension(player.playerId, years, salary);
+      setResult(res);
+      if (res.accepted) onExtended();
+    } catch { /* silent */ }
+    setSubmitting(false);
+  }, [player.playerId, years, salary, onExtended]);
+
+  const handleAcceptCounter = useCallback(async () => {
+    if (!result?.counterYears || !result?.counterSalary) return;
+    setSubmitting(true);
+    try {
+      const engine = getEngine();
+      const res = await engine.acceptCounterOffer(player.playerId, result.counterYears, result.counterSalary);
+      if (res.ok) {
+        setResult({ accepted: true });
+        onExtended();
+      }
+    } catch { /* silent */ }
+    setSubmitting(false);
+  }, [player.playerId, result, onExtended]);
+
+  // Not eligible for extension
+  if (serviceYears >= 6) return null;
+
+  return (
+    <div className="bloomberg-border">
+      <div className="bloomberg-header">CONTRACT EXTENSION</div>
+      <div className="px-4 py-3 space-y-3">
+        {!result && (
+          <>
+            <div className="text-gray-500 text-xs">
+              {serviceYears < 3 ? 'Pre-arbitration' : `Arbitration year ${Math.min(serviceYears - 2, 3)}`} — eligible for extension
+            </div>
+
+            {/* Years slider */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-600">YEARS</span>
+                <span className="text-orange-400 font-bold">{years}</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={maxYears}
+                value={years}
+                onChange={e => setYears(Number(e.target.value))}
+                className="w-full accent-orange-500"
+              />
+              <div className="flex justify-between text-gray-700 text-xs">
+                <span>1</span>
+                <span>{maxYears}</span>
+              </div>
+            </div>
+
+            {/* Salary slider */}
+            <div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-600">ANNUAL SALARY</span>
+                <span className="text-orange-400 font-bold">${(salary / 1_000_000).toFixed(1)}M</span>
+              </div>
+              <input
+                type="range"
+                min={minSalary}
+                max={maxSalary}
+                step={100000}
+                value={salary}
+                onChange={e => setSalary(Number(e.target.value))}
+                className="w-full accent-orange-500"
+              />
+              <div className="flex justify-between text-gray-700 text-xs">
+                <span>${(minSalary / 1_000_000).toFixed(1)}M</span>
+                <span>${(maxSalary / 1_000_000).toFixed(1)}M</span>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div className="rounded px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Total value</span>
+                <span className="text-gray-200 font-bold">${(totalValue / 1_000_000).toFixed(1)}M / {years}yr</span>
+              </div>
+              <div className="flex justify-between text-xs mt-1">
+                <span className="text-gray-500">Current salary</span>
+                <span className="text-gray-400">${(player.salary / 1_000_000).toFixed(1)}M/yr</span>
+              </div>
+            </div>
+
+            {/* Acceptance probability */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-600">ACCEPTANCE PROBABILITY</span>
+                <span className="font-bold" style={{ color: probColor }}>{estimatedProb}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${estimatedProb}%`, background: probColor }}
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleOffer}
+              disabled={submitting}
+              className="w-full bg-orange-700 hover:bg-orange-600 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-xs py-3 uppercase tracking-widest transition-colors"
+            >
+              {submitting ? 'OFFERING…' : 'OFFER EXTENSION'}
+            </button>
+          </>
+        )}
+
+        {/* Result */}
+        {result?.accepted && (
+          <div className="text-center py-4">
+            <div className="text-green-400 text-2xl mb-1">✓</div>
+            <div className="text-green-400 font-bold text-sm">EXTENSION ACCEPTED!</div>
+            <div className="text-gray-500 text-xs mt-1">
+              {years}yr / ${(salary / 1_000_000).toFixed(1)}M per year
+            </div>
+          </div>
+        )}
+
+        {result && !result.accepted && result.counterYears && result.counterSalary && (
+          <div className="space-y-3">
+            <div className="text-center py-2">
+              <div className="text-red-400 font-bold text-sm mb-1">EXTENSION REJECTED</div>
+              <div className="text-gray-500 text-xs">But a counter-offer was received:</div>
+            </div>
+            <div className="rounded px-3 py-2" style={{ background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.25)' }}>
+              <div className="text-yellow-400 font-bold text-xs mb-1">COUNTER-OFFER</div>
+              <div className="text-gray-200 text-sm font-bold">
+                {result.counterYears}yr / ${(result.counterSalary / 1_000_000).toFixed(1)}M per year
+              </div>
+              <div className="text-gray-500 text-xs">
+                Total: ${(result.counterYears * result.counterSalary / 1_000_000).toFixed(1)}M
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAcceptCounter}
+                disabled={submitting}
+                className="flex-1 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white font-bold text-xs py-2 uppercase tracking-widest"
+              >
+                ACCEPT
+              </button>
+              <button
+                onClick={() => setResult(null)}
+                className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-2 uppercase tracking-widest"
+              >
+                DECLINE
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function PlayerProfile() {
-  const { selectedPlayerId, setActiveTab } = useUIStore();
-  const { gameStarted } = useGameStore();
+  const { selectedPlayerId, setActiveTab, setComparePlayerIds } = useUIStore();
+  const { gameStarted, userTeamId } = useGameStore();
   const [data, setData] = useState<PlayerProfileData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +460,7 @@ export default function PlayerProfile() {
   if (!data)   return null;
 
   const { player, seasonStats } = data;
-  const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
+  const isPitcher = player.isPitcher;
   const s = seasonStats as Record<string, number> | null;
 
   // Compute derived stats
@@ -170,21 +483,57 @@ export default function PlayerProfile() {
     return { label: 'FA Eligible', color: 'text-red-400' };
   })();
 
+  // Compute traits client-side using RosterPlayer shape
+  const fakeRosterPlayer: RosterPlayer = {
+    playerId: player.playerId,
+    name: player.name,
+    position: player.position,
+    age: player.age,
+    bats: player.bats,
+    throws: player.throws,
+    isPitcher,
+    overall: player.overall,
+    potential: player.potential,
+    rosterStatus: player.rosterStatus,
+    isOn40Man: true,
+    optionYearsRemaining: player.optionYearsRemaining,
+    serviceTimeDays: player.serviceTimeDays,
+    salary: player.salary,
+    contractYearsRemaining: player.contractYearsRemaining,
+    stats: {},
+  };
+  const traits = assignTraits(fakeRosterPlayer);
+
+  const isUserTeam = player.teamId === userTeamId;
+
   return (
     <div className="p-4 max-w-4xl space-y-4">
-      <button
-        onClick={() => setActiveTab('roster')}
-        className="text-gray-500 hover:text-orange-400 text-xs transition-colors"
-      >
-        ← BACK TO ROSTER
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setActiveTab('roster')}
+          className="text-gray-500 hover:text-orange-400 text-xs transition-colors"
+        >
+          ← BACK TO ROSTER
+        </button>
+        <button
+          onClick={() => setComparePlayerIds([player.playerId, 0])}
+          className="text-gray-600 hover:text-orange-400 text-xs transition-colors border border-gray-800 hover:border-orange-700 px-2 py-0.5"
+        >
+          COMPARE
+        </button>
+      </div>
 
       {/* ── Identity header ──────────────────────────────────────────────── */}
       <div className="bloomberg-border">
         <div className="bloomberg-header flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span>{player.name}</span>
-            <PhaseBadge age={player.age} overall={player.overall} potential={player.potential} />
+            <span
+              className="text-xs font-bold px-1.5 py-0.5 rounded"
+              style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', border: '1px solid rgba(249,115,22,0.3)' }}
+            >
+              {player.teamAbbr}
+            </span>
           </div>
           <span className="text-gray-500 font-normal text-xs">
             {player.position} · {player.bats}/{player.throws} · AGE {player.age}
@@ -219,6 +568,41 @@ export default function PlayerProfile() {
           </div>
         </div>
       </div>
+
+      {/* ── Development Arc + Trade Value ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <PhaseTimeline age={player.age} overall={player.overall} potential={player.potential} />
+        {isUserTeam && <TradeValueMeter value={player.tradeValue} />}
+        {!isUserTeam && (
+          <div className="bloomberg-border">
+            <div className="bloomberg-header">TEAM</div>
+            <div className="px-4 py-3">
+              <div className="text-orange-400 font-bold">{player.teamAbbr}</div>
+              <div className="text-gray-600 text-xs mt-1">
+                This player is not on your team
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Traits ─────────────────────────────────────────────────────────── */}
+      <TraitBadges traits={traits} />
+
+      {/* ── Contract Extension ────────────────────────────────────────────── */}
+      {isUserTeam && (
+        <ExtensionPanel
+          player={player}
+          onExtended={() => {
+            // Reload player profile to reflect updated contract
+            if (selectedPlayerId) {
+              getEngine().getPlayerProfile(selectedPlayerId)
+                .then(setData)
+                .catch(() => {});
+            }
+          }}
+        />
+      )}
 
       {/* ── Scouting grades + attribute bars ─────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

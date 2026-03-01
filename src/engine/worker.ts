@@ -1,11 +1,11 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
-import type { Player } from '../types/player';
+import type { Player, PlayerSeasonStats } from '../types/player';
 import type { Team } from '../types/team';
 import type {
   LeagueState, SeasonResult, StandingsData, RosterData,
   LeaderboardEntry, PlayerProfileData, RosterPlayer, StandingsRow,
-  LeaderboardFullEntry, LeaderboardFullOptions,
+  LeaderboardFullEntry, LeaderboardFullOptions, AwardCandidate,
 } from '../types/league';
 import type { ScheduleEntry } from '../types/game';
 import type { RosterStatus } from '../types/player';
@@ -380,6 +380,9 @@ const api = {
       ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
     } : null;
 
+    const team = state.teams.find(t => t.teamId === player.teamId);
+    const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
+
     return {
       player: {
         playerId: player.playerId,
@@ -395,6 +398,11 @@ const api = {
         serviceTimeDays: player.rosterData.serviceTimeDays,
         salary: player.rosterData.salary,
         contractYearsRemaining: player.rosterData.contractYearsRemaining,
+        isPitcher,
+        teamId: player.teamId,
+        teamAbbr: team?.abbreviation ?? '---',
+        optionYearsRemaining: player.rosterData.optionYearsRemaining,
+        tradeValue: evaluatePlayer(player),
       },
       seasonStats,
       careerStats: { seasons: 1, ...(seasonStats ?? {}) },
@@ -673,6 +681,176 @@ const api = {
       wins: t.seasonRecord.wins,
       losses: t.seasonRecord.losses,
     }));
+  },
+
+  // ── Award Race ────────────────────────────────────────────────────────────
+  async getAwardRace(): Promise<{
+    mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
+    cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
+    roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
+  }> {
+    const state = requireState();
+
+    function computeHitterStats(s: PlayerSeasonStats) {
+      const avg = s.ab > 0 ? s.h / s.ab : 0;
+      const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
+      const slg = s.ab > 0
+        ? (s.h - s.doubles - s.triples - s.hr + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab : 0;
+      const ops = obp + slg;
+      return { avg, obp, slg, ops, hr: s.hr, rbi: s.rbi, pa: s.pa };
+    }
+
+    function computePitcherStats(s: PlayerSeasonStats) {
+      const ip = s.outs / 3;
+      const era = s.outs > 0 ? (s.er / s.outs) * 27 : 99;
+      const k9 = ip > 0 ? (s.ka / ip) * 9 : 0;
+      const whip = ip > 0 ? (s.bba + s.ha) / ip : 99;
+      return { w: s.w, l: s.l, era, ip, k9, whip, sv: s.sv, ka: s.ka };
+    }
+
+    function mvpScore(s: PlayerSeasonStats): number {
+      if (s.pa < 300) return -Infinity;
+      const { ops, hr, rbi, avg } = computeHitterStats(s);
+      return ops * 80 + hr * 0.25 + rbi * 0.08 + avg * 10;
+    }
+
+    function cyScore(s: PlayerSeasonStats): number {
+      if (s.outs < 45) return -Infinity;
+      const { era, k9, whip, ip, w } = computePitcherStats(s);
+      return -era * 6 + w * 2.5 + k9 * 1.5 - whip * 8 + ip * 0.04;
+    }
+
+    function royScore(p: Player, s: PlayerSeasonStats): number {
+      if (p.rosterData.serviceTimeDays > 130) return -Infinity;
+      if (p.isPitcher) {
+        if (s.outs < 30) return -Infinity;
+        const { era, whip, ip, w } = computePitcherStats(s);
+        return -era * 5 + w * 2 - whip * 7 + ip * 0.03;
+      }
+      if (s.pa < 100) return -Infinity;
+      const { obp, slg, hr, avg } = computeHitterStats(s);
+      return (obp + slg) * 60 + hr * 0.20 + avg * 8;
+    }
+
+    const teamMap = new Map(state.teams.map(t => [t.teamId, t]));
+
+    function buildCandidates(
+      players: Player[],
+      scoreFn: (p: Player, s: PlayerSeasonStats) => number,
+      filter?: (p: Player) => boolean,
+    ): AwardCandidate[] {
+      const scored: Array<{ p: Player; s: PlayerSeasonStats; score: number }> = [];
+      for (const p of players) {
+        if (filter && !filter(p)) continue;
+        const s = _playerSeasonStats.get(p.playerId);
+        if (!s) continue;
+        const score = scoreFn(p, s);
+        if (!isFinite(score)) continue;
+        scored.push({ p, s, score });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored.slice(0, 5).map(({ p, s, score }) => {
+        const team = teamMap.get(p.teamId);
+        const stats: Record<string, number> = {};
+        if (p.isPitcher) {
+          const ps = computePitcherStats(s);
+          Object.assign(stats, { w: ps.w, l: ps.l, era: Number(ps.era.toFixed(2)), ip: Number(ps.ip.toFixed(1)), k9: Number(ps.k9.toFixed(1)), whip: Number(ps.whip.toFixed(2)), sv: ps.sv, k: ps.ka });
+        } else {
+          const hs = computeHitterStats(s);
+          Object.assign(stats, { avg: Number(hs.avg.toFixed(3)), obp: Number(hs.obp.toFixed(3)), slg: Number(hs.slg.toFixed(3)), ops: Number(hs.ops.toFixed(3)), hr: hs.hr, rbi: hs.rbi });
+        }
+        return {
+          playerId: p.playerId,
+          name: p.name,
+          teamAbbr: team?.abbreviation ?? '---',
+          teamId: p.teamId,
+          position: p.position,
+          age: p.age,
+          isPitcher: p.isPitcher,
+          score: Math.round(score * 100) / 100,
+          stats,
+        };
+      });
+    }
+
+    const alPlayers = state.players.filter(p => teamMap.get(p.teamId)?.league === 'AL');
+    const nlPlayers = state.players.filter(p => teamMap.get(p.teamId)?.league === 'NL');
+
+    return {
+      mvp: {
+        al: buildCandidates(alPlayers, (_p, s) => mvpScore(s), p => !p.isPitcher),
+        nl: buildCandidates(nlPlayers, (_p, s) => mvpScore(s), p => !p.isPitcher),
+      },
+      cyYoung: {
+        al: buildCandidates(alPlayers, (_p, s) => cyScore(s), p => p.isPitcher),
+        nl: buildCandidates(nlPlayers, (_p, s) => cyScore(s), p => p.isPitcher),
+      },
+      roy: {
+        al: buildCandidates(alPlayers, (p, s) => royScore(p, s)),
+        nl: buildCandidates(nlPlayers, (p, s) => royScore(p, s)),
+      },
+    };
+  },
+
+  // ── Contract Extensions ──────────────────────────────────────────────────
+  async offerExtension(
+    playerId: number,
+    years: number,
+    annualSalary: number,
+  ): Promise<{ accepted: boolean; counterYears?: number; counterSalary?: number }> {
+    const state = requireState();
+    const player = state.players.find(p => p.playerId === playerId);
+    if (!player) return { accepted: false };
+
+    // Must be on the user's team — but we don't know user's team here,
+    // so we just validate the player exists and has < 6 years service
+    const serviceYears = Math.floor(player.rosterData.serviceTimeDays / 172);
+    if (serviceYears >= 6) return { accepted: false }; // Already FA eligible
+
+    const currentSalary = player.rosterData.salary;
+
+    // Acceptance probability
+    let prob = serviceYears < 3 ? 70 : 55; // Pre-arb vs arb-eligible base
+    if (annualSalary >= currentSalary * 1.2) prob += 15;
+    if (years > 2) prob += Math.min(20, (years - 2) * 10);
+    if (annualSalary < currentSalary) prob -= 20;
+    if (player.age <= 25) prob -= 10; // Wants to test FA
+
+    // Clamp
+    prob = Math.max(5, Math.min(95, prob));
+
+    // Deterministic "random" from playerId + years + salary
+    const seed = (playerId * 7919 + years * 31 + Math.round(annualSalary / 10000)) % 100;
+    const accepted = seed < prob;
+
+    if (accepted) {
+      // Apply the extension
+      player.rosterData.contractYearsRemaining = years;
+      player.rosterData.salary = annualSalary;
+      return { accepted: true };
+    }
+
+    // Counter-offer: 10% above what was offered, same years
+    const counterSalary = Math.round(annualSalary * 1.10);
+    return {
+      accepted: false,
+      counterYears: years,
+      counterSalary,
+    };
+  },
+
+  // ── Accept Counter-Offer ────────────────────────────────────────────────
+  async acceptCounterOffer(
+    playerId: number,
+    years: number,
+    annualSalary: number,
+  ): Promise<{ ok: boolean }> {
+    const state = requireState();
+    const player = state.players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false };
+    player.rosterData.contractYearsRemaining = years;
+    player.rosterData.salary = annualSalary;
+    return { ok: true };
   },
 
   // ── Save / Load ────────────────────────────────────────────────────────────

@@ -6,10 +6,11 @@ import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import DepthChart from './DepthChart';
+import ProspectPipeline from './ProspectPipeline';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
-type ViewMode = 'table' | 'depth';
+type ViewMode = 'table' | 'depth' | 'pipeline';
 
 interface FullRosterData {
   teamId: number;
@@ -552,6 +553,12 @@ export default function RosterView() {
           >
             DEPTH CHART
           </button>
+          <button
+            onClick={() => setViewMode('pipeline')}
+            className={`text-xs px-2 py-1 transition-colors ${viewMode === 'pipeline' ? 'text-orange-400 bg-orange-900/30' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            PIPELINE
+          </button>
         </div>
       </div>
 
@@ -571,7 +578,19 @@ export default function RosterView() {
         </div>
       )}
 
-      {viewMode === 'depth' ? (
+      {viewMode === 'pipeline' ? (
+        <ProspectPipeline
+          players={[
+            ...(fullRoster?.active ?? []),
+            ...(fullRoster?.aaa ?? []),
+            ...(fullRoster?.aa ?? []),
+            ...(fullRoster?.aPlus ?? []),
+            ...(fullRoster?.aMinus ?? []),
+            ...(fullRoster?.rookie ?? []),
+            ...(fullRoster?.intl ?? []),
+          ]}
+        />
+      ) : viewMode === 'depth' ? (
         <DepthChart
           players={[...(fullRoster?.active ?? []), ...(fullRoster?.il ?? [])]}
           onClickPlayer={(id) => {

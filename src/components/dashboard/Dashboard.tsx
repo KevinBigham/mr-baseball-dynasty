@@ -36,7 +36,9 @@ import TradeCenter from '../offseason/TradeCenter';
 import OffseasonSummary, { type UserTransaction } from '../offseason/OffseasonSummary';
 import type { AISigningRecord } from '../../engine/freeAgency';
 import PlayoffBracketView from './PlayoffBracket';
+import AwardRacePanel from './AwardRacePanel';
 import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
+import type { AwardCandidate } from '../../types/league';
 import { saveGame } from '../../db/schema';
 
 function extractUserAwards(result: SeasonResult, userTeamId: number): string[] {
@@ -149,6 +151,11 @@ export default function Dashboard() {
   const [offseasonTxLog,   setOffseasonTxLog]   = useState<UserTransaction[]>([]);
   const [showOffseasonSummary, setShowOffseasonSummary] = useState(false);
   const [aiSigningDetails, setAiSigningDetails]  = useState<AISigningRecord[]>([]);
+  const [awardRaceData,    setAwardRaceData]     = useState<{
+    mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
+    cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
+    roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
+  } | null>(null);
 
   // ── Set owner archetype on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -178,14 +185,16 @@ export default function Dashboard() {
       setSeason(result.season + 1);
       setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
 
-      const [standings, hrLeaders, bracket] = await Promise.all([
+      const [standings, hrLeaders, bracket, awardRace] = await Promise.all([
         engine.getStandings(),
         engine.getLeaderboard('hr', 10),
         engine.simulatePlayoffs(),
+        engine.getAwardRace(),
       ]);
       setStandings(standings);
       setLeaderboard(hrLeaders);
       setPlayoffBracket(bracket);
+      setAwardRaceData(awardRace);
       setSimProgress(1);
 
       // ── Resolve MFSN predictions ───────────────────────────────────────────
@@ -345,6 +354,7 @@ export default function Dashboard() {
     setGamePhase('preseason');
     setLastResult(null);
     setPlayoffBracket(null);
+    setAwardRaceData(null);
     setShowOffseasonSummary(false);
     setOffseasonTxLog([]);
     setAiSigningDetails([]);
@@ -558,6 +568,15 @@ export default function Dashboard() {
 
           {/* Season highlights */}
           <SeasonHighlights result={lastResult} userTeamId={userTeamId} />
+
+          {/* Award Race tracker */}
+          {awardRaceData && (
+            <AwardRacePanel
+              data={awardRaceData}
+              userTeamId={userTeamId}
+              userLeague={userTeamId <= 15 ? 'AL' : 'NL'}
+            />
+          )}
 
           <div className="grid grid-cols-4 gap-3">
             {[

@@ -142,6 +142,11 @@ export interface PlayerProfileData {
     serviceTimeDays: number;
     salary: number;
     contractYearsRemaining: number;
+    isPitcher: boolean;
+    teamId: number;
+    teamAbbr: string;
+    optionYearsRemaining: number;
+    tradeValue: number;         // 0–100 from evaluatePlayer()
   };
   seasonStats: {
     season: number;
@@ -152,4 +157,16 @@ export interface PlayerProfileData {
     seasons: number;
     [key: string]: number;
   };
+}
+
+export interface AwardCandidate {
+  playerId:  number;
+  name:      string;
+  teamAbbr:  string;
+  teamId:    number;
+  position:  string;
+  age:       number;
+  isPitcher: boolean;
+  score:     number;
+  stats:     Record<string, number>;
 }

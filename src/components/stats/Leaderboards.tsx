@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
@@ -52,27 +52,69 @@ const PITCHING_COLS: ColDef[] = [
 const HITTING_POSITIONS = ['ALL', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
 const PITCHING_POSITIONS = ['ALL', 'SP', 'RP', 'CL'];
 
+// Stats where lower is better (ascending sort is "best")
+const ASC_STATS = new Set(['era', 'whip', 'bb9', 'bb', 'l', 'k', 'hra', 'h']);
+
+// Elite stat thresholds — values that deserve gold highlighting
+const ELITE_HITTING: Record<string, (v: number) => boolean> = {
+  avg:  v => v >= 0.300,
+  obp:  v => v >= 0.380,
+  slg:  v => v >= 0.520,
+  ops:  v => v >= 0.900,
+  hr:   v => v >= 35,
+  rbi:  v => v >= 100,
+  r:    v => v >= 100,
+  h:    v => v >= 180,
+  sb:   v => v >= 30,
+};
+
+const ELITE_PITCHING: Record<string, (v: number) => boolean> = {
+  era:  v => v <= 3.00 && v > 0,
+  whip: v => v <= 1.10 && v > 0,
+  k9:   v => v >= 10.0,
+  w:    v => v >= 16,
+  sv:   v => v >= 30,
+  k:    v => v >= 200,
+  bb9:  v => v <= 2.00 && v > 0,
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Leaderboards() {
   const { leaderboardFull, setLeaderboardFull } = useLeagueStore();
   const { setSelectedPlayer, setActiveTab, leaderboardCategory, setLeaderboardCategory } = useUIStore();
-  const { gameStarted } = useGameStore();
+  const { gameStarted, userTeamId } = useGameStore();
 
   const [sortBy, setSortBy] = useState('hr');
+  const [sortAsc, setSortAsc] = useState(false);
   const [posFilter, setPosFilter] = useState('ALL');
   const [qualified, setQualified] = useState(true);
+  const [myTeamOnly, setMyTeamOnly] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const cols = leaderboardCategory === 'hitting' ? HITTING_COLS : PITCHING_COLS;
   const positions = leaderboardCategory === 'hitting' ? HITTING_POSITIONS : PITCHING_POSITIONS;
+  const eliteMap = leaderboardCategory === 'hitting' ? ELITE_HITTING : ELITE_PITCHING;
 
   // Reset sortBy and posFilter when switching category
   const switchCategory = useCallback((cat: 'hitting' | 'pitching') => {
     setLeaderboardCategory(cat);
-    setSortBy(cat === 'hitting' ? 'hr' : 'era');
+    const defaultSort = cat === 'hitting' ? 'hr' : 'era';
+    setSortBy(defaultSort);
+    setSortAsc(ASC_STATS.has(defaultSort));
     setPosFilter('ALL');
+    setMyTeamOnly(false);
   }, [setLeaderboardCategory]);
+
+  // Clicking a column header: if same column → toggle direction; if new column → auto-pick direction
+  const handleSort = useCallback((key: string) => {
+    if (key === sortBy) {
+      setSortAsc(a => !a);
+    } else {
+      setSortBy(key);
+      setSortAsc(ASC_STATS.has(key));
+    }
+  }, [sortBy]);
 
   useEffect(() => {
     if (!gameStarted) return;
@@ -88,6 +130,19 @@ export default function Leaderboards() {
       .then(setLeaderboardFull)
       .finally(() => setLoading(false));
   }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull]);
+
+  // Client-side filter for My Team + re-sort for direction
+  const displayed = useMemo(() => {
+    let rows = leaderboardFull;
+    if (myTeamOnly) {
+      rows = rows.filter(e => e.teamId === userTeamId);
+    }
+    // The server always returns descending. If we want ascending, reverse.
+    if (sortAsc) {
+      rows = [...rows].reverse();
+    }
+    return rows;
+  }, [leaderboardFull, myTeamOnly, userTeamId, sortAsc]);
 
   const openPlayer = (id: number) => {
     setSelectedPlayer(id);
@@ -141,15 +196,28 @@ export default function Leaderboards() {
           <span className="text-gray-500 text-xs">QUALIFIED</span>
         </label>
 
+        {/* My Team toggle */}
+        <button
+          onClick={() => setMyTeamOnly(m => !m)}
+          className={[
+            'text-xs px-3 py-1 border font-bold uppercase tracking-wider transition-colors',
+            myTeamOnly
+              ? 'border-orange-500 text-orange-400 bg-orange-950/30'
+              : 'border-gray-700 text-gray-600 hover:border-gray-600 hover:text-gray-400',
+          ].join(' ')}
+        >
+          MY TEAM
+        </button>
+
         <span className="text-gray-700 text-xs ml-auto">
-          {leaderboardFull.length} players
+          {displayed.length} players{myTeamOnly ? ' (filtered)' : ''}
         </span>
       </div>
 
       {!gameStarted && <div className="text-gray-500 text-xs">Start a game first.</div>}
       {loading && <div className="text-orange-400 text-xs animate-pulse">Loading...</div>}
 
-      {!loading && leaderboardFull.length > 0 && (
+      {!loading && displayed.length > 0 && (
         <div className="bloomberg-border overflow-x-auto">
           <table className="w-full whitespace-nowrap">
             <thead>
@@ -162,51 +230,81 @@ export default function Leaderboards() {
                 {cols.map(col => (
                   <th
                     key={col.key}
-                    onClick={() => setSortBy(col.key)}
+                    onClick={() => handleSort(col.key)}
                     className={[
                       'text-right px-2 py-1.5 cursor-pointer hover:text-gray-400 transition-colors select-none',
                       col.width,
                       sortBy === col.key ? 'text-orange-500 font-bold' : '',
                     ].join(' ')}
                   >
-                    {col.label}{sortBy === col.key ? ' ▼' : ''}
+                    {col.label}{sortBy === col.key ? (sortAsc ? ' ▲' : ' ▼') : ''}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {leaderboardFull.map((entry: LeaderboardFullEntry) => (
-                <tr
-                  key={entry.playerId}
-                  className="bloomberg-row cursor-pointer text-xs hover:bg-gray-800/50"
-                  onClick={() => openPlayer(entry.playerId)}
-                >
-                  <td className="text-right px-2 py-1 text-gray-600 tabular-nums sticky left-0 bg-gray-950">{entry.rank}</td>
-                  <td className="px-2 py-1 font-bold text-orange-300 sticky left-8 bg-gray-950">{entry.name}</td>
-                  <td className="px-2 py-1 text-gray-500">{entry.teamAbbr}</td>
-                  <td className="px-2 py-1 text-gray-500">{entry.position}</td>
-                  <td className="text-right px-2 py-1 tabular-nums text-gray-500">{entry.age}</td>
-                  {cols.map(col => (
-                    <td
-                      key={col.key}
-                      className={[
-                        'text-right px-2 py-1 tabular-nums',
-                        sortBy === col.key ? 'text-orange-400 font-bold' : 'text-gray-400',
-                      ].join(' ')}
-                    >
-                      {col.format(entry.stats[col.key] ?? 0)}
+              {displayed.map((entry: LeaderboardFullEntry, idx: number) => {
+                const isUserTeam = entry.teamId === userTeamId;
+                return (
+                  <tr
+                    key={entry.playerId}
+                    className={[
+                      'bloomberg-row cursor-pointer text-xs hover:bg-gray-800/50',
+                    ].join(' ')}
+                    style={{
+                      background: isUserTeam ? 'rgba(249,115,22,0.04)' : undefined,
+                      borderLeft: isUserTeam ? '2px solid #f97316' : '2px solid transparent',
+                    }}
+                    onClick={() => openPlayer(entry.playerId)}
+                  >
+                    <td className="text-right px-2 py-1 text-gray-600 tabular-nums sticky left-0 bg-gray-950">
+                      {idx + 1}
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    <td className="px-2 py-1 font-bold sticky left-8 bg-gray-950" style={{ color: isUserTeam ? '#fb923c' : '#fdba74' }}>
+                      {entry.name}
+                      {idx === 0 && sortBy === 'ops' && leaderboardCategory === 'hitting' && (
+                        <span className="ml-1 text-yellow-400 text-[10px] font-black" title="MVP Leader">MVP</span>
+                      )}
+                      {idx === 0 && sortBy === 'era' && leaderboardCategory === 'pitching' && sortAsc && (
+                        <span className="ml-1 text-yellow-400 text-[10px] font-black" title="Cy Young Leader">CY</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-gray-500">{entry.teamAbbr}</td>
+                    <td className="px-2 py-1 text-gray-500">{entry.position}</td>
+                    <td className="text-right px-2 py-1 tabular-nums text-gray-500">{entry.age}</td>
+                    {cols.map(col => {
+                      const val = entry.stats[col.key] ?? 0;
+                      const isElite = eliteMap[col.key]?.(val) ?? false;
+                      const isSortCol = sortBy === col.key;
+                      return (
+                        <td
+                          key={col.key}
+                          className={[
+                            'text-right px-2 py-1 tabular-nums',
+                            isElite ? 'font-bold' : '',
+                            isSortCol && !isElite ? 'text-orange-400 font-bold' : '',
+                          ].join(' ')}
+                          style={{
+                            color: isElite ? '#fbbf24' : isSortCol ? undefined : '#9ca3af',
+                          }}
+                        >
+                          {col.format(val)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {!loading && leaderboardFull.length === 0 && gameStarted && (
+      {!loading && displayed.length === 0 && gameStarted && (
         <div className="text-gray-500 text-xs text-center py-8">
-          Simulate a season first to see leaderboard data.
+          {myTeamOnly
+            ? 'No players from your team match the current filters.'
+            : 'Simulate a season first to see leaderboard data.'}
         </div>
       )}
     </div>

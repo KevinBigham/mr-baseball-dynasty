@@ -9,12 +9,14 @@ interface UIStore {
   leaderboardStat: string;
   leaderboardCategory: 'hitting' | 'pitching';
   modalOpen: string | null;
+  comparePlayerIds: [number, number] | null;
   setActiveTab: (t: NavTab) => void;
   setSelectedTeam: (id: number | null) => void;
   setSelectedPlayer: (id: number | null) => void;
   setLeaderboardStat: (s: string) => void;
   setLeaderboardCategory: (c: 'hitting' | 'pitching') => void;
   setModal: (name: string | null) => void;
+  setComparePlayerIds: (ids: [number, number] | null) => void;
 }
 
 export const useUIStore = create<UIStore>(set => ({
@@ -24,10 +26,12 @@ export const useUIStore = create<UIStore>(set => ({
   leaderboardStat: 'hr',
   leaderboardCategory: 'hitting',
   modalOpen: null,
+  comparePlayerIds: null,
   setActiveTab: t => set({ activeTab: t }),
   setSelectedTeam: id => set({ selectedTeamId: id }),
   setSelectedPlayer: id => set({ selectedPlayerId: id }),
   setLeaderboardStat: s => set({ leaderboardStat: s }),
   setLeaderboardCategory: c => set({ leaderboardCategory: c }),
   setModal: name => set({ modalOpen: name }),
+  setComparePlayerIds: ids => set({ comparePlayerIds: ids }),
 }));
