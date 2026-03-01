@@ -106,12 +106,12 @@ function computeOPS(stats: PlayerSeasonStats): number {
 }
 
 function computeERA(er: number, outs: number): number {
-  return outs > 0 ? (er / outs) * 27 : Infinity;
+  return outs > 0 ? (er / outs) * 27 : 99.99;
 }
 
 function computeWHIP(ha: number, bba: number, outs: number): number {
   const innings = outs / 3;
-  return innings > 0 ? (ha + bba) / innings : Infinity;
+  return innings > 0 ? (ha + bba) / innings : 99.99;
 }
 
 // ─── Single-Season Candidate Generators ──────────────────────────────────────

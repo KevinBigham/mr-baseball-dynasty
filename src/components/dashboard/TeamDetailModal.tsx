@@ -3,6 +3,7 @@ import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer, StandingsRow } from '../../types/league';
 import { formatSalary } from '../../utils/format';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 interface TeamInfo {
   teamId: number; name: string; abbreviation: string;
@@ -26,6 +27,7 @@ function ovrGrade(ovr: number): { grade: string; color: string } {
 }
 
 export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props) {
+  useEscapeKey(onClose);
   const { setActiveTab, setSelectedTeam } = useUIStore();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
   const [topPlayers, setTopPlayers] = useState<RosterPlayer[]>([]);

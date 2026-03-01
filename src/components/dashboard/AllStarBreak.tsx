@@ -3,10 +3,11 @@ import type { SeasonResult } from '../../types/league';
 interface Props {
   result: SeasonResult;
   season: number;
+  playerNames: Record<number, string>;
   onContinue: () => void;
 }
 
-export default function AllStarBreak({ result, season, onContinue }: Props) {
+export default function AllStarBreak({ result, season, playerNames, onContinue }: Props) {
   // Top hitters by OPS proxy
   const topHitters = result.playerSeasons
     .filter(p => p.pa > 200)
@@ -53,7 +54,7 @@ export default function AllStarBreak({ result, season, onContinue }: Props) {
             </div>
             {topHitters.map((h, i) => (
               <div key={i} className="text-xs flex justify-between items-center">
-                <span className="text-gray-300">#{h.playerId}</span>
+                <span className="text-gray-300">{playerNames[h.playerId] ?? `#${h.playerId}`}</span>
                 <span className="text-gray-500 tabular-nums">
                   .{h.avg.toFixed(3).slice(2)} / {h.hr} HR / {h.rbi} RBI
                 </span>
@@ -68,7 +69,7 @@ export default function AllStarBreak({ result, season, onContinue }: Props) {
             </div>
             {topPitchers.map((p, i) => (
               <div key={i} className="text-xs flex justify-between items-center">
-                <span className="text-gray-300">#{p.playerId}</span>
+                <span className="text-gray-300">{playerNames[p.playerId] ?? `#${p.playerId}`}</span>
                 <span className="text-gray-500 tabular-nums">
                   {p.era.toFixed(2)} ERA / {p.ka} K
                 </span>

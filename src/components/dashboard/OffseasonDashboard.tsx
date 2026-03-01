@@ -12,7 +12,7 @@ import ArbitrationPanel from '../offseason/ArbitrationPanel';
 import WaiversPanel from '../offseason/WaiversPanel';
 import Rule5Panel from '../offseason/Rule5Panel';
 import AnnualDraft from '../draft/AnnualDraft';
-import { OFFSEASON_PHASE_ORDER, OFFSEASON_PHASE_LABELS } from '../../types/offseason';
+import { OFFSEASON_PHASE_ORDER, OFFSEASON_PHASE_LABELS, type OffseasonPhase } from '../../types/offseason';
 import type { OffseasonFlowState } from '../../hooks/useOffseasonFlow';
 
 interface Props {
@@ -21,7 +21,7 @@ interface Props {
 
 /** Progress bar showing the 7 offseason phases */
 function PhaseProgressBar({ currentPhase }: { currentPhase: string }) {
-  const currentIdx = OFFSEASON_PHASE_ORDER.indexOf(currentPhase as any);
+  const currentIdx = OFFSEASON_PHASE_ORDER.indexOf(currentPhase as OffseasonPhase);
 
   return (
     <div className="bloomberg-border bg-gray-900 px-4 py-3">

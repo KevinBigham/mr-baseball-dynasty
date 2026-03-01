@@ -31,6 +31,23 @@ export interface LeagueState {
   retiredPlayers?: Record<string, RetiredPlayerRecord>;
   hallOfFame?: import('../engine/hallOfFame').HallOfFameInductee[];
   franchiseRecords?: import('../engine/franchiseRecords').FranchiseRecordBook;
+  playerSeasonStats?: Record<string, PlayerSeasonStats>;
+  lastAIRosterMoves?: import('../engine/aiRosterManager').AIRosterMove[];
+  foStaff?: import('../types/frontOffice').FOStaffMember[];
+  draftState?: {
+    mode: string;
+    pool: Player[];
+    prospects: import('../engine/draft/draftPool').DraftProspect[];
+    picks: import('../engine/draft/draftAI').DraftPick[];
+    draftOrder: number[];
+    currentRound: number;
+    currentPickInRound: number;
+    totalRounds: number;
+    userTeamId: number;
+    isComplete: boolean;
+  };
+  lineupOrder?: number[];
+  rotationOrder?: number[];
 }
 
 export interface SeasonResult {

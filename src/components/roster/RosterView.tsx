@@ -9,6 +9,9 @@ import DepthChart from './DepthChart';
 import ProspectPipeline from './ProspectPipeline';
 import ILManagement from './ILManagement';
 import { formatSalary } from '../../utils/format';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { SkeletonTable } from '../layout/Skeleton';
+import type { RosterStatus } from '../../types/player';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
@@ -125,17 +128,18 @@ function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
 function ConfirmModal({
   message, onConfirm, onCancel,
 }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  useEscapeKey(onCancel);
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true">
       <div className="bloomberg-border bg-gray-900 p-6 max-w-sm">
         <div className="text-gray-200 text-sm mb-4">{message}</div>
         <div className="flex gap-3">
           <button onClick={onConfirm}
-            className="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs py-2 uppercase tracking-widest">
+            className="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]">
             CONFIRM
           </button>
           <button onClick={onCancel}
-            className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-2 uppercase tracking-widest">
+            className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]">
             CANCEL
           </button>
         </div>
@@ -396,10 +400,10 @@ export default function RosterView() {
       let result: { ok: boolean; error?: string };
       switch (actionType) {
         case 'promote':
-          result = await engine.promotePlayer(playerId, targetStatus as any);
+          result = await engine.promotePlayer(playerId, targetStatus as RosterStatus);
           break;
         case 'demote':
-          result = await engine.demotePlayer(playerId, targetStatus as any);
+          result = await engine.demotePlayer(playerId, targetStatus as RosterStatus);
           break;
         case 'dfa':
           result = await engine.dfaPlayer(playerId);
@@ -513,7 +517,7 @@ export default function RosterView() {
   }, [allPlayers]);
 
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
-  if (loading) return <div className="p-4 text-orange-400 text-xs animate-pulse">Loading roster...</div>;
+  if (loading) return <div className="p-4"><SkeletonTable rows={8} cols={6} /></div>;
   if (!fullRoster) return <div className="p-4 text-gray-500 text-xs">No roster data.</div>;
 
   const TABS: RosterTab[] = ['ACTIVE', 'IL', 'AAA', 'AA', 'HIGH-A', 'LOW-A', 'ROOKIE', 'INTL', 'DFA'];
@@ -589,6 +593,7 @@ export default function RosterView() {
       ) : viewMode === 'depth' ? (
         <DepthChart
           players={[...(fullRoster?.active ?? []), ...(fullRoster?.il ?? [])]}
+          editable
           onClickPlayer={(id) => {
             setSelectedPlayer(id);
             setActiveTab('profile');

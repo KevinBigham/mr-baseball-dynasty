@@ -12,6 +12,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import { exportSave, importSave } from '../../utils/saveExport';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 type Tab = 'save' | 'load' | 'transfer';
 type SaveMeta = Omit<SaveSlot, 'stateBlob'>;
@@ -31,6 +32,8 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
   const { season, userTeamId, setGameStarted, setSeason, setUserTeamId } = useGameStore();
   const { resetAll: resetLeague } = useLeagueStore();
   const { setActiveTab } = useUIStore();
+
+  useEscapeKey(onClose);
 
   const [tab, setTab] = useState<Tab>('load');
   const [saves, setSaves] = useState<SaveMeta[]>([]);

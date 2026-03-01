@@ -5,12 +5,13 @@
  * and traits in a mirror layout with advantage highlighting.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
 import { formatSalary } from '../../utils/format';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,7 @@ function PlayerColumn({ data, traits }: { data: PlayerProfileData; traits: Playe
 
 export default function CompareModal() {
   const { comparePlayerIds, setComparePlayerIds } = useUIStore();
+  useEscapeKey(useCallback(() => setComparePlayerIds(null), [setComparePlayerIds]));
   const [left, setLeft] = useState<PlayerProfileData | null>(null);
   const [right, setRight] = useState<PlayerProfileData | null>(null);
   const [loading, setLoading] = useState(false);

@@ -91,6 +91,11 @@ interface InternalDraftState {
 
 let _draftState: InternalDraftState | null = null;
 
+// ─── Lineup/Rotation order ───────────────────────────────────────────────
+
+let _lineupOrder: number[] = [];    // 9 player IDs in batting order
+let _rotationOrder: number[] = [];  // 5 starter player IDs in rotation order
+
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function requireState(): LeagueState {
@@ -182,6 +187,10 @@ const api = {
     _hallOfFame = [];
     _franchiseRecords = null;
     _foStaff = [];
+    _lastAIRosterMoves = [];
+    _draftState = null;
+    _lineupOrder = [];
+    _rotationOrder = [];
     rebuildMaps();
 
     return { ok: true, season: _state.season, teamCount: teams.length };
@@ -676,6 +685,9 @@ const api = {
   },
 
   async signFreeAgent(playerId: number, years: number, salary: number): Promise<TransactionResult> {
+    if (isNaN(years) || isNaN(salary)) return { ok: false, error: 'Invalid contract terms.' };
+    years = Math.max(1, Math.min(10, Math.round(years)));
+    salary = Math.max(0.5, salary);
     const state = requireState();
     const player = _playerMap.get(playerId);
     if (!player) return { ok: false, error: 'Player not found.' };
@@ -961,6 +973,9 @@ const api = {
     years: number,
     annualSalary: number,
   ): Promise<{ accepted: boolean; counterYears?: number; counterSalary?: number }> {
+    if (isNaN(years) || isNaN(annualSalary)) return { accepted: false };
+    years = Math.max(1, Math.min(10, Math.round(years)));
+    annualSalary = Math.max(0.5, annualSalary);
     const state = requireState();
     const player = state.players.find(p => p.playerId === playerId);
     if (!player) return { accepted: false };
@@ -1462,6 +1477,47 @@ const api = {
     return _lastAIRosterMoves;
   },
 
+  // ── Lineup / Rotation Order ─────────────────────────────────────────────
+  async setLineupOrder(ids: number[]): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    if (ids.length !== 9) return { ok: false, error: 'Lineup must have exactly 9 players.' };
+    const unique = new Set(ids);
+    if (unique.size !== 9) return { ok: false, error: 'Lineup contains duplicate players.' };
+    // Validate all players exist and are on the user's active roster
+    for (const id of ids) {
+      const p = _playerMap.get(id);
+      if (!p) return { ok: false, error: `Player #${id} not found.` };
+      if (p.teamId !== state.userTeamId) return { ok: false, error: `${p.name} is not on your team.` };
+      if (p.rosterData.rosterStatus !== 'MLB_ACTIVE') return { ok: false, error: `${p.name} is not on the active roster.` };
+    }
+    _lineupOrder = ids;
+    return { ok: true };
+  },
+
+  async setRotationOrder(ids: number[]): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    if (ids.length === 0) return { ok: false, error: 'Rotation must have at least one pitcher.' };
+    if (ids.length > 5) return { ok: false, error: 'Rotation can have at most 5 pitchers.' };
+    const unique = new Set(ids);
+    if (unique.size !== ids.length) return { ok: false, error: 'Rotation contains duplicate players.' };
+    for (const id of ids) {
+      const p = _playerMap.get(id);
+      if (!p) return { ok: false, error: `Player #${id} not found.` };
+      if (p.teamId !== state.userTeamId) return { ok: false, error: `${p.name} is not on your team.` };
+      if (p.position !== 'SP') return { ok: false, error: `${p.name} is not a starting pitcher.` };
+    }
+    _rotationOrder = ids;
+    return { ok: true };
+  },
+
+  async getLineupOrder(): Promise<number[]> {
+    return _lineupOrder;
+  },
+
+  async getRotationOrder(): Promise<number[]> {
+    return _rotationOrder;
+  },
+
   // ── Career Leaderboards ────────────────────────────────────────────────────
   async getCareerLeaderboard(options: {
     category: 'hitting' | 'pitching';
@@ -1589,39 +1645,81 @@ const api = {
     for (const [playerId, record] of _retiredCareerHistory) {
       retiredPlayers[String(playerId)] = record;
     }
+    // Serialize player season stats
+    const playerSeasonStats: Record<string, import('../types/player').PlayerSeasonStats> = {};
+    for (const [playerId, stats] of _playerSeasonStats) {
+      playerSeasonStats[String(playerId)] = stats;
+    }
     return {
       ..._state,
       careerHistory,
       retiredPlayers,
       hallOfFame: _hallOfFame,
       franchiseRecords: _franchiseRecords ?? undefined,
+      playerSeasonStats,
+      lastAIRosterMoves: _lastAIRosterMoves,
+      foStaff: _foStaff,
+      draftState: _draftState ?? undefined,
+      lineupOrder: _lineupOrder.length > 0 ? _lineupOrder : undefined,
+      rotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
     };
   },
 
   async loadState(state: LeagueState): Promise<void> {
-    // Restore career history from serialized state
+    // Clear all state before loading to prevent stale data
     _careerHistory = new Map();
+    _retiredCareerHistory = new Map();
+    _playerSeasonStats = new Map();
+    _hallOfFame = [];
+    _franchiseRecords = null;
+    _foStaff = [];
+    _lastAIRosterMoves = [];
+    _draftState = null;
+    _lineupOrder = [];
+    _rotationOrder = [];
+
+    // Restore career history from serialized state
     if (state.careerHistory) {
       for (const [key, seasons] of Object.entries(state.careerHistory)) {
         _careerHistory.set(Number(key), seasons);
       }
     }
     // Restore retired career history
-    _retiredCareerHistory = new Map();
     if (state.retiredPlayers) {
       for (const [key, record] of Object.entries(state.retiredPlayers)) {
         _retiredCareerHistory.set(Number(key), record);
       }
     }
+    // Restore player season stats
+    if (state.playerSeasonStats) {
+      for (const [key, stats] of Object.entries(state.playerSeasonStats)) {
+        _playerSeasonStats.set(Number(key), stats);
+      }
+    }
     // Restore hall of fame and franchise records
     _hallOfFame = state.hallOfFame ?? [];
     _franchiseRecords = state.franchiseRecords ?? null;
+    // Restore FO staff, AI roster moves, draft state
+    _foStaff = state.foStaff ?? [];
+    _lastAIRosterMoves = state.lastAIRosterMoves ?? [];
+    _draftState = state.draftState ?? null;
+    // Restore lineup/rotation order
+    _lineupOrder = state.lineupOrder ?? [];
+    _rotationOrder = state.rotationOrder ?? [];
+
     _state = state;
-    _playerSeasonStats = new Map();
     rebuildMaps();
   },
 
   // ── Utility ────────────────────────────────────────────────────────────────
+  async getPlayerNameMap(): Promise<Record<number, string>> {
+    const result: Record<number, string> = {};
+    for (const [id, p] of _playerMap) {
+      result[id] = p.name;
+    }
+    return result;
+  },
+
   async ping(): Promise<string> {
     return 'pong';
   },

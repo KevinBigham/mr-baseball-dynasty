@@ -6,6 +6,7 @@ import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
 import CareerStatsTable from './CareerStatsTable';
 import { SkeletonProfile } from '../layout/Skeleton';
+import { STAT_GLOSSARY } from '../../utils/statGlossary';
 
 // ─── Scouting grade box ───────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ function StatGrid({ stats }: { stats: Array<{ label: string; value: string | num
   return (
     <div className="grid grid-cols-4 gap-0 divide-x divide-gray-800">
       {stats.filter(s => s.value !== undefined && s.value !== null).map(s => (
-        <div key={s.label} className="px-3 py-2 text-center">
+        <div key={s.label} className="px-3 py-2 text-center" title={STAT_GLOSSARY[s.label]}>
           <div className="text-gray-500 text-xs">{s.label}</div>
           <div className={`font-bold tabular-nums ${s.highlight ? 'text-orange-400 text-lg' : 'text-gray-200'}`}>
             {s.value}

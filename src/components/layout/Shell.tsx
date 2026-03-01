@@ -12,6 +12,7 @@ import OfflineIndicator from './OfflineIndicator';
 import FiredScreen from '../dashboard/FiredScreen';
 import MobileNav from './MobileNav';
 import LoadingFallback from './LoadingFallback';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // Lazy-load tab-level route components for bundle optimization
 const StandingsView = lazy(() => import('../dashboard/StandingsTable'));
@@ -38,6 +39,12 @@ export default function Shell() {
   const [saveFlash, setSaveFlash] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showSaveManager, setShowSaveManager] = useState(false);
+
+  // ESC to close topmost modal
+  useEscapeKey(useCallback(() => {
+    if (showSaveManager) setShowSaveManager(false);
+    else if (showNewGameConfirm) setShowNewGameConfirm(false);
+  }, [showSaveManager, showNewGameConfirm]));
 
   const handleSave = useCallback(async () => {
     try {

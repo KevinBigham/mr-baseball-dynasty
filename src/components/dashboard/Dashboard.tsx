@@ -4,9 +4,10 @@
  * Offseason flow lives in useOffseasonFlow hook.
  */
 
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
+import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { useSeasonSimulation } from '../../hooks/useSeasonSimulation';
 import { useOffseasonFlow } from '../../hooks/useOffseasonFlow';
@@ -59,6 +60,14 @@ export default function Dashboard() {
 
   const sim = useSeasonSimulation();
   const offseason = useOffseasonFlow(sim.clearSimState);
+
+  // Fetch player name map for AllStarBreak display
+  const [playerNames, setPlayerNames] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (sim.lastResult) {
+      getEngine().getPlayerNameMap().then(setPlayerNames);
+    }
+  }, [sim.lastResult]);
 
   // Set owner archetype on mount
   useEffect(() => {
@@ -247,6 +256,7 @@ export default function Dashboard() {
             <AllStarBreak
               result={sim.lastResult}
               season={sim.lastResult.season}
+              playerNames={playerNames}
               onContinue={() => setSeasonPhase('deadline')}
             />
           </>

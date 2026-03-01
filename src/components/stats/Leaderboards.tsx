@@ -3,6 +3,7 @@ import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
+import { STAT_GLOSSARY } from '../../utils/statGlossary';
 
 // ─── Stat column definitions ─────────────────────────────────────────────────
 
@@ -439,6 +440,7 @@ export default function Leaderboards() {
                     onClick={() => handleSort(col.key)}
                     aria-sort={sortBy === col.key ? (sortAsc ? 'ascending' : 'descending') : undefined}
                     aria-label={`Sort by ${col.label}`}
+                    title={STAT_GLOSSARY[col.label] ?? STAT_GLOSSARY[col.key]}
                     className={[
                       'text-right px-2 py-1.5 cursor-pointer hover:text-gray-400 transition-colors select-none',
                       col.width,
