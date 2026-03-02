@@ -9,9 +9,9 @@ import DepthChart from './DepthChart';
 import ProspectPipeline from './ProspectPipeline';
 import ILManagement from './ILManagement';
 import { formatSalary } from '../../utils/format';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { SkeletonTable } from '../layout/Skeleton';
 import ScrollableTable from '../layout/ScrollableTable';
+import ConfirmModal from '../layout/ConfirmModal';
 import type { RosterStatus } from '../../types/player';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
@@ -121,41 +121,6 @@ function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-// ─── Confirmation modal ──────────────────────────────────────────────────────
-function ConfirmModal({
-  message, onConfirm, onCancel,
-}: { message: string; onConfirm: () => void; onCancel: () => void }) {
-  useEscapeKey(onCancel);
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true">
-      <div className="bloomberg-border bg-gray-900 p-6 max-w-sm">
-        <div className="text-gray-200 text-sm mb-4">{message}</div>
-        <div className="flex gap-3">
-          <button onClick={onConfirm}
-            className="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]">
-            CONFIRM
-          </button>
-          <button onClick={onCancel}
-            className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]">
-            CANCEL
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Toast ───────────────────────────────────────────────────────────────────
-function Toast({ message, isError }: { message: string; isError?: boolean }) {
-  return (
-    <div className={`fixed top-4 right-4 z-50 px-4 py-2 text-xs font-bold tracking-wider uppercase ${
-      isError ? 'bg-red-900 text-red-300 border border-red-700' : 'bg-green-900 text-green-300 border border-green-700'
-    }`}>
-      {message}
     </div>
   );
 }
@@ -366,7 +331,6 @@ export default function RosterView() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [loading, setLoading] = useState(false);
   const [fullRoster, setFullRoster] = useState<FullRosterData | null>(null);
-  const [toast, setToast] = useState<{ message: string; isError?: boolean } | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [posFilter, setPosFilter] = useState('ALL');
@@ -400,13 +364,6 @@ export default function RosterView() {
 
   useEffect(() => { loadRoster(); }, [loadRoster]);
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
   const openPlayer = (id: number) => { setSelectedPlayer(id); setActiveTab('profile'); };
 
   const handleAction = useCallback(async (playerId: number, actionType: string, targetStatus?: string) => {
@@ -432,10 +389,10 @@ export default function RosterView() {
           result = { ok: false, error: 'Unknown action' };
       }
       if (result.ok) {
-        setToast({ message: 'Transaction complete.' });
+        useUIStore.getState().addToast('Transaction complete.', 'success');
         await loadRoster();
       } else {
-        setToast({ message: result.error ?? 'Transaction failed.', isError: true });
+        useUIStore.getState().addToast(result.error ?? 'Transaction failed.', 'error');
       }
     };
 
@@ -541,7 +498,6 @@ export default function RosterView() {
 
   return (
     <div className="p-4">
-      {toast && <Toast message={toast.message} isError={toast.isError} />}
       {confirmState && <ConfirmModal message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={() => setConfirmState(null)} />}
 
       <div className="bloomberg-header -mx-4 -mt-4 px-4 py-2 mb-4 flex items-center justify-between flex-wrap gap-2">

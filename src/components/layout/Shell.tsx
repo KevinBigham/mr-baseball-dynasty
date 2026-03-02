@@ -67,14 +67,19 @@ export default function Shell() {
   }, [resetGame, resetLeague]);
 
   const renderContent = () => {
+    const wrap = (child: JSX.Element) => (
+      <ErrorBoundary partial>
+        <Suspense fallback={<LoadingFallback />}>{child}</Suspense>
+      </ErrorBoundary>
+    );
     switch (activeTab) {
       case 'dashboard':  return <Dashboard />;
-      case 'standings':  return <StandingsView />;
-      case 'roster':     return <RosterView />;
-      case 'stats':      return <Leaderboards />;
-      case 'finance':    return <FinanceView />;
-      case 'history':    return <HistoryView />;
-      case 'profile':    return <PlayerProfile />;
+      case 'standings':  return wrap(<StandingsView />);
+      case 'roster':     return wrap(<RosterView />);
+      case 'stats':      return wrap(<Leaderboards />);
+      case 'finance':    return wrap(<FinanceView />);
+      case 'history':    return wrap(<HistoryView />);
+      case 'profile':    return wrap(<PlayerProfile />);
       default:           return <Dashboard />;
     }
   };
@@ -188,11 +193,7 @@ export default function Shell() {
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       <main id="main-content" className="flex-1 overflow-auto" role="main">
-        <ErrorBoundary partial>
-          <Suspense fallback={<LoadingFallback />}>
-            {renderContent()}
-          </Suspense>
-        </ErrorBoundary>
+        {renderContent()}
       </main>
 
       {/* ── Save/Load Manager Modal ────────────────────────────────── */}

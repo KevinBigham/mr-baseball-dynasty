@@ -317,7 +317,7 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
       <div className="bloomberg-border bg-gray-900 p-4">
         <div className="text-gray-500 text-xs font-bold tracking-widest mb-4">DEFENSIVE ALIGNMENT</div>
 
-        <div className="relative mx-auto" style={{ maxWidth: 420, minHeight: 300 }}>
+        <div className="relative mx-auto w-full max-w-[420px]" style={{ minHeight: 300 }}>
           {/* Outfield row */}
           <div className="flex justify-around mb-6">
             <PositionSlot position="LF" players={byPos('LF')} onClickPlayer={onClickPlayer} />

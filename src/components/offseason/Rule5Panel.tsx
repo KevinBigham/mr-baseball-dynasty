@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import type { Rule5Selection } from '../../engine/draft/rule5Draft';
 import type { UserTransaction } from './OffseasonSummary';
+import ConfirmModal from '../layout/ConfirmModal';
 
 interface Props {
   onComplete: (selections: Rule5Selection[]) => void;
@@ -46,6 +47,7 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Fetch eligible players on mount
   useEffect(() => {
@@ -61,7 +63,8 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
     return () => { cancelled = true; };
   }, []);
 
-  const makeUserPick = useCallback(async () => {
+  const executeUserPick = useCallback(async () => {
+    setShowConfirm(false);
     setBusy(true);
     setError(null);
     const engine = getEngine();
@@ -90,6 +93,11 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
     setBusy(false);
   }, [selectedId, eligible, onTransaction]);
 
+  const makeUserPick = useCallback(() => {
+    if (!selectedId) return;
+    setShowConfirm(true);
+  }, [selectedId]);
+
   const passOnPick = useCallback(async () => {
     setBusy(true);
     setPhase('ai_draft');
@@ -110,6 +118,19 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
 
   return (
     <div className="space-y-3">
+      {showConfirm && (() => {
+        const player = eligible.find(p => p.playerId === selectedId);
+        return (
+          <ConfirmModal
+            title="CONFIRM RULE 5 PICK"
+            message={`Select ${player?.name ?? 'this player'} (${player?.position ?? ''}) from ${player?.teamAbbr ?? ''}? This player must stay on your 25-man roster.`}
+            confirmLabel="SELECT"
+            variant="default"
+            onConfirm={executeUserPick}
+            onCancel={() => setShowConfirm(false)}
+          />
+        );
+      })()}
       <div className="bloomberg-border bg-gray-900 px-4 py-2">
         <div className="flex items-center justify-between">
           <div>

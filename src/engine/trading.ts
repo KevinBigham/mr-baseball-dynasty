@@ -427,21 +427,14 @@ export function executeTrade(
     if (p.teamId !== partnerTeamId) return { ok: false, error: `${p.name} is not on the partner team.` };
   }
 
-  // Swap team assignments
+  // Swap team assignments (players keep their current roster status)
   for (const pid of userPlayerIds) {
     const p = players.find(pl => pl.playerId === pid)!;
     p.teamId = partnerTeamId;
-    // Demote to minors if coming from MLB
-    if (p.rosterData.rosterStatus === 'MLB_ACTIVE') {
-      p.rosterData.rosterStatus = 'MINORS_AAA';
-    }
   }
   for (const pid of partnerPlayerIds) {
     const p = players.find(pl => pl.playerId === pid)!;
     p.teamId = userTeamId;
-    if (p.rosterData.rosterStatus === 'MLB_ACTIVE') {
-      p.rosterData.rosterStatus = 'MINORS_AAA';
-    }
     p.rosterData.isOn40Man = true;
   }
 

@@ -98,6 +98,18 @@ let _rotationOrder: number[] = [];  // 5 starter player IDs in rotation order
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+function _scrubLineupRotation(): void {
+  if (!_state) return;
+  const activeIds = new Set(
+    _state.players
+      .filter(p => p.teamId === _state!.userTeamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
+      .map(p => p.playerId)
+  );
+  _lineupOrder = _lineupOrder.filter(id => activeIds.has(id));
+  _rotationOrder = _rotationOrder.filter(id => activeIds.has(id));
+  if (_lineupOrder.length !== 9) _lineupOrder = [];
+}
+
 function requireState(): LeagueState {
   if (!_state) throw new Error('No game loaded. Call newGame() first.');
   return _state;
@@ -591,7 +603,7 @@ const api = {
     const player = _playerMap.get(playerId);
     if (!player) return { ok: false, error: 'Player not found.' };
     const result = doDFA(player);
-    if (result.ok) rebuildMaps();
+    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
     return result;
   },
 
@@ -600,7 +612,7 @@ const api = {
     const player = _playerMap.get(playerId);
     if (!player) return { ok: false, error: 'Player not found.' };
     const result = doRelease(player);
-    if (result.ok) rebuildMaps();
+    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
     return result;
   },
 
@@ -777,7 +789,7 @@ const api = {
       return { ok: false, error: 'Trade rejected — the other team wants more value in return.' };
     }
     const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
-    if (result.ok) rebuildMaps();
+    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
     return { ...result, fair: true };
   },
 
@@ -788,7 +800,7 @@ const api = {
   ): Promise<TradeResult> {
     const state = requireState();
     const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
-    if (result.ok) rebuildMaps();
+    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
     return result;
   },
 
@@ -1675,6 +1687,7 @@ const api = {
       draftState: _draftState ?? undefined,
       lineupOrder: _lineupOrder.length > 0 ? _lineupOrder : undefined,
       rotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      seasonResults: _seasonResults.length > 0 ? _seasonResults : undefined,
     };
   },
 
@@ -1690,6 +1703,7 @@ const api = {
     _draftState = null;
     _lineupOrder = [];
     _rotationOrder = [];
+    _seasonResults = [];
 
     // Restore career history from serialized state
     if (state.careerHistory) {
@@ -1719,6 +1733,8 @@ const api = {
     // Restore lineup/rotation order
     _lineupOrder = state.lineupOrder ?? [];
     _rotationOrder = state.rotationOrder ?? [];
+    // Restore season results
+    _seasonResults = state.seasonResults ?? [];
 
     _state = state;
     rebuildMaps();

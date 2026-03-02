@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
+import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 import { formatSalary } from '../../utils/format';
+import ConfirmModal from '../layout/ConfirmModal';
 
 interface FAPlayer extends RosterPlayer {
   projectedSalary: number;
@@ -214,8 +216,8 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
   const [sortKey, setSortKey] = useState<SortKey>('overall');
   const [posFilter, setPosFilter] = useState<string>('ALL');
   const [offerPlayer, setOfferPlayer] = useState<FAPlayer | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [signings, setSignings] = useState(0);
+  const [pendingSign, setPendingSign] = useState<{ years: number; salary: number } | null>(null);
   const [currentPayroll, setCurrentPayroll] = useState(0);
   const [teamBudget, setTeamBudget] = useState(0);
 
@@ -251,19 +253,13 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
     })();
   }, [userTeamId]);
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
-  const handleSign = useCallback(async (years: number, salary: number) => {
+  const executeSign = useCallback(async (years: number, salary: number) => {
     if (!offerPlayer) return;
+    setPendingSign(null);
     const engine = getEngine();
     const result = await engine.signFreeAgent(offerPlayer.playerId, years, salary);
     if (result.ok) {
-      setToast(`Signed ${offerPlayer.name}!`);
+      useUIStore.getState().addToast(`Signed ${offerPlayer.name}!`, 'success');
       setSignings(s => s + 1);
       setCurrentPayroll(prev => prev + salary);
       onTransaction?.({
@@ -273,9 +269,13 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
       setOfferPlayer(null);
       await loadFAs();
     } else {
-      setToast(result.error ?? 'Signing failed.');
+      useUIStore.getState().addToast(result.error ?? 'Signing failed.', 'error');
     }
   }, [offerPlayer, loadFAs, onTransaction]);
+
+  const handleSign = useCallback((years: number, salary: number) => {
+    setPendingSign({ years, salary });
+  }, []);
 
   const handleFinishOffseason = useCallback(async () => {
     onDone();
@@ -320,13 +320,18 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
 
   return (
     <div className="space-y-4">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-2 text-xs font-bold tracking-wider uppercase bg-green-900 text-green-300 border border-green-700">
-          {toast}
-        </div>
+      {pendingSign && offerPlayer && (
+        <ConfirmModal
+          title="CONFIRM SIGNING"
+          message={`Sign ${offerPlayer.name} (${offerPlayer.position}) for ${pendingSign.years}yr / ${formatSalary(pendingSign.salary)} per year?`}
+          confirmLabel="SIGN"
+          variant="default"
+          onConfirm={() => executeSign(pendingSign.years, pendingSign.salary)}
+          onCancel={() => setPendingSign(null)}
+        />
       )}
 
-      {offerPlayer && (
+      {offerPlayer && !pendingSign && (
         <OfferModal
           player={offerPlayer}
           onSign={handleSign}

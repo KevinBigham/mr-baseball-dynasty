@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
+import { useUIStore } from '../../store/uiStore';
 import type { TradeProposal, TradePlayerInfo } from '../../engine/trading';
 import { formatSalary } from '../../utils/format';
+import ConfirmModal from '../layout/ConfirmModal';
 
 // ─── Trade Offer Card ─────────────────────────────────────────────────────────
 
@@ -176,8 +178,8 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
   const [theirPlayers, setTheirPlayers] = useState<TradePlayerInfo[]>([]);
   const [selectedMine, setSelectedMine] = useState<Set<number>>(new Set());
   const [selectedTheirs, setSelectedTheirs] = useState<Set<number>>(new Set());
-  const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingPropose, setPendingPropose] = useState(false);
 
   // Load user's players
   useEffect(() => {
@@ -201,13 +203,6 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
     })();
   }, [targetTeamId]);
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
   const toggleMine = (id: number) => {
     setSelectedMine(prev => {
       const next = new Set(prev);
@@ -226,8 +221,9 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
     });
   };
 
-  const handlePropose = useCallback(async () => {
+  const executePropose = useCallback(async () => {
     if (selectedMine.size === 0 || selectedTheirs.size === 0 || targetTeamId === 0) return;
+    setPendingPropose(false);
     setLoading(true);
     try {
       const engine = getEngine();
@@ -237,7 +233,7 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
         [...selectedTheirs],
       );
       if (result.ok) {
-        setToast('Trade accepted!');
+        useUIStore.getState().addToast('Trade accepted!', 'success');
         setSelectedMine(new Set());
         setSelectedTheirs(new Set());
         // Refresh player lists
@@ -248,14 +244,19 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
         setMyPlayers(mine);
         setTheirPlayers(theirs);
       } else {
-        setToast(result.error ?? 'Trade rejected.');
+        useUIStore.getState().addToast(result.error ?? 'Trade rejected.', 'error');
       }
     } catch {
-      setToast('Trade failed.');
+      useUIStore.getState().addToast('Trade failed.', 'error');
     } finally {
       setLoading(false);
     }
   }, [selectedMine, selectedTheirs, targetTeamId, userTeamId]);
+
+  const handlePropose = useCallback(() => {
+    if (selectedMine.size === 0 || selectedTheirs.size === 0 || targetTeamId === 0) return;
+    setPendingPropose(true);
+  }, [selectedMine, selectedTheirs, targetTeamId]);
 
   const myValue = myPlayers.filter(p => selectedMine.has(p.playerId)).reduce((s, p) => s + p.tradeValue, 0);
   const theirValue = theirPlayers.filter(p => selectedTheirs.has(p.playerId)).reduce((s, p) => s + p.tradeValue, 0);
@@ -264,10 +265,13 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
 
   return (
     <div className="bloomberg-border bg-gray-900">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-2 text-xs font-bold tracking-wider uppercase bg-green-900 text-green-300 border border-green-700">
-          {toast}
-        </div>
+      {pendingPropose && (
+        <ConfirmModal
+          title="CONFIRM TRADE"
+          message={`Send ${selectedMine.size} player${selectedMine.size > 1 ? 's' : ''} to receive ${selectedTheirs.size} player${selectedTheirs.size > 1 ? 's' : ''}?`}
+          onConfirm={executePropose}
+          onCancel={() => setPendingPropose(false)}
+        />
       )}
 
       <div className="bloomberg-header px-4">PROPOSE TRADE</div>
@@ -658,8 +662,8 @@ export default function TradeCenter({ onTransaction, onDone }: {
   const [activeTab, setActiveTab] = useState<TradeTab>('offers');
   const [offers, setOffers] = useState<TradeProposal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<string | null>(null);
   const [teams, setTeams] = useState<Array<{ teamId: number; name: string; abbreviation: string }>>([]);
+  const [pendingAccept, setPendingAccept] = useState<TradeProposal | null>(null);
   const [refreshesLeft, setRefreshesLeft] = useState(3);
 
   useEffect(() => {
@@ -682,23 +686,17 @@ export default function TradeCenter({ onTransaction, onDone }: {
     })();
   }, []);
 
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
   const handleRefreshOffers = useCallback(async () => {
     if (refreshesLeft <= 0) return;
     const engine = getEngine();
     const newOffers = await engine.getTradeOffers();
     setOffers(newOffers);
     setRefreshesLeft(prev => prev - 1);
-    setToast(`${newOffers.length} new offer${newOffers.length !== 1 ? 's' : ''} received`);
+    useUIStore.getState().addToast(`${newOffers.length} new offer${newOffers.length !== 1 ? 's' : ''} received`, 'info');
   }, [refreshesLeft]);
 
-  const handleAcceptOffer = useCallback(async (offer: TradeProposal) => {
+  const executeAcceptOffer = useCallback(async (offer: TradeProposal) => {
+    setPendingAccept(null);
     const engine = getEngine();
     const result = await engine.acceptTradeOffer(
       offer.partnerTeamId,
@@ -706,7 +704,7 @@ export default function TradeCenter({ onTransaction, onDone }: {
       offer.offered.map(p => p.playerId),
     );
     if (result.ok) {
-      setToast(`Trade completed with ${offer.partnerTeamAbbr}!`);
+      useUIStore.getState().addToast(`Trade completed with ${offer.partnerTeamAbbr}!`, 'success');
       onTransaction?.({
         type: 'trade',
         description: `Sent ${offer.requested.map(p => p.name).join(', ')} to ${offer.partnerTeamAbbr} for ${offer.offered.map(p => p.name).join(', ')}`,
@@ -720,9 +718,13 @@ export default function TradeCenter({ onTransaction, onDone }: {
       });
       setOffers(prev => prev.filter(o => o.tradeId !== offer.tradeId));
     } else {
-      setToast(result.error ?? 'Trade failed.');
+      useUIStore.getState().addToast(result.error ?? 'Trade failed.', 'error');
     }
   }, [onTransaction, addTradeRecord, season]);
+
+  const handleAcceptOffer = useCallback(async (offer: TradeProposal) => {
+    setPendingAccept(offer);
+  }, []);
 
   const handleDecline = useCallback((tradeId: number) => {
     setOffers(prev => prev.filter(o => o.tradeId !== tradeId));
@@ -734,10 +736,13 @@ export default function TradeCenter({ onTransaction, onDone }: {
 
   return (
     <div className="space-y-4">
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-2 text-xs font-bold tracking-wider uppercase bg-green-900 text-green-300 border border-green-700">
-          {toast}
-        </div>
+      {pendingAccept && (
+        <ConfirmModal
+          title="ACCEPT TRADE"
+          message={`Accept trade with ${pendingAccept.partnerTeamAbbr}? You send ${pendingAccept.requested.map(p => p.name).join(', ')} and receive ${pendingAccept.offered.map(p => p.name).join(', ')}.`}
+          onConfirm={() => executeAcceptOffer(pendingAccept)}
+          onCancel={() => setPendingAccept(null)}
+        />
       )}
 
       {/* Header + Tabs */}

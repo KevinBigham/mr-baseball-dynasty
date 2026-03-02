@@ -48,6 +48,7 @@ export interface LeagueState {
   };
   lineupOrder?: number[];
   rotationOrder?: number[];
+  seasonResults?: SeasonResult[];
 }
 
 export interface SeasonResult {

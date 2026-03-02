@@ -10,6 +10,7 @@ import { getEngine } from '../../engine/engineClient';
 import type { ArbitrationCase } from '../../engine/finances';
 import type { UserTransaction } from './OffseasonSummary';
 import { formatSalary } from '../../utils/format';
+import ConfirmModal from '../layout/ConfirmModal';
 
 interface Props {
   cases: ArbitrationCase[];
@@ -39,10 +40,12 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
   const [hearingRevealed, setHearingRevealed] = useState<Set<number>>(new Set());
   const [resolvedSalaries, setResolvedSalaries] = useState<Map<number, number>>(new Map());
   const [busy, setBusy] = useState(false);
+  const [pendingCase, setPendingCase] = useState<{ playerId: number; salary: number; label: string } | null>(null);
 
   const allResolved = cases.length === 0 || [...statuses.values()].every(s => s === 'resolved');
 
-  const resolveCase = useCallback(async (playerId: number, salary: number, label: string) => {
+  const executeResolve = useCallback(async (playerId: number, salary: number, label: string) => {
+    setPendingCase(null);
     setBusy(true);
     const engine = getEngine();
     const result = await engine.resolveArbitrationCase(playerId, salary);
@@ -59,6 +62,10 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
     }
     setBusy(false);
   }, [cases, onTransaction]);
+
+  const resolveCase = useCallback((playerId: number, salary: number, label: string) => {
+    setPendingCase({ playerId, salary, label });
+  }, []);
 
   const revealHearing = useCallback((playerId: number) => {
     setHearingRevealed(prev => new Set(prev).add(playerId));
@@ -82,6 +89,19 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
 
   return (
     <div className="space-y-3">
+      {pendingCase && (() => {
+        const c = cases.find(c => c.playerId === pendingCase.playerId);
+        return (
+          <ConfirmModal
+            title="CONFIRM ARBITRATION"
+            message={`Accept ${pendingCase.label} for ${c?.playerName ?? 'player'} at ${formatSalary(pendingCase.salary)}/yr?`}
+            confirmLabel="ACCEPT"
+            variant="default"
+            onConfirm={() => executeResolve(pendingCase.playerId, pendingCase.salary, pendingCase.label)}
+            onCancel={() => setPendingCase(null)}
+          />
+        );
+      })()}
       <div className="bloomberg-border bg-gray-900 px-4 py-2">
         <div className="flex items-center justify-between">
           <div>
@@ -142,7 +162,7 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
                   <button
                     disabled={busy}
                     onClick={() => resolveCase(c.playerId, c.teamOffer, 'Team Offer')}
-                    className="mt-1 bg-green-700 hover:bg-green-600 text-white text-[10px] px-3 py-1 tracking-widest disabled:opacity-50"
+                    className="mt-1 bg-green-700 hover:bg-green-600 text-white text-[10px] px-3 py-1 min-h-[44px] tracking-widest disabled:opacity-50"
                   >
                     ACCEPT
                   </button>
@@ -158,7 +178,7 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
                       <button
                         disabled={busy}
                         onClick={() => resolveCase(c.playerId, c.hearingResult, 'Hearing')}
-                        className="mt-1 bg-orange-700 hover:bg-orange-600 text-white text-[10px] px-3 py-1 tracking-widest disabled:opacity-50"
+                        className="mt-1 bg-orange-700 hover:bg-orange-600 text-white text-[10px] px-3 py-1 min-h-[44px] tracking-widest disabled:opacity-50"
                       >
                         ACCEPT
                       </button>
@@ -167,7 +187,7 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
                     <button
                       disabled={busy}
                       onClick={() => revealHearing(c.playerId)}
-                      className="mt-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] px-3 py-1 tracking-widest border border-gray-600"
+                      className="mt-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-[10px] px-3 py-1 min-h-[44px] tracking-widest border border-gray-600"
                     >
                       GO TO HEARING
                     </button>
@@ -182,7 +202,7 @@ export default function ArbitrationPanel({ cases, onComplete, onTransaction }: P
                   <button
                     disabled={busy}
                     onClick={() => resolveCase(c.playerId, c.playerAsk, 'Player Ask')}
-                    className="mt-1 bg-red-700 hover:bg-red-600 text-white text-[10px] px-3 py-1 tracking-widest disabled:opacity-50"
+                    className="mt-1 bg-red-700 hover:bg-red-600 text-white text-[10px] px-3 py-1 min-h-[44px] tracking-widest disabled:opacity-50"
                   >
                     ACCEPT
                   </button>
