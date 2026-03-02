@@ -22,7 +22,7 @@ export default function AITransactionsPanel({ moves }: Props) {
     return (
       <div className="bloomberg-border bg-gray-900">
         <div className="bloomberg-header px-4">MID-SEASON TRANSACTIONS</div>
-        <div className="p-6 text-gray-600 text-xs text-center">
+        <div className="p-6 text-gray-500 text-xs text-center">
           No AI roster moves this season.
         </div>
       </div>
@@ -52,7 +52,7 @@ export default function AITransactionsPanel({ moves }: Props) {
           <div key={abbr} className="border-b border-gray-800 last:border-0">
             <div className="px-4 py-1.5 bg-gray-950/50 flex items-center justify-between">
               <span className="text-orange-400 font-mono text-xs font-bold">{abbr}</span>
-              <span className="text-gray-600 text-xs">{teamMoves.length} move{teamMoves.length !== 1 ? 's' : ''}</span>
+              <span className="text-gray-500 text-xs">{teamMoves.length} move{teamMoves.length !== 1 ? 's' : ''}</span>
             </div>
             {teamMoves.map((m, i) => {
               const style = TYPE_STYLE[m.type] ?? TYPE_STYLE.call_up;
@@ -71,7 +71,7 @@ export default function AITransactionsPanel({ moves }: Props) {
                   <span className="text-gray-300 font-mono">
                     {m.playerName}
                   </span>
-                  <span className="text-gray-600">
+                  <span className="text-gray-500">
                     {m.playerPosition} · OVR {formatOVR(m.playerOvr)}
                   </span>
                   <span className="text-gray-500 ml-auto text-right max-w-[200px] truncate">

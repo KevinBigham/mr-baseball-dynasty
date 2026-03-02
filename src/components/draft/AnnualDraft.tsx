@@ -24,7 +24,7 @@ function MiniPickRow({ pick, isUser }: { pick: DraftPick; isUser: boolean }) {
         background: isUser ? 'rgba(234,88,12,0.1)' : 'transparent',
       }}
     >
-      <span className="text-gray-600 tabular-nums w-7">#{pick.pickNumber}</span>
+      <span className="text-gray-500 tabular-nums w-7">#{pick.pickNumber}</span>
       <span className={`font-bold w-7 ${isUser ? 'text-orange-400' : 'text-gray-500'}`}>
         {pick.teamAbbr}
       </span>
@@ -143,7 +143,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
           <span className="text-orange-500 font-black text-xs tracking-widest">
             {season} AMATEUR DRAFT
           </span>
-          <span className="text-gray-600 text-xs">5 Rounds</span>
+          <span className="text-gray-500 text-xs">5 Rounds</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-gray-500 text-xs tabular-nums">
@@ -218,7 +218,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
           </div>
           <div className="overflow-y-auto flex-1 px-1 py-1" style={{ fontSize: '11px' }}>
             {/* Column headers */}
-            <div className="flex items-center gap-3 px-3 py-1 text-gray-600 text-xs border-b border-gray-800">
+            <div className="flex items-center gap-3 px-3 py-1 text-gray-500 text-xs border-b border-gray-800">
               <span className="w-8">RK</span>
               <span className="flex-1">NAME</span>
               <span className="w-6 text-center">POS</span>
@@ -237,11 +237,11 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
                   border: selectedId === p.playerId ? '1px solid rgba(234,88,12,0.4)' : '1px solid transparent',
                 }}
               >
-                <span className="text-gray-600 tabular-nums w-8">#{p.rank}</span>
+                <span className="text-gray-500 tabular-nums w-8">#{p.rank}</span>
                 <span className="text-gray-300 flex-1 truncate">{p.name}</span>
                 <span className="text-gray-500 w-6 text-center">{p.position}</span>
                 <span className="text-gray-500 w-6 text-center tabular-nums">{p.age}</span>
-                <span className="text-gray-600 w-6">{p.bats}/{p.throws}</span>
+                <span className="text-gray-500 w-6">{p.bats}/{p.throws}</span>
                 <span className="w-10 text-right"><OvrBadge ovr={p.scoutedOvr} /></span>
                 <span className="w-10 text-right text-xs tabular-nums" style={{ color: '#818cf8' }}>
                   {p.scoutedPot}
@@ -266,7 +266,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
               <div className="text-orange-500 text-xs font-bold mb-1">YOUR PICKS ({userPicks.length})</div>
               {userPicks.map((pick: DraftPick, i: number) => (
                 <div key={i} className="text-xs text-gray-400 flex gap-2">
-                  <span className="text-gray-600">Rd{pick.round}</span>
+                  <span className="text-gray-500">Rd{pick.round}</span>
                   <span className="text-gray-300">{pick.playerName}</span>
                   <span className="text-gray-500">{pick.position}</span>
                 </div>

@@ -31,7 +31,7 @@ export default function ILManagement({ ilPlayers }: Props) {
     return (
       <div className="bloomberg-border bg-gray-900">
         <div className="bloomberg-header px-4">INJURED LIST</div>
-        <div className="px-4 py-6 text-center text-gray-600 text-xs">
+        <div className="px-4 py-6 text-center text-gray-500 text-xs">
           No players currently on the injured list.
         </div>
       </div>
@@ -85,7 +85,7 @@ export default function ILManagement({ ilPlayers }: Props) {
                     </div>
                   </>
                 ) : (
-                  <div className="text-gray-600 text-xs">On IL</div>
+                  <div className="text-gray-500 text-xs">On IL</div>
                 )}
               </div>
             </div>

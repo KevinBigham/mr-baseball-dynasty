@@ -101,7 +101,7 @@ function PredRow({
           className="absolute left-0 right-0 mt-8 px-4 py-2 text-gray-400 text-xs italic border-t border-gray-800"
           style={{ background: '#0a0a0f' }}
         >
-          <span className="text-gray-600 not-italic">{pred.analystName}: </span>
+          <span className="text-gray-500 not-italic">{pred.analystName}: </span>
           "{pred.analystQuote}"
         </div>
       )}
@@ -128,7 +128,7 @@ function LeagueSection({
 
   return (
     <div>
-      <div className="text-gray-600 text-xs uppercase tracking-widest px-1 mb-1">{league}</div>
+      <div className="text-gray-500 text-xs uppercase tracking-widest px-1 mb-1">{league}</div>
       {predictions.map((pred, i) => (
         <PredRow
           key={pred.teamId}
@@ -204,7 +204,7 @@ export default function MFSNPanel({
             )}
           </div>
           <div className="text-right shrink-0">
-            <div className="text-gray-600 text-xs">WS ODDS</div>
+            <div className="text-gray-500 text-xs">WS ODDS</div>
             <div className="text-orange-400 font-bold tabular-nums">{userPred.wsOdds}%</div>
           </div>
         </div>
@@ -212,7 +212,7 @@ export default function MFSNPanel({
 
       {/* Quote for user team */}
       {userPred && (
-        <div className="mx-4 mt-1.5 mb-1 text-gray-600 text-xs italic">
+        <div className="mx-4 mt-1.5 mb-1 text-gray-500 text-xs italic">
           <span className="text-gray-700 not-italic">{userPred.analystName}: </span>
           "{userPred.analystQuote}"
         </div>

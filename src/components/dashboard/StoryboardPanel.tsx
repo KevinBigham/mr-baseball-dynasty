@@ -66,7 +66,7 @@ export default function StoryboardPanel({
           <div className="mt-2">
             <button
               onClick={() => setShowReasoning(r => !r)}
-              className="text-gray-600 text-xs hover:text-gray-400 transition-colors"
+              className="text-gray-500 text-xs hover:text-gray-400 transition-colors"
             >
               {showReasoning ? '▲ HIDE' : '▼ WHY THIS ARC?'}
             </button>

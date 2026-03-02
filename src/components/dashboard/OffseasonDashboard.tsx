@@ -43,7 +43,7 @@ function PhaseProgressBar({ currentPhase }: { currentPhase: string }) {
                 />
                 <span
                   className={`text-[9px] mt-1 text-center leading-tight ${
-                    isCurrent ? 'text-orange-400 font-bold' : isCompleted ? 'text-green-500' : 'text-gray-600'
+                    isCurrent ? 'text-orange-400 font-bold' : isCompleted ? 'text-green-500' : 'text-gray-500'
                   }`}
                 >
                   {OFFSEASON_PHASE_LABELS[phase]}

@@ -222,7 +222,7 @@ export default function Dashboard() {
             <button
               key={a.label}
               onClick={() => setActiveTab(a.tab)}
-              className="border border-gray-800 hover:border-gray-600 text-gray-600 hover:text-gray-400 text-[10px] px-3 py-1 uppercase tracking-wider transition-colors"
+              className="border border-gray-800 hover:border-gray-600 text-gray-500 hover:text-gray-400 text-[10px] px-3 py-1 uppercase tracking-wider transition-colors"
             >
               {a.label}
             </button>

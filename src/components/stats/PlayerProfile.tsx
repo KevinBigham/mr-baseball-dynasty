@@ -194,7 +194,7 @@ function TradeValueMeter({ value }: { value: number }) {
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold" style={{ color }}>{label}</span>
           <span className="font-black text-lg tabular-nums" style={{ color }}>
-            {value}<span className="text-gray-600 font-normal text-xs">/100</span>
+            {value}<span className="text-gray-500 font-normal text-xs">/100</span>
           </span>
         </div>
         <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
@@ -311,7 +311,7 @@ function ExtensionPanel({ player, onExtended }: {
             {/* Years slider */}
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-600">YEARS</span>
+                <span className="text-gray-500">YEARS</span>
                 <span className="text-orange-400 font-bold">{years}</span>
               </div>
               <input
@@ -331,7 +331,7 @@ function ExtensionPanel({ player, onExtended }: {
             {/* Salary slider */}
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-600">ANNUAL SALARY</span>
+                <span className="text-gray-500">ANNUAL SALARY</span>
                 <span className="text-orange-400 font-bold">${(salary / 1_000_000).toFixed(1)}M</span>
               </div>
               <input
@@ -364,7 +364,7 @@ function ExtensionPanel({ player, onExtended }: {
             {/* Acceptance probability */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
-                <span className="text-gray-600">ACCEPTANCE PROBABILITY</span>
+                <span className="text-gray-500">ACCEPTANCE PROBABILITY</span>
                 <span className="font-bold" style={{ color: probColor }}>{estimatedProb}%</span>
               </div>
               <div className="h-2 rounded-full bg-gray-800 overflow-hidden">
@@ -463,7 +463,7 @@ export default function PlayerProfile() {
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
   if (!selectedPlayerId) return (
     <div className="p-4 text-center">
-      <div className="text-gray-600 text-xs mt-16">Select a player from the roster or leaderboard to view their profile.</div>
+      <div className="text-gray-500 text-xs mt-16">Select a player from the roster or leaderboard to view their profile.</div>
     </div>
   );
   if (loading) return <SkeletonProfile />;
@@ -528,7 +528,7 @@ export default function PlayerProfile() {
         </button>
         <button
           onClick={() => setComparePlayerIds([player.playerId, 0])}
-          className="text-gray-600 hover:text-orange-400 text-xs transition-colors border border-gray-800 hover:border-orange-700 px-2 py-0.5"
+          className="text-gray-500 hover:text-orange-400 text-xs transition-colors border border-gray-800 hover:border-orange-700 px-2 py-0.5"
         >
           COMPARE
         </button>
@@ -557,7 +557,7 @@ export default function PlayerProfile() {
             <div className="text-gray-500 text-xs">OVR / POT (20–80)</div>
             <div className="flex items-center gap-2">
               <span className="text-orange-400 font-bold text-2xl tabular-nums">{ovrScale}</span>
-              <span className="text-gray-600">/</span>
+              <span className="text-gray-500">/</span>
               <span className="text-gray-400 font-bold text-xl tabular-nums">{potScale}</span>
             </div>
           </div>
@@ -589,7 +589,7 @@ export default function PlayerProfile() {
             <div className="bloomberg-header">TEAM</div>
             <div className="px-4 py-3">
               <div className="text-orange-400 font-bold">{player.teamAbbr}</div>
-              <div className="text-gray-600 text-xs mt-1">
+              <div className="text-gray-500 text-xs mt-1">
                 This player is not on your team
               </div>
             </div>
@@ -737,7 +737,7 @@ export default function PlayerProfile() {
             </>
           )}
           <div className="px-4 py-2 border-t border-gray-800">
-            <div className="text-gray-600 text-xs">
+            <div className="text-gray-500 text-xs">
               {!isPitcher && advStats.wRCPlus !== undefined && (
                 <span>
                   {advStats.wRCPlus >= 130 ? '🔥 Elite hitter' :

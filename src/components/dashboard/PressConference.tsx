@@ -328,7 +328,7 @@ export default function PressConference({
               {/* Generated headlines */}
               {summary!.headlines.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-gray-600 text-xs uppercase tracking-widest">Media Coverage</div>
+                  <div className="text-gray-500 text-xs uppercase tracking-widest">Media Coverage</div>
                   {summary!.headlines.map((h, i) => (
                     <div key={i} className="text-xs text-orange-400 flex gap-2 items-start">
                       <span className="shrink-0">📰</span>

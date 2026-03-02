@@ -340,7 +340,7 @@ export default function Leaderboards() {
                 'text-xs px-3 py-1 border transition-colors',
                 advSubCat === sub
                   ? 'border-orange-500 text-orange-400 bg-orange-950/20'
-                  : 'border-gray-700 text-gray-600 hover:text-gray-400',
+                  : 'border-gray-700 text-gray-500 hover:text-gray-400',
               ].join(' ')}
             >
               {sub === 'hitting' ? 'HITTERS' : 'PITCHERS'}
@@ -364,7 +364,7 @@ export default function Leaderboards() {
                 'text-xs px-3 py-1 border transition-colors min-h-[44px]',
                 careerSubCat === sub
                   ? 'border-orange-500 text-orange-400 bg-orange-950/20'
-                  : 'border-gray-700 text-gray-600 hover:text-gray-400',
+                  : 'border-gray-700 text-gray-500 hover:text-gray-400',
               ].join(' ')}
             >
               {sub === 'hitting' ? 'HITTERS' : 'PITCHERS'}
@@ -377,7 +377,7 @@ export default function Leaderboards() {
       {!isCareer && <div className="flex items-center gap-3 mb-3 flex-wrap">
         {/* Position filter */}
         <div className="flex items-center gap-1.5">
-          <span className="text-gray-600 text-xs">POS:</span>
+          <span className="text-gray-500 text-xs">POS:</span>
           <select
             value={posFilter}
             onChange={e => setPosFilter(e.target.value)}
@@ -406,7 +406,7 @@ export default function Leaderboards() {
             'text-xs px-3 py-1 border font-bold uppercase tracking-wider transition-colors',
             myTeamOnly
               ? 'border-orange-500 text-orange-400 bg-orange-950/30'
-              : 'border-gray-700 text-gray-600 hover:border-gray-600 hover:text-gray-400',
+              : 'border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-400',
           ].join(' ')}
         >
           MY TEAM
@@ -427,7 +427,7 @@ export default function Leaderboards() {
               {isCareer ? `Career ${careerSubCat}` : isAdvanced ? `Advanced ${advSubCat}` : leaderboardCategory} leaderboard
             </caption>
             <thead>
-              <tr className="text-gray-600 text-xs border-b border-gray-800">
+              <tr className="text-gray-500 text-xs border-b border-gray-800">
                 <th scope="col" className="text-right px-2 py-1.5 w-8 sticky left-0 bg-gray-950 z-10">#</th>
                 <th scope="col" className="text-left px-2 py-1.5 sticky left-8 bg-gray-950 z-10 min-w-[120px]">PLAYER</th>
                 {!isCareer && <th scope="col" className="text-left px-2 py-1.5 w-10">TM</th>}
@@ -468,7 +468,7 @@ export default function Leaderboards() {
                     }}
                     onClick={() => !retired && openPlayer(entry.playerId)}
                   >
-                    <td className="text-right px-2 py-1 text-gray-600 tabular-nums sticky left-0 bg-gray-950">
+                    <td className="text-right px-2 py-1 text-gray-500 tabular-nums sticky left-0 bg-gray-950">
                       {idx + 1}
                     </td>
                     <td className="px-2 py-1 font-bold sticky left-8 bg-gray-950" style={{ color: isUserTeam ? '#fb923c' : '#fdba74' }}>

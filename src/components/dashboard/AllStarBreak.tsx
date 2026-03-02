@@ -33,7 +33,7 @@ export default function AllStarBreak({ result, season, playerNames, onContinue }
     <div className="bloomberg-border">
       <div className="bloomberg-header flex items-center justify-between">
         <span>ALL-STAR BREAK — {season}</span>
-        <span className="text-gray-600 font-normal text-xs">Mid-Season Report</span>
+        <span className="text-gray-500 font-normal text-xs">Mid-Season Report</span>
       </div>
 
       <div className="px-4 py-4 space-y-4">
@@ -41,7 +41,7 @@ export default function AllStarBreak({ result, season, playerNames, onContinue }
           <div className="text-orange-400 text-sm font-bold tracking-wider">
             MR. BASEBALL MIDSUMMER CLASSIC
           </div>
-          <div className="text-gray-600 text-xs mt-1">
+          <div className="text-gray-500 text-xs mt-1">
             The top performers at the halfway mark
           </div>
         </div>

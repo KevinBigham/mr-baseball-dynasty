@@ -43,10 +43,10 @@ function CandidateRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-bold text-gray-200 truncate">{c.name}</span>
-          <span className="text-gray-600 shrink-0">{c.teamAbbr}</span>
+          <span className="text-gray-500 shrink-0">{c.teamAbbr}</span>
           {rank === 1 && <span className="text-yellow-400 text-xs">★</span>}
         </div>
-        <div className="text-gray-600 mt-0.5">{c.position} · Age {c.age} · {statLine}</div>
+        <div className="text-gray-500 mt-0.5">{c.position} · Age {c.age} · {statLine}</div>
       </div>
       {/* Score bar */}
       <div className="w-24 shrink-0">
@@ -85,6 +85,10 @@ function AwardSection({
       <div
         className="flex items-center justify-between cursor-pointer py-1 hover:opacity-80"
         onClick={() => setExpanded(e => !e)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={expanded}
       >
         <div className="flex items-center gap-2">
           <span className="text-sm">{icon}</span>
@@ -138,7 +142,7 @@ export default function AwardRacePanel({
   if (!hasAny) return (
     <div className="bloomberg-border bg-gray-900">
       <div className="bloomberg-header px-4">AWARD RACE</div>
-      <div className="px-4 py-6 text-center text-gray-600 text-xs">
+      <div className="px-4 py-6 text-center text-gray-500 text-xs">
         Award race data appears during season simulation.
       </div>
     </div>

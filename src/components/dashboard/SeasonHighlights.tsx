@@ -24,9 +24,9 @@ export default function SeasonHighlights({ result, userTeamId }: Props) {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-gray-800">
         {highlights.map(h => (
           <div key={h.label} className="bg-gray-900 px-3 py-3">
-            <div className="text-gray-600 text-[10px] uppercase tracking-wider">{h.label}</div>
+            <div className="text-gray-500 text-[10px] uppercase tracking-wider">{h.label}</div>
             <div className={`font-bold text-sm mt-0.5 ${h.color}`}>{h.value}</div>
-            <div className="text-gray-600 text-[10px] mt-0.5">{h.sub}</div>
+            <div className="text-gray-500 text-[10px] mt-0.5">{h.sub}</div>
           </div>
         ))}
       </div>

@@ -124,7 +124,7 @@ export default function Shell() {
       <header className="flex items-center justify-between px-2 sm:px-4 py-2 bg-black border-b border-gray-800 shrink-0" role="banner">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <span className="text-orange-500 font-bold text-xs sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-600 text-xs hidden sm:inline">⚾</span>
+          <span className="text-gray-500 text-xs hidden sm:inline">⚾</span>
           <span className="text-gray-500 text-xs hidden sm:inline">SEASON {season}</span>
         </div>
         {isSimulating && (

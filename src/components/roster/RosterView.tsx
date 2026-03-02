@@ -112,7 +112,7 @@ function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-gray-200 font-mono text-xs font-bold truncate">{p.name}</div>
-                <div className="text-gray-600 text-xs">{p.position} · Age {p.age}</div>
+                <div className="text-gray-500 text-xs">{p.position} · Age {p.age}</div>
                 <div className="flex gap-1 flex-wrap mt-0.5">
                   {traits.map(t => <TraitChip key={t.id} trait={t} />)}
                 </div>
@@ -181,10 +181,16 @@ function SortHeader({ label, sortKey: sk, currentSort, onSort, align }: {
   const arrow = active ? (currentSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
   return (
     <th
+      scope="col"
+      role="button"
+      tabIndex={0}
+      aria-sort={active ? (currentSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+      aria-label={`Sort by ${label}`}
       className={`${align === 'left' ? 'text-left' : 'text-right'} px-2 py-1 cursor-pointer select-none hover:text-orange-400 transition-colors ${
-        active ? 'text-orange-400' : 'text-gray-600'
+        active ? 'text-orange-400' : 'text-gray-500'
       }`}
       onClick={() => onSort(sk)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(sk); } }}
     >
       {label}{arrow}
     </th>
@@ -246,7 +252,7 @@ function PlayerRow({
           <td className="text-right px-2 py-1 tabular-nums">{p.stats.obp ?? '—'}</td>
         </>
       )}
-      <td className="px-2 py-1 text-gray-600 text-right">{formatSalary(p.salary)}</td>
+      <td className="px-2 py-1 text-gray-500 text-right">{formatSalary(p.salary)}</td>
       {showContractCols && (
         <>
           <td className={`px-2 py-1 tabular-nums text-right ${contractColor(p.contractYearsRemaining)}`}>
@@ -267,7 +273,7 @@ function PlayerRow({
           <div ref={dropdownRef}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
-              className="text-gray-600 hover:text-orange-400 text-xs transition-colors px-1 min-h-[44px] min-w-[44px]"
+              className="text-gray-500 hover:text-orange-400 text-xs transition-colors px-1 min-h-[44px] min-w-[44px]"
             >
               ···
             </button>
@@ -310,7 +316,7 @@ function PayrollBar({ payroll, budget }: { payroll: number; budget: number }) {
         <span className="text-gray-500 text-xs">PAYROLL</span>
         <div className="flex items-center gap-4 text-xs">
           <span className={textColor + ' font-bold'}>{formatSalary(payroll)}</span>
-          <span className="text-gray-600">of</span>
+          <span className="text-gray-500">of</span>
           <span className="text-gray-400 font-bold">${budget}M</span>
           <span className={textColor + ' tabular-nums'}>{pct.toFixed(0)}%</span>
         </div>
@@ -506,10 +512,10 @@ export default function RosterView() {
           {isUserTeam && (
             <span className="text-gray-400 font-normal">
               <span className="text-orange-400 font-bold">{fullRoster.activeCount}</span>
-              <span className="text-gray-600">/{26} ACTIVE</span>
+              <span className="text-gray-500">/{26} ACTIVE</span>
               <span className="mx-2 text-gray-700">|</span>
               <span className="text-orange-400 font-bold">{fullRoster.fortyManCount}</span>
-              <span className="text-gray-600">/{40} 40-MAN</span>
+              <span className="text-gray-500">/{40} 40-MAN</span>
             </span>
           )}
         </div>
@@ -611,7 +617,7 @@ export default function RosterView() {
                 {positions.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
-            <span className="text-gray-600 text-xs ml-auto">
+            <span className="text-gray-500 text-xs ml-auto">
               {filteredPlayers.length} player{filteredPlayers.length !== 1 ? 's' : ''}
             </span>
           </div>
@@ -628,8 +634,9 @@ export default function RosterView() {
             <ScrollableTable className="bloomberg-border mb-4">
               <div className="bloomberg-header px-4">POSITION PLAYERS</div>
               <table className="w-full">
+                <caption className="sr-only">Position Players</caption>
                 <thead>
-                  <tr className="text-gray-600 text-xs border-b border-gray-800">
+                  <tr className="text-gray-500 text-xs border-b border-gray-800">
                     <SortHeader label="NAME" sortKey="name" currentSort={hitterSort} onSort={toggleSort(false)} align="left" />
                     <SortHeader label="POS" sortKey="position" currentSort={hitterSort} onSort={toggleSort(false)} align="left" />
                     <SortHeader label="AGE" sortKey="age" currentSort={hitterSort} onSort={toggleSort(false)} />
@@ -667,8 +674,9 @@ export default function RosterView() {
             <ScrollableTable className="bloomberg-border mb-4">
               <div className="bloomberg-header px-4">PITCHERS</div>
               <table className="w-full">
+                <caption className="sr-only">Pitchers</caption>
                 <thead>
-                  <tr className="text-gray-600 text-xs border-b border-gray-800">
+                  <tr className="text-gray-500 text-xs border-b border-gray-800">
                     <SortHeader label="NAME" sortKey="name" currentSort={pitcherSort} onSort={toggleSort(true)} align="left" />
                     <SortHeader label="POS" sortKey="position" currentSort={pitcherSort} onSort={toggleSort(true)} align="left" />
                     <SortHeader label="AGE" sortKey="age" currentSort={pitcherSort} onSort={toggleSort(true)} />

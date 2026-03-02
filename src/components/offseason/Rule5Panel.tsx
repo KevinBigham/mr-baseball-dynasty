@@ -240,7 +240,7 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
                 </div>
                 <div className="text-xs">
                   <span className="text-gray-500">{sel.originalTeamAbbr}</span>
-                  <span className="text-gray-600 mx-1">→</span>
+                  <span className="text-gray-500 mx-1">→</span>
                   <span className="text-green-400">{sel.selectingTeamAbbr}</span>
                 </div>
               </div>

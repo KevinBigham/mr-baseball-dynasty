@@ -23,19 +23,46 @@ export interface DraftProspect {
 
 /**
  * Extract MLB_ACTIVE players from the league into a draft pool.
- * Unassigns them: teamId → -1, rosterStatus → DRAFT_ELIGIBLE.
+ * Clones players before mutating — original state.players references are untouched
+ * until the draft is finalized via _executePick which updates by playerId lookup.
  */
 export function createDraftPool(players: Player[]): Player[] {
   const pool: Player[] = [];
-  for (const p of players) {
+  for (let i = 0; i < players.length; i++) {
+    const p = players[i];
     if (p.rosterData.rosterStatus === 'MLB_ACTIVE') {
-      p.teamId = -1;
-      p.rosterData.rosterStatus = 'DRAFT_ELIGIBLE';
-      pool.push(p);
+      const clone: Player = {
+        ...p,
+        rosterData: { ...p.rosterData },
+        development: { ...p.development },
+        hitterAttributes: p.hitterAttributes ? { ...p.hitterAttributes } : null,
+        pitcherAttributes: p.pitcherAttributes ? { ...p.pitcherAttributes } : null,
+      };
+      clone.teamId = -1;
+      clone.rosterData.rosterStatus = 'DRAFT_ELIGIBLE';
+      pool.push(clone);
+      // Replace in source array so state.players and pool share same reference
+      players[i] = clone;
     }
   }
   pool.sort((a, b) => b.overall - a.overall);
   return pool;
+}
+
+/**
+ * Recover orphaned DRAFT_ELIGIBLE players (e.g. after save/load mid-draft).
+ * Converts them to FREE_AGENT so they aren't permanently stuck.
+ */
+export function recoverOrphanedDraftPlayers(players: Player[]): number {
+  let count = 0;
+  for (const p of players) {
+    if (p.rosterData.rosterStatus === 'DRAFT_ELIGIBLE') {
+      p.rosterData.rosterStatus = 'FREE_AGENT';
+      p.teamId = -1;
+      count++;
+    }
+  }
+  return count;
 }
 
 /**

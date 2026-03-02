@@ -31,7 +31,7 @@ export default function PreseasonDashboard({ onRefreshBreakoutWatch }: Props) {
       <div className="bloomberg-border bg-gray-900 px-4 py-3 flex items-center justify-between">
         <div>
           <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
-          <div className="text-gray-600 text-xs">
+          <div className="text-gray-500 text-xs">
             Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
           </div>
         </div>

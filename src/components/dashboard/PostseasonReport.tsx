@@ -103,7 +103,7 @@ export default function PostseasonReport({
           <div key={stat.label} className="bloomberg-border bg-gray-900 px-4 py-3">
             <div className="text-gray-500 text-xs">{stat.label}</div>
             <div className="text-orange-400 font-bold text-lg tabular-nums">{stat.value}</div>
-            <div className="text-gray-600 text-xs">{stat.sub}</div>
+            <div className="text-gray-500 text-xs">{stat.sub}</div>
           </div>
         ))}
       </div>
@@ -151,7 +151,7 @@ export default function PostseasonReport({
                 </div>
               ))}
               {lastResult.developmentEvents.filter(e => e.type === 'breakout').length === 0 && (
-                <div className="text-gray-600 text-xs">No major breakouts</div>
+                <div className="text-gray-500 text-xs">No major breakouts</div>
               )}
             </div>
             <div>

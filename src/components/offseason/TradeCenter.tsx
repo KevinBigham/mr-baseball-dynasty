@@ -106,11 +106,11 @@ function PlayerChip({ player, color, selected, onClick }: {
       </div>
       {/* Contract + stats row */}
       <div className="flex items-center justify-between mt-0.5">
-        <span className={`text-xs ${player.contractYearsRemaining <= 1 ? 'text-red-400' : 'text-gray-600'}`}>
+        <span className={`text-xs ${player.contractYearsRemaining <= 1 ? 'text-red-400' : 'text-gray-500'}`}>
           {player.contractYearsRemaining}yr left
         </span>
         {statLine && (
-          <span className="text-gray-600 text-[10px] tabular-nums">{statLine}</span>
+          <span className="text-gray-500 text-[10px] tabular-nums">{statLine}</span>
         )}
       </div>
     </div>
@@ -146,7 +146,7 @@ function TeamNeedsBar({ teamId }: { teamId: number }) {
       <div className="flex items-center gap-3 flex-wrap">
         {needs.length > 0 && (
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 text-[10px] uppercase">Needs:</span>
+            <span className="text-gray-500 text-[10px] uppercase">Needs:</span>
             {needs.map(n => (
               <span key={n.position} className={`text-[10px] font-bold px-1.5 py-0.5 border ${severityColor[n.severity]}`}>
                 {n.position}
@@ -156,7 +156,7 @@ function TeamNeedsBar({ teamId }: { teamId: number }) {
         )}
         {strengths.length > 0 && (
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-600 text-[10px] uppercase">Strengths:</span>
+            <span className="text-gray-500 text-[10px] uppercase">Strengths:</span>
             {strengths.map(s => (
               <span key={s} className="text-[10px] font-bold px-1.5 py-0.5 border border-green-800 bg-green-950/30 text-green-400">
                 {s}
@@ -326,9 +326,9 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
           </div>
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
             {targetTeamId === 0 ? (
-              <div className="text-gray-600 text-xs py-4 text-center">Select a team to see their players</div>
+              <div className="text-gray-500 text-xs py-4 text-center">Select a team to see their players</div>
             ) : theirPlayers.length === 0 ? (
-              <div className="text-gray-600 text-xs py-4 text-center">Loading...</div>
+              <div className="text-gray-500 text-xs py-4 text-center">Loading...</div>
             ) : theirPlayers.map(p => (
               <PlayerChip
                 key={p.playerId}
@@ -396,7 +396,7 @@ function TradeHistoryPanel() {
           <div key={i} className="border border-gray-800 bg-gray-950/50 p-2.5">
             <div className="flex items-center justify-between mb-1">
               <span className="text-orange-400 text-xs font-bold">{t.partnerTeamAbbr}</span>
-              <span className="text-gray-600 text-[10px]">
+              <span className="text-gray-500 text-[10px]">
                 Season {t.season} · {t.type === 'incoming' ? 'ACCEPTED' : 'PROPOSED'}
               </span>
             </div>
@@ -782,7 +782,7 @@ export default function TradeCenter({ onTransaction, onDone }: {
                 <button
                   onClick={handleRefreshOffers}
                   disabled={refreshesLeft <= 0}
-                  className="text-orange-600 hover:text-orange-400 disabled:text-gray-600 text-xs font-bold transition-colors"
+                  className="text-orange-600 hover:text-orange-400 disabled:text-gray-500 text-xs font-bold transition-colors"
                 >
                   REFRESH ({refreshesLeft})
                 </button>

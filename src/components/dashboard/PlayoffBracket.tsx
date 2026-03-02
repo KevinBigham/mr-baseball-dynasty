@@ -27,7 +27,7 @@ function SeriesCard({ series, userTeamId }: { series: PlayoffSeries; userTeamId:
         isUser={series.lowerSeed.teamId === userTeamId}
       />
       {totalGames > 0 && (
-        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-gray-600 text-[10px] tabular-nums whitespace-nowrap">
+        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-gray-500 text-[10px] tabular-nums whitespace-nowrap">
           {seriesScore}
         </div>
       )}
@@ -43,7 +43,7 @@ function TeamRow({ abbr, seed, wins, isWinner, isUser }: {
       isWinner ? 'bg-orange-900/20' : ''
     }`}>
       <div className="flex items-center gap-2">
-        <span className="text-gray-600 text-[10px] w-3 text-right tabular-nums">{seed}</span>
+        <span className="text-gray-500 text-[10px] w-3 text-right tabular-nums">{seed}</span>
         <span className={`font-bold text-xs ${
           isUser ? 'text-orange-400' : isWinner ? 'text-gray-200' : 'text-gray-500'
         }`}>
@@ -51,7 +51,7 @@ function TeamRow({ abbr, seed, wins, isWinner, isUser }: {
         </span>
       </div>
       <span className={`font-bold text-xs tabular-nums ${
-        isWinner ? 'text-orange-400' : 'text-gray-600'
+        isWinner ? 'text-orange-400' : 'text-gray-500'
       }`}>
         {wins}
       </span>
@@ -66,7 +66,7 @@ function RoundColumn({ title, series, userTeamId }: {
 }) {
   return (
     <div className="flex flex-col items-center">
-      <div className="text-gray-600 text-[10px] font-bold tracking-widest text-center uppercase mb-2">
+      <div className="text-gray-500 text-[10px] font-bold tracking-widest text-center uppercase mb-2">
         {title}
       </div>
       <div className="flex flex-col gap-6 justify-center flex-1">
@@ -170,7 +170,7 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
                     bracket.alTeams.find(t => t.teamId === id)?.abbreviation ??
                     bracket.nlTeams.find(t => t.teamId === id)?.abbreviation ?? '???';
                   return (
-                    <div key={g.gameNumber} className="text-gray-600 text-[10px] flex items-center gap-2 justify-center tabular-nums">
+                    <div key={g.gameNumber} className="text-gray-500 text-[10px] flex items-center gap-2 justify-center tabular-nums">
                       <span className="text-gray-500 w-5">G{g.gameNumber}</span>
                       <span className={g.homeScore > g.awayScore ? 'text-gray-300 font-bold' : ''}>
                         {findAbbr(g.homeTeamId)} {g.homeScore}

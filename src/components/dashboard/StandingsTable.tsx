@@ -94,7 +94,7 @@ function PlayoffPicturePanel({
           dwIds.has(t.teamId) ? 'text-yellow-300' :
           wcIds.has(t.teamId) ? 'text-blue-300' : 'text-gray-500'
         }`}>{t.abbreviation}</span>
-        <span className="text-gray-600">{t.division}</span>
+        <span className="text-gray-500">{t.division}</span>
       </div>
       <div className="flex items-center gap-4 tabular-nums">
         <span className="text-gray-400">{t.wins}-{t.losses}</span>
@@ -119,7 +119,7 @@ function PlayoffPicturePanel({
 
       {bubble.length > 0 && (
         <>
-          <div className="text-gray-600 text-xs px-3 py-1 border-b border-gray-800 border-t border-gray-800 font-bold tracking-widest">
+          <div className="text-gray-500 text-xs px-3 py-1 border-b border-gray-800 border-t border-gray-800 font-bold tracking-widest">
             ON THE BUBBLE
           </div>
           {bubble.map(t => {
@@ -212,7 +212,7 @@ export default function StandingsView() {
                 <table className="w-full">
                   <caption className="sr-only">{divKey} standings</caption>
                   <thead>
-                    <tr className="text-gray-600 text-xs border-b border-gray-800">
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
                       <th scope="col" className="px-1 py-1 w-5"><span className="sr-only">Status</span></th>
                       <th scope="col" className="text-left px-2 py-1 w-20">TEAM</th>
                       <th scope="col" className="text-right px-2 py-1">W</th>
@@ -280,7 +280,7 @@ export default function StandingsView() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <PlayoffPicturePanel rows={standings.standings} league="AL" userTeamId={userTeamId} onSelect={handleRowClick} />
           <PlayoffPicturePanel rows={standings.standings} league="NL" userTeamId={userTeamId} onSelect={handleRowClick} />
-          <div className="lg:col-span-2 flex gap-6 text-xs text-gray-600">
+          <div className="lg:col-span-2 flex gap-6 text-xs text-gray-500">
             <span><span className="text-yellow-400">▲</span> Division Leader</span>
             <span><span className="text-blue-400">✦</span> Wild Card</span>
             <span><span className="text-orange-400 font-bold">■</span> Your Team</span>

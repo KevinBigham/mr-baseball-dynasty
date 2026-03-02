@@ -84,7 +84,7 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
           <div className="text-orange-400 text-sm font-bold tracking-wider">
             JULY 31 TRADE DEADLINE
           </div>
-          <div className="text-gray-600 text-xs mt-1">
+          <div className="text-gray-500 text-xs mt-1">
             {isBuyer
               ? 'Your team is in contention. Teams are calling with offers to bolster your roster.'
               : 'Your team is out of contention. Consider selling rentals for prospects.'}
@@ -98,7 +98,7 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
         )}
 
         {!loading && offers.length === 0 && (
-          <div className="text-gray-600 text-xs text-center py-4">
+          <div className="text-gray-500 text-xs text-center py-4">
             No trade offers at this time. The phones are quiet.
           </div>
         )}
@@ -116,12 +116,12 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
             </div>
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
-                <div className="text-gray-600">YOU RECEIVE</div>
+                <div className="text-gray-500">YOU RECEIVE</div>
                 <div className="text-green-400 font-bold">{offer.offeredName}</div>
                 <div className="text-gray-500">{offer.offeredPos} · OVR {toScale(offer.offeredOvr)}</div>
               </div>
               <div>
-                <div className="text-gray-600">YOU SEND</div>
+                <div className="text-gray-500">YOU SEND</div>
                 <div className="text-red-400 font-bold">{offer.requestedName}</div>
                 <div className="text-gray-500">{offer.requestedPos} · OVR {toScale(offer.requestedOvr)}</div>
               </div>

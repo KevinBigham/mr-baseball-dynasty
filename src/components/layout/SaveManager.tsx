@@ -153,7 +153,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
           <div id="save-manager-title" className="text-orange-500 font-bold text-xs tracking-widest">DYNASTY MANAGER</div>
           <button
             onClick={onClose}
-            className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
+            className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
           >
             ESC
           </button>
@@ -199,7 +199,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
                 />
               </div>
 
-              <div className="text-gray-600 text-xs space-y-1">
+              <div className="text-gray-500 text-xs space-y-1">
                 <div>Season: <span className="text-gray-400">{season}</span></div>
                 <div>Team: <span className="text-gray-400">#{userTeamId}</span></div>
               </div>
@@ -214,7 +214,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
 
               {saves.length > 0 && (
                 <div className="pt-2 border-t border-gray-800">
-                  <div className="text-gray-600 text-xs mb-2">RECENT SAVES</div>
+                  <div className="text-gray-500 text-xs mb-2">RECENT SAVES</div>
                   {saves.slice(0, 3).map(s => (
                     <div key={s.id} className="text-xs text-gray-500 py-1 flex justify-between">
                       <span className="truncate">{s.name}</span>
@@ -235,7 +235,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
               {!loading && saves.length === 0 && (
                 <div className="py-8 text-center">
                   <div className="text-gray-500 text-sm mb-2">No saves found.</div>
-                  <div className="text-gray-600 text-xs">Save your game to continue later.</div>
+                  <div className="text-gray-500 text-xs">Save your game to continue later.</div>
                 </div>
               )}
 
@@ -251,10 +251,10 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
                       <div className="text-gray-200 text-xs font-bold truncate">
                         {s.name}
                         {s.name.startsWith('Auto') && (
-                          <span className="ml-1.5 text-gray-600 font-normal">AUTO</span>
+                          <span className="ml-1.5 text-gray-500 font-normal">AUTO</span>
                         )}
                       </div>
-                      <div className="text-gray-600 text-xs mt-0.5">
+                      <div className="text-gray-500 text-xs mt-0.5">
                         {s.userTeamName} · Season {s.season} · {timeAgo(s.timestamp)}
                       </div>
                     </div>
@@ -306,7 +306,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
               {/* Export */}
               <div className="space-y-3">
                 <div className="text-gray-500 text-xs font-bold tracking-wider">EXPORT</div>
-                <div className="text-gray-600 text-xs">
+                <div className="text-gray-500 text-xs">
                   Download your current game as a compressed .mrbd.gz file.
                   Share it or keep it as a backup.
                 </div>
@@ -324,7 +324,7 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
               {/* Import */}
               <div className="space-y-3">
                 <div className="text-gray-500 text-xs font-bold tracking-wider">IMPORT</div>
-                <div className="text-gray-600 text-xs">
+                <div className="text-gray-500 text-xs">
                   Load a .mrbd.gz save file from your computer. This will replace your current game.
                 </div>
                 <input

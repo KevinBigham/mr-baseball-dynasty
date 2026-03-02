@@ -102,7 +102,7 @@ function InducteeCard({ inductee }: { inductee: HallOfFameInductee }) {
                 </span>
               )}
             </div>
-            <div className="text-gray-600 text-xs mt-0.5">
+            <div className="text-gray-500 text-xs mt-0.5">
               {inductee.position} &middot; Inducted Season {inductee.inductionSeason}
             </div>
           </div>
@@ -112,7 +112,7 @@ function InducteeCard({ inductee }: { inductee: HallOfFameInductee }) {
             }`}>
               {fmtPct(inductee.votePct)}
             </div>
-            <div className="text-gray-600 text-[10px]">VOTE</div>
+            <div className="text-gray-500 text-[10px]">VOTE</div>
           </div>
         </div>
 
@@ -141,7 +141,7 @@ function InducteeCard({ inductee }: { inductee: HallOfFameInductee }) {
 
         {/* Career footer */}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-800/60">
-          <span className="text-gray-600 text-[10px] tracking-wider">
+          <span className="text-gray-500 text-[10px] tracking-wider">
             {s.seasons} SEASON{s.seasons !== 1 ? 'S' : ''} &middot; {s.g} G
           </span>
           <span className="text-orange-400 text-xs font-bold tabular-nums">
@@ -162,7 +162,7 @@ function StatCell({ label, value, highlight }: {
 }) {
   return (
     <div>
-      <div className="text-gray-600 text-[10px] tracking-wider">{label}</div>
+      <div className="text-gray-500 text-[10px] tracking-wider">{label}</div>
       <div className={`text-sm font-bold tabular-nums ${
         highlight ? 'text-yellow-400' : 'text-gray-300'
       }`}>
@@ -189,9 +189,9 @@ function CandidateRow({ candidate }: { candidate: HallOfFameCandidate }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-gray-200 text-xs font-bold truncate">{candidate.name}</span>
-          <span className="text-gray-600 text-[10px]">{candidate.position}</span>
+          <span className="text-gray-500 text-[10px]">{candidate.position}</span>
         </div>
-        <div className="text-gray-600 text-[10px] mt-0.5">{statLine}</div>
+        <div className="text-gray-500 text-[10px] mt-0.5">{statLine}</div>
       </div>
 
       {/* Years on ballot */}
@@ -205,7 +205,7 @@ function CandidateRow({ candidate }: { candidate: HallOfFameCandidate }) {
       {/* HOF Score bar */}
       <div className="w-28 shrink-0">
         <div className="flex items-center justify-between mb-0.5">
-          <span className="text-gray-600 text-[10px]">HOF SCORE</span>
+          <span className="text-gray-500 text-[10px]">HOF SCORE</span>
           <span
             className="text-[10px] font-bold tabular-nums"
             style={{ color: barColor }}
@@ -274,7 +274,7 @@ export default function HallOfFameGallery() {
           <div className="text-gray-500 text-sm mb-2">
             No players have been inducted into the Hall of Fame yet.
           </div>
-          <div className="text-gray-600 text-xs">
+          <div className="text-gray-500 text-xs">
             Play more seasons to see legends emerge.
           </div>
         </div>
@@ -295,19 +295,19 @@ export default function HallOfFameGallery() {
           {/* Summary strip */}
           <div className="flex items-center gap-4 mb-3">
             <div className="bloomberg-border bg-gray-900 px-4 py-2">
-              <span className="text-gray-600 text-[10px] tracking-wider">TOTAL INDUCTEES</span>
+              <span className="text-gray-500 text-[10px] tracking-wider">TOTAL INDUCTEES</span>
               <div className="text-yellow-400 text-xl font-black tabular-nums">
                 {sortedInductees.length}
               </div>
             </div>
             <div className="bloomberg-border bg-gray-900 px-4 py-2">
-              <span className="text-gray-600 text-[10px] tracking-wider">FIRST BALLOT</span>
+              <span className="text-gray-500 text-[10px] tracking-wider">FIRST BALLOT</span>
               <div className="text-orange-400 text-xl font-black tabular-nums">
                 {sortedInductees.filter(i => i.ballotYear === 1).length}
               </div>
             </div>
             <div className="bloomberg-border bg-gray-900 px-4 py-2">
-              <span className="text-gray-600 text-[10px] tracking-wider">AVG VOTE %</span>
+              <span className="text-gray-500 text-[10px] tracking-wider">AVG VOTE %</span>
               <div className="text-gray-300 text-xl font-black tabular-nums">
                 {sortedInductees.length > 0
                   ? (
@@ -342,7 +342,7 @@ export default function HallOfFameGallery() {
 
           <div className="bloomberg-border bg-gray-950 overflow-hidden">
             {/* Table header */}
-            <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-800 text-gray-600 text-[10px] tracking-wider">
+            <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-800 text-gray-500 text-[10px] tracking-wider">
               <span className="flex-1">CANDIDATE</span>
               <span className="w-16 text-right">BALLOT</span>
               <span className="w-28 text-right">HOF SCORE</span>

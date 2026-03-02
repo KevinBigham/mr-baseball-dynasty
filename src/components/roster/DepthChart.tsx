@@ -24,7 +24,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
   if (!starter) {
     return (
       <div className="flex flex-col items-center w-[90px]">
-        <div className="text-gray-600 text-[10px] font-bold tracking-wider mb-1">{position}</div>
+        <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
         <div className="border border-gray-800 bg-gray-900/50 rounded px-2 py-1.5 w-full text-center">
           <div className="text-gray-700 text-xs">EMPTY</div>
         </div>
@@ -36,7 +36,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
 
   return (
     <div className="flex flex-col items-center w-[90px]">
-      <div className="text-gray-600 text-[10px] font-bold tracking-wider mb-1">{position}</div>
+      <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
       {/* Starter */}
       <div
         className={`border ${g.bg} rounded px-2 py-1.5 w-full text-center ${onClickPlayer ? 'cursor-pointer hover:brightness-125' : ''}`}
@@ -45,7 +45,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
         <div className="text-gray-200 text-xs font-bold truncate">{starter.name.split(' ').pop()}</div>
         <div className="flex items-center justify-center gap-1.5 mt-0.5">
           <span className={`text-xs font-bold tabular-nums ${g.color}`}>{g.grade}</span>
-          <span className="text-gray-600 text-[10px]">Age {starter.age}</span>
+          <span className="text-gray-500 text-[10px]">Age {starter.age}</span>
         </div>
       </div>
       {/* Backup */}
@@ -54,7 +54,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
           className="mt-0.5 px-1.5 py-0.5 w-full text-center cursor-pointer hover:bg-gray-800/50 rounded"
           onClick={() => onClickPlayer?.(backup.playerId)}
         >
-          <div className="text-gray-600 text-[10px] truncate">{backup.name.split(' ').pop()}</div>
+          <div className="text-gray-500 text-[10px] truncate">{backup.name.split(' ').pop()}</div>
           <div className={`text-[10px] tabular-nums ${ovrGrade(backup.overall).color}`}>
             {ovrGrade(backup.overall).grade}
           </div>
@@ -92,7 +92,7 @@ function PitcherCard({ player, role, onClickPlayer, selected, onSelect }: {
             ? `${player.stats.era?.toFixed(2) ?? '—'} ERA`
             : ''}
         </span>
-        <span className="text-gray-600 text-[10px] uppercase font-bold">{role}</span>
+        <span className="text-gray-500 text-[10px] uppercase font-bold">{role}</span>
       </div>
     </div>
   );
@@ -118,12 +118,12 @@ function LineupRow({ player, slot, selected, onSelect }: {
       <div className="flex items-center gap-3">
         <span className="text-orange-500 font-bold text-xs tabular-nums w-4 text-right">{slot}</span>
         <span className={`text-xs font-bold ${g.color}`}>{player.name}</span>
-        <span className="text-gray-600 text-[10px]">{player.position}</span>
+        <span className="text-gray-500 text-[10px]">{player.position}</span>
       </div>
       <div className="flex items-center gap-3 text-[10px] tabular-nums">
         <span className={`font-bold ${g.color}`}>{g.grade}</span>
         <span className="text-gray-500">{avg}</span>
-        <span className="text-gray-600">{player.stats.hr ?? 0} HR</span>
+        <span className="text-gray-500">{player.stats.hr ?? 0} HR</span>
       </div>
     </div>
   );
@@ -290,7 +290,7 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
             </span>
           )}
           {editing && (
-            <span className="text-gray-600 text-xs">Click two players to swap their order</span>
+            <span className="text-gray-500 text-xs">Click two players to swap their order</span>
           )}
         </div>
       )}

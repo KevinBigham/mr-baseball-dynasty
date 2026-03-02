@@ -28,7 +28,7 @@ function PickLogEntry({ pick, isUser }: { pick: DraftPick; isUser: boolean }) {
         border: isUser ? '1px solid rgba(234,88,12,0.3)' : '1px solid transparent',
       }}
     >
-      <span className="text-gray-600 tabular-nums w-8">#{pick.pickNumber}</span>
+      <span className="text-gray-500 tabular-nums w-8">#{pick.pickNumber}</span>
       <span className={`font-bold w-8 ${isUser ? 'text-orange-400' : 'text-gray-400'}`}>
         {pick.teamAbbr}
       </span>
@@ -57,11 +57,11 @@ function ProspectRow({
         border: selected ? '1px solid rgba(234,88,12,0.5)' : '1px solid rgba(255,255,255,0.05)',
       }}
     >
-      <span className="text-gray-600 text-xs tabular-nums w-8">#{prospect.rank}</span>
+      <span className="text-gray-500 text-xs tabular-nums w-8">#{prospect.rank}</span>
       <span className="text-gray-300 font-bold text-sm flex-1 truncate">{prospect.name}</span>
       <span className="text-gray-500 text-xs w-6 text-center">{prospect.position}</span>
       <span className="text-gray-500 text-xs w-6 text-center tabular-nums">{prospect.age}</span>
-      <span className="text-gray-600 text-xs w-6">{prospect.bats}/{prospect.throws}</span>
+      <span className="text-gray-500 text-xs w-6">{prospect.bats}/{prospect.throws}</span>
       <div className="text-right w-10">
         <OvrBadge ovr={prospect.scoutedOvr} />
       </div>
@@ -218,7 +218,7 @@ export default function DraftRoom() {
       >
         <div className="flex items-center gap-4">
           <span className="text-orange-500 font-black text-sm tracking-widest">FRANCHISE DRAFT</span>
-          <span className="text-gray-600 text-xs">
+          <span className="text-gray-500 text-xs">
             {startMode === 'snake10' ? '10 Rounds' : startMode === 'snake25' ? '25 Rounds' : '26 Rounds'}
           </span>
         </div>
@@ -298,7 +298,7 @@ export default function DraftRoom() {
             style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
           >
             <span className="text-xs font-bold text-gray-500 tracking-widest uppercase">AVAILABLE</span>
-            <span className="text-xs text-gray-600 tabular-nums">({filteredAvailable.length})</span>
+            <span className="text-xs text-gray-500 tabular-nums">({filteredAvailable.length})</span>
             <div className="flex gap-1 ml-auto">
               {(['ALL', 'HITTERS', 'PITCHERS'] as PosFilter[]).map(f => (
                 <button
@@ -319,7 +319,7 @@ export default function DraftRoom() {
 
           {/* Column headers */}
           <div
-            className="flex items-center gap-3 px-3 py-1 text-xs text-gray-600 font-bold"
+            className="flex items-center gap-3 px-3 py-1 text-xs text-gray-500 font-bold"
             style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
           >
             <span className="w-8">RNK</span>
@@ -361,7 +361,7 @@ export default function DraftRoom() {
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-xs"
                 style={{ background: 'rgba(234,88,12,0.08)', border: '1px solid rgba(234,88,12,0.2)' }}
               >
-                <span className="text-gray-600 tabular-nums w-6">R{pick.round}</span>
+                <span className="text-gray-500 tabular-nums w-6">R{pick.round}</span>
                 <span className="text-gray-500 w-6">{pick.position}</span>
                 <span className="text-gray-300 font-bold flex-1 truncate">{pick.playerName}</span>
                 <OvrBadge ovr={pick.scoutedOvr} />

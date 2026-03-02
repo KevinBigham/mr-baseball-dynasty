@@ -47,7 +47,7 @@ export default function OffseasonSummary({
         <div>
           <div className="text-orange-500 text-xs font-bold tracking-widest mb-2">YOUR MOVES</div>
           {userTransactions.length === 0 ? (
-            <div className="text-gray-600 text-xs">No transactions made this offseason.</div>
+            <div className="text-gray-500 text-xs">No transactions made this offseason.</div>
           ) : (
             <div className="space-y-1">
               {userTransactions.map((tx, i) => (
@@ -175,7 +175,7 @@ export default function OffseasonSummary({
                   </div>
                   <div className="text-xs">
                     <span className="text-gray-500">{sel.originalTeamAbbr}</span>
-                    <span className="text-gray-600 mx-1">→</span>
+                    <span className="text-gray-500 mx-1">→</span>
                     <span className="text-green-400">{sel.selectingTeamAbbr}</span>
                   </div>
                 </div>

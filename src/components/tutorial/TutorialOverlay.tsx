@@ -72,7 +72,7 @@ export default function TutorialOverlay({ currentPhase, enabled, onDisable }: Pr
             <span className="text-orange-400 font-black text-xs tracking-widest">
               {currentStep.title.toUpperCase()}
             </span>
-            <span className="text-gray-600 text-xs">
+            <span className="text-gray-500 text-xs">
               {completedSteps.size + 1}/{TUTORIAL_STEPS.length}
             </span>
           </div>
@@ -88,7 +88,7 @@ export default function TutorialOverlay({ currentPhase, enabled, onDisable }: Pr
           <div className="px-4 py-2 border-t border-gray-800 flex items-center justify-between">
             <button
               onClick={handleSkip}
-              className="text-gray-600 text-xs hover:text-gray-400 transition-colors"
+              className="text-gray-500 text-xs hover:text-gray-400 transition-colors"
             >
               Skip Tutorial
             </button>

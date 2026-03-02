@@ -18,7 +18,7 @@ function getMarketInterest(p: FAPlayer): { label: string; color: string; level: 
   if (p.overall >= 400 && p.age < 30) return { label: 'HOT', color: 'text-red-400', level: 3 };
   if (p.overall >= 350 && p.age < 33) return { label: 'WARM', color: 'text-yellow-400', level: 2 };
   if (p.overall >= 300) return { label: 'MILD', color: 'text-blue-400', level: 1 };
-  return { label: 'COLD', color: 'text-gray-600', level: 0 };
+  return { label: 'COLD', color: 'text-gray-500', level: 0 };
 }
 
 // ─── Acceptance probability calculator ────────────────────────────────────────
@@ -78,15 +78,15 @@ function OfferModal({
     : `${player.stats.avg?.toFixed(3) ?? '—'} AVG · ${player.stats.hr ?? 0} HR · ${((player.stats.obp ?? 0) + (player.stats.slg ?? 0)).toFixed(3)} OPS`;
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bloomberg-border bg-gray-900 p-6 max-w-md w-full">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+      <div className="bloomberg-border bg-gray-900 p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="text-orange-500 font-bold text-xs tracking-widest mb-4">CONTRACT OFFER</div>
 
         <div className="flex items-center gap-4 mb-3 pb-3 border-b border-gray-800">
           <div>
             <div className="text-gray-200 font-bold text-sm">{player.name}</div>
             <div className="text-gray-500 text-xs">{player.position} · Age {player.age} · OVR {player.overall}</div>
-            <div className="text-gray-600 text-xs mt-0.5">{statLine}</div>
+            <div className="text-gray-500 text-xs mt-0.5">{statLine}</div>
           </div>
           <div className="ml-auto text-right">
             <div className="text-gray-500 text-xs">MARKET VALUE</div>
@@ -105,6 +105,7 @@ function OfferModal({
               type="range" min={1} max={Math.min(8, player.projectedYears + 2)} step={1}
               value={years} onChange={e => setYears(Number(e.target.value))}
               className="w-full accent-orange-500"
+              aria-label="Contract length in years"
             />
           </div>
 
@@ -117,8 +118,9 @@ function OfferModal({
               type="range" min={minSalary} max={maxSalary} step={salaryStep}
               value={salary} onChange={e => setSalary(Number(e.target.value))}
               className="w-full accent-orange-500"
+              aria-label="Annual salary"
             />
-            <div className="flex justify-between text-gray-600 text-xs mt-0.5">
+            <div className="flex justify-between text-gray-500 text-xs mt-0.5">
               <span>{formatSalary(minSalary)}</span>
               <span>{formatSalary(maxSalary)}</span>
             </div>
@@ -142,7 +144,7 @@ function OfferModal({
                 style={{ width: `${acceptance}%` }}
               />
             </div>
-            <div className="text-gray-600 text-xs mt-1">
+            <div className="text-gray-500 text-xs mt-1">
               {acceptance >= 80 ? 'Very likely to accept' :
                acceptance >= 60 ? 'Likely to accept' :
                acceptance >= 40 ? 'May accept — consider sweetening the deal' :
@@ -157,7 +159,7 @@ function OfferModal({
               <div className="text-orange-400 font-bold text-lg tabular-nums">
                 {formatSalary(salary * years)}
               </div>
-              <div className="text-gray-600 text-xs">{years}yr / {formatSalary(salary)} per year</div>
+              <div className="text-gray-500 text-xs">{years}yr / {formatSalary(salary)} per year</div>
             </div>
 
             <div className="bloomberg-border bg-gray-950 p-3">
@@ -165,7 +167,7 @@ function OfferModal({
               <div className={`font-bold text-sm tabular-nums ${overBudget ? 'text-red-400' : 'text-green-400'}`}>
                 {formatSalary(newPayroll)}
               </div>
-              <div className="text-gray-600 text-xs">
+              <div className="text-gray-500 text-xs">
                 Budget: ${budget}M
               </div>
               <div className={`text-xs mt-0.5 ${overBudget ? 'text-red-400' : 'text-green-500'}`}>
@@ -351,15 +353,15 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
         <div className="px-4 py-2 border-b border-gray-800 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-gray-600 text-[10px] uppercase">Payroll </span>
+              <span className="text-gray-500 text-[10px] uppercase">Payroll </span>
               <span className="text-gray-300 text-xs font-bold tabular-nums">{formatSalary(currentPayroll)}</span>
             </div>
             <div>
-              <span className="text-gray-600 text-[10px] uppercase">Budget </span>
+              <span className="text-gray-500 text-[10px] uppercase">Budget </span>
               <span className="text-gray-300 text-xs font-bold tabular-nums">${teamBudget}M</span>
             </div>
             <div>
-              <span className="text-gray-600 text-[10px] uppercase">Remaining </span>
+              <span className="text-gray-500 text-[10px] uppercase">Remaining </span>
               <span className={`text-xs font-bold tabular-nums ${budgetMil - currentPayroll > 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {formatSalary(Math.abs(budgetMil - currentPayroll))}
                 {budgetMil - currentPayroll < 0 ? ' OVER' : ''}
@@ -411,7 +413,7 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-900">
-              <tr className="text-gray-600 text-xs border-b border-gray-800">
+              <tr className="text-gray-500 text-xs border-b border-gray-800">
                 <th className="text-left px-3 py-1.5">NAME</th>
                 <th className="text-left px-2 py-1.5">POS</th>
                 <th className="text-right px-2 py-1.5">AGE</th>
@@ -426,7 +428,11 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 50).map(p => {
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="text-gray-500 text-xs text-center py-6">No free agents match your filters.</td>
+                </tr>
+              ) : filtered.slice(0, 50).map(p => {
                 const market = getMarketInterest(p);
                 return (
                   <tr key={p.playerId} className="bloomberg-row text-xs">
@@ -465,7 +471,7 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
           </table>
 
           {/* Column legend */}
-          <div className="px-3 py-1.5 border-t border-gray-800 text-gray-600 text-[10px]">
+          <div className="px-3 py-1.5 border-t border-gray-800 text-gray-500 text-[10px]">
             Hitters: AVG / HR / OPS · Pitchers: ERA / K/9 / WHIP · MKT = Market Interest
           </div>
         </div>

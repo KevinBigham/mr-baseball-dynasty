@@ -46,7 +46,7 @@ export default function FiredScreen() {
             <br />
             OF YOUR DUTIES
           </div>
-          <div className="text-gray-600 text-xs mt-3">
+          <div className="text-gray-500 text-xs mt-3">
             The front office has decided to go in a different direction.
             <br />
             Your tenure as General Manager has come to an end.

@@ -52,7 +52,7 @@ function RecordSection({ title, children }: { title: string; children: React.Rea
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="text-gray-600 text-xs border-b border-gray-800">
+            <tr className="text-gray-500 text-xs border-b border-gray-800">
               <th className="text-left px-3 py-1.5 w-16">STAT</th>
               <th className="text-right px-3 py-1.5 w-24">VALUE</th>
               <th className="text-left px-3 py-1.5">PLAYER</th>
@@ -80,7 +80,7 @@ function RecordRow({ record, showSeason }: { record: FranchiseRecord; showSeason
         </td>
       )}
       {!showSeason && (
-        <td className="text-right px-3 py-2 text-gray-600">CAREER</td>
+        <td className="text-right px-3 py-2 text-gray-500">CAREER</td>
       )}
     </tr>
   );
@@ -93,7 +93,7 @@ function CareerRecordSection({ title, children }: { title: string; children: Rea
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="text-gray-600 text-xs border-b border-gray-800">
+            <tr className="text-gray-500 text-xs border-b border-gray-800">
               <th className="text-left px-3 py-1.5 w-16">STAT</th>
               <th className="text-right px-3 py-1.5 w-24">VALUE</th>
               <th className="text-left px-3 py-1.5">PLAYER</th>
@@ -115,7 +115,7 @@ function TeamRecordSection({ records }: { records: TeamRecord[] }) {
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="text-gray-600 text-xs border-b border-gray-800">
+            <tr className="text-gray-500 text-xs border-b border-gray-800">
               <th className="text-left px-3 py-1.5">RECORD</th>
               <th className="text-right px-3 py-1.5 w-24">VALUE</th>
               <th className="text-right px-3 py-1.5 w-20">SEASON</th>

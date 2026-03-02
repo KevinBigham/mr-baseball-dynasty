@@ -80,7 +80,7 @@ export default function HistoryView() {
           {history.length === 0 && (
             <div className="bloomberg-border bg-gray-900 px-6 py-12 text-center">
               <div className="text-gray-500 text-sm mb-2">Your dynasty story begins now.</div>
-              <div className="text-gray-600 text-xs">
+              <div className="text-gray-500 text-xs">
                 Simulate your first season to start building your franchise legacy.
               </div>
             </div>
@@ -129,7 +129,7 @@ export default function HistoryView() {
               <div className="bloomberg-border overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="text-gray-600 text-xs border-b border-gray-800">
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
                       <th className="text-left px-3 py-1.5">SEASON</th>
                       <th className="text-right px-3 py-1.5">W</th>
                       <th className="text-right px-3 py-1.5">L</th>
@@ -154,7 +154,7 @@ export default function HistoryView() {
                                 {badge.text}
                               </span>
                             ) : (
-                              <span className="text-gray-600 text-xs">—</span>
+                              <span className="text-gray-500 text-xs">—</span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">
@@ -206,13 +206,13 @@ function SummaryCard({ label, value, sub, highlight, gold }: {
 }) {
   return (
     <div className={`bloomberg-border bg-gray-900 px-4 py-3 ${gold ? 'border-yellow-700' : ''}`}>
-      <div className="text-gray-600 text-xs">{label}</div>
+      <div className="text-gray-500 text-xs">{label}</div>
       <div className={`text-2xl font-black tabular-nums mt-0.5 ${
         gold ? 'text-yellow-400' : highlight ? 'text-orange-400' : 'text-gray-200'
       }`}>
         {value}
       </div>
-      <div className={`text-xs mt-0.5 ${gold ? 'text-yellow-600' : 'text-gray-600'}`}>{sub}</div>
+      <div className={`text-xs mt-0.5 ${gold ? 'text-yellow-600' : 'text-gray-500'}`}>{sub}</div>
     </div>
   );
 }

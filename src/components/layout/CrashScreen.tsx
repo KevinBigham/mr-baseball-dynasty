@@ -97,12 +97,12 @@ export default function CrashScreen({ error, errorInfo, onReset, isPartial }: Cr
           <div className="mb-4">
             <button
               onClick={() => setShowStack(!showStack)}
-              className="text-gray-600 text-xs hover:text-gray-400 transition-colors"
+              className="text-gray-500 text-xs hover:text-gray-400 transition-colors"
             >
               {showStack ? '▼' : '▶'} STACK TRACE
             </button>
             {showStack && (
-              <pre className="mt-2 bg-gray-950 border border-gray-800 rounded p-3 text-gray-600 text-xs overflow-auto max-h-48 font-mono">
+              <pre className="mt-2 bg-gray-950 border border-gray-800 rounded p-3 text-gray-500 text-xs overflow-auto max-h-48 font-mono">
                 {error.stack}
                 {errorInfo?.componentStack && (
                   <>

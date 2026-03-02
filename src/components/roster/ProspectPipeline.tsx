@@ -229,7 +229,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
         <div className="bloomberg-header px-4">PROSPECT PIPELINE</div>
         <div className="bloomberg-border bg-gray-900 px-6 py-12 text-center">
           <div className="text-gray-500 text-sm mb-2">No prospects in your pipeline yet.</div>
-          <div className="text-gray-600 text-xs">Draft picks and international signings will appear here.</div>
+          <div className="text-gray-500 text-xs">Draft picks and international signings will appear here.</div>
         </div>
       </div>
     );
@@ -254,7 +254,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
           { label: 'AVG AGE', value: String(avgAge), color: '#94a3b8' },
         ].map(s => (
           <div key={s.label} className="text-center">
-            <div className="text-gray-600 text-[10px] uppercase">{s.label}</div>
+            <div className="text-gray-500 text-[10px] uppercase">{s.label}</div>
             <div className="font-bold text-sm tabular-nums" style={{ color: s.color }}>{s.value}</div>
           </div>
         ))}
@@ -271,7 +271,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
                 'text-xs px-2 py-0.5 rounded transition-colors',
                 posGroup === g
                   ? 'bg-orange-900/40 text-orange-400'
-                  : 'text-gray-600 hover:text-gray-400',
+                  : 'text-gray-500 hover:text-gray-400',
               ].join(' ')}
             >
               {g}
@@ -279,7 +279,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
           ))}
         </div>
         <div className="flex items-center gap-1 ml-auto">
-          <span className="text-gray-600 text-xs">SORT:</span>
+          <span className="text-gray-500 text-xs">SORT:</span>
           {([
             { key: 'pot', label: 'POT' },
             { key: 'ovr', label: 'OVR' },
@@ -293,7 +293,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
                 'text-xs px-2 py-0.5 rounded transition-colors',
                 sortMode === s.key
                   ? 'bg-orange-900/40 text-orange-400 font-bold'
-                  : 'text-gray-600 hover:text-gray-400',
+                  : 'text-gray-500 hover:text-gray-400',
               ].join(' ')}
             >
               {s.label}

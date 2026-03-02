@@ -43,7 +43,7 @@ export default function CareerSummary({ franchiseHistory, seasonsManaged }: Prop
     <div className="space-y-4">
       {/* Legacy Grade */}
       <div className="text-center py-4">
-        <div className="text-gray-600 text-xs tracking-widest mb-2">LEGACY GRADE</div>
+        <div className="text-gray-500 text-xs tracking-widest mb-2">LEGACY GRADE</div>
         <div
           className="text-6xl font-black tabular-nums"
           style={{ color: legacy.color }}
@@ -102,7 +102,7 @@ export default function CareerSummary({ franchiseHistory, seasonsManaged }: Prop
 function StatBox({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="bloomberg-border bg-gray-900/50 px-4 py-3 text-center">
-      <div className="text-gray-600 text-xs">{label}</div>
+      <div className="text-gray-500 text-xs">{label}</div>
       <div className={`font-bold text-lg tabular-nums ${highlight ? 'text-yellow-400' : 'text-gray-200'}`}>
         {value}
       </div>

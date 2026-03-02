@@ -44,24 +44,24 @@ export default function MidSeasonCheckIn({ result, userTeamId, seasonPhase, owne
     <div className="bloomberg-border">
       <div className="bloomberg-header flex items-center justify-between">
         <span>{getPhaseLabel(seasonPhase)}</span>
-        <span className="text-gray-600 font-normal text-xs">Owner Check-In</span>
+        <span className="text-gray-500 font-normal text-xs">Owner Check-In</span>
       </div>
 
       <div className="px-4 py-4 space-y-4">
         {/* Record snapshot */}
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <div className="text-gray-600 text-xs">RECORD</div>
+            <div className="text-gray-500 text-xs">RECORD</div>
             <div className="text-gray-200 font-bold tabular-nums">{wins}–{losses}</div>
           </div>
           <div>
-            <div className="text-gray-600 text-xs">WIN PCT</div>
+            <div className="text-gray-500 text-xs">WIN PCT</div>
             <div className="text-orange-400 font-bold tabular-nums">
               {(wins / Math.max(1, wins + losses)).toFixed(3)}
             </div>
           </div>
           <div>
-            <div className="text-gray-600 text-xs">MLB RANK</div>
+            <div className="text-gray-500 text-xs">MLB RANK</div>
             <div className={`font-bold ${leagueRank <= 5 ? 'text-green-400' : leagueRank <= 15 ? 'text-gray-300' : 'text-red-400'}`}>
               {leagueRank}{leagueRank === 1 ? 'st' : leagueRank === 2 ? 'nd' : leagueRank === 3 ? 'rd' : 'th'}
             </div>
@@ -70,7 +70,7 @@ export default function MidSeasonCheckIn({ result, userTeamId, seasonPhase, owne
 
         {/* Owner quote */}
         <div className="bloomberg-border bg-gray-900/50 px-4 py-3">
-          <div className="text-gray-600 text-xs mb-1">OWNER'S OFFICE</div>
+          <div className="text-gray-500 text-xs mb-1">OWNER'S OFFICE</div>
           <div className={`text-sm italic ${mood.color}`}>{mood.text}</div>
           <div className="text-gray-700 text-xs mt-2">
             Patience: <span className={ownerPatience <= 20 ? 'text-red-400 font-bold' : 'text-gray-400'}>{ownerPatience}%</span>

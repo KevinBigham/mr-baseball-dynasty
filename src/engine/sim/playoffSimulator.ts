@@ -219,16 +219,16 @@ export function simulateFullPlayoffs(
   const alcsHigher = findTeamInField(al, alDS1.winnerId);
   const alcsLower = findTeamInField(al, alDS2.winnerId);
   const alcs = simulateSeries(
-    alcsHigher.wins >= alcsLower.wins ? alcsHigher : alcsLower,
-    alcsHigher.wins >= alcsLower.wins ? alcsLower : alcsHigher,
+    alcsHigher.seed <= alcsLower.seed ? alcsHigher : alcsLower,
+    alcsHigher.seed <= alcsLower.seed ? alcsLower : alcsHigher,
     'CS', 7, teams, players, baseSeed + 20,
   );
 
   const nlcsHigher = findTeamInField(nl, nlDS1.winnerId);
   const nlcsLower = findTeamInField(nl, nlDS2.winnerId);
   const nlcs = simulateSeries(
-    nlcsHigher.wins >= nlcsLower.wins ? nlcsHigher : nlcsLower,
-    nlcsHigher.wins >= nlcsLower.wins ? nlcsLower : nlcsHigher,
+    nlcsHigher.seed <= nlcsLower.seed ? nlcsHigher : nlcsLower,
+    nlcsHigher.seed <= nlcsLower.seed ? nlcsLower : nlcsHigher,
     'CS', 7, teams, players, baseSeed + 21,
   );
 

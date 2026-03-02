@@ -52,7 +52,7 @@ function OVRBadge({ ovr }: { ovr: number }) {
   return (
     <div className="text-center min-w-[44px]">
       <div className="text-2xl font-black tabular-nums leading-none" style={{ color }}>{ovr}</div>
-      <div className="text-xs text-gray-600 mt-0.5">OVR</div>
+      <div className="text-xs text-gray-500 mt-0.5">OVR</div>
     </div>
   );
 }
@@ -65,10 +65,10 @@ function TitleScreen() {
     <div className="flex flex-col items-center justify-center min-h-screen gap-8 p-8"
       style={{ background: 'radial-gradient(ellipse at 50% 10%, #1a2a1a 0%, #050a05 60%)' }}>
       <div className="text-center space-y-2">
-        <div className="text-gray-600 text-xs tracking-[0.3em] uppercase">Season 2026</div>
+        <div className="text-gray-500 text-xs tracking-[0.3em] uppercase">Season 2026</div>
         <div className="text-orange-500 font-black text-4xl tracking-widest">MR. BASEBALL</div>
         <div className="text-orange-700 font-bold text-xl tracking-[0.4em]">DYNASTY</div>
-        <div className="text-gray-600 text-xs mt-4">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
+        <div className="text-gray-500 text-xs mt-4">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
       </div>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -93,7 +93,7 @@ function TitleScreen() {
           <div key={f.label} className="space-y-1">
             <div className="text-xl">{f.icon}</div>
             <div className="text-orange-400 text-xs font-bold">{f.label}</div>
-            <div className="text-gray-600 text-xs">{f.sub}</div>
+            <div className="text-gray-500 text-xs">{f.sub}</div>
           </div>
         ))}
       </div>
@@ -120,13 +120,13 @@ function TeamSelectScreen() {
         <div className="text-center space-y-1 pt-2">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Choose Your Franchise</div>
           <div className="text-orange-400 font-black text-2xl tracking-wider">SELECT YOUR TEAM</div>
-          <div className="text-gray-600 text-xs">You'll manage this franchise for your dynasty run</div>
+          <div className="text-gray-500 text-xs">You'll manage this franchise for your dynasty run</div>
         </div>
 
         {/* Division grids */}
         {grouped.map(({ div, teams }) => (
           <div key={div}>
-            <div className="text-gray-600 text-xs font-bold tracking-[0.2em] uppercase mb-2 px-1">
+            <div className="text-gray-500 text-xs font-bold tracking-[0.2em] uppercase mb-2 px-1">
               {div}
             </div>
             <div className="grid grid-cols-5 gap-2">
@@ -152,7 +152,7 @@ function TeamSelectScreen() {
                     <div className={`font-black text-sm ${selected ? 'text-orange-400' : 'text-gray-300'}`}>
                       {t.abbr}
                     </div>
-                    <div className="text-gray-600 text-xs mt-0.5 leading-tight truncate">{t.city}</div>
+                    <div className="text-gray-500 text-xs mt-0.5 leading-tight truncate">{t.city}</div>
                   </button>
                 );
               })}
@@ -217,7 +217,7 @@ function StartModeScreen() {
         <div className="text-center pt-2 space-y-1">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Franchise Setup</div>
           <div className="text-orange-400 font-black text-2xl tracking-wider">START MODE</div>
-          <div className="text-gray-600 text-xs">How do you want to build your roster?</div>
+          <div className="text-gray-500 text-xs">How do you want to build your roster?</div>
         </div>
 
         <div className="space-y-3">
@@ -263,8 +263,8 @@ function StartModeScreen() {
                     <div className="text-gray-400 text-xs font-bold mb-1">{mode.sub}</div>
                     <div className="text-gray-500 text-xs leading-relaxed">{mode.desc}</div>
                     <div className="flex gap-4 mt-2">
-                      <span className="text-gray-600 text-xs">{mode.time}</span>
-                      {mode.diff && <span className="text-gray-600 text-xs">{mode.diff}</span>}
+                      <span className="text-gray-500 text-xs">{mode.time}</span>
+                      {mode.diff && <span className="text-gray-500 text-xs">{mode.diff}</span>}
                     </div>
                   </div>
                   {selected && (
@@ -336,7 +336,7 @@ function DifficultyScreen() {
         <div className="text-center pt-2 space-y-1">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Franchise Setup</div>
           <div className="text-orange-400 font-black text-2xl tracking-wider">DIFFICULTY</div>
-          <div className="text-gray-600 text-xs">Set the challenge level and ownership style</div>
+          <div className="text-gray-500 text-xs">Set the challenge level and ownership style</div>
         </div>
 
         {/* Difficulty cards */}
@@ -370,8 +370,8 @@ function DifficultyScreen() {
                     </div>
                     <div className="text-gray-400 text-xs leading-relaxed">{d.desc}</div>
                     <div className="flex gap-4 mt-2">
-                      <span className="text-gray-600 text-xs">FO Budget: ${d.foBudget}M</span>
-                      <span className="text-gray-600 text-xs">Owner: {d.patience}</span>
+                      <span className="text-gray-500 text-xs">FO Budget: ${d.foBudget}M</span>
+                      <span className="text-gray-500 text-xs">Owner: {d.patience}</span>
                     </div>
                   </div>
                   {selected && (
@@ -407,7 +407,7 @@ function DifficultyScreen() {
                       </span>
                     </div>
                     <div className="text-gray-400 text-xs leading-relaxed">{a.desc}</div>
-                    <div className="text-gray-600 text-xs mt-1">{a.expectation}</div>
+                    <div className="text-gray-500 text-xs mt-1">{a.expectation}</div>
                   </div>
                   {selected && (
                     <div className="font-black text-lg shrink-0" style={{ color: '#a78bfa' }}>✓</div>
@@ -479,7 +479,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
         <div className="text-center pt-2 space-y-1">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Build Your</div>
           <div className="font-black text-2xl tracking-wider" style={{ color: '#a78bfa' }}>FRONT OFFICE</div>
-          <div className="text-gray-600 text-xs">Hire your staff before Opening Day — or skip and hire later</div>
+          <div className="text-gray-500 text-xs">Hire your staff before Opening Day — or skip and hire later</div>
           <div className="text-orange-400 text-xs font-bold">{teamName}</div>
         </div>
 
@@ -491,7 +491,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
               <span className="text-sm font-black tabular-nums" style={{ color: budgetColor }}>
                 ${foSpent.toFixed(1)}M
               </span>
-              <span className="text-xs text-gray-600">/ ${foBudgetMax}M</span>
+              <span className="text-xs text-gray-500">/ ${foBudgetMax}M</span>
               {foRemaining > 0
                 ? <span className="text-xs font-bold text-green-400">${foRemaining.toFixed(1)}M left</span>
                 : <span className="text-xs font-bold text-red-400">⛔ MAXED</span>
@@ -578,7 +578,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
                           </span>
                           <span className="text-xs text-gray-500">${c.salary}M/yr · {c.yearsLeft}yr</span>
                         </div>
-                        <div className="text-xs text-gray-600 mt-1 italic">{trait.desc}</div>
+                        <div className="text-xs text-gray-500 mt-1 italic">{trait.desc}</div>
                       </div>
                       <div className="shrink-0">
                         <OVRBadge ovr={c.ovr} />
@@ -632,7 +632,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
                       </div>
                       <div className="text-gray-500 text-xs">{role.desc}</div>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className="text-gray-600 text-xs">${role.salaryRange[0]}–${role.salaryRange[1]}M/yr</span>
+                        <span className="text-gray-500 text-xs">${role.salaryRange[0]}–${role.salaryRange[1]}M/yr</span>
                         {!canAffordMin && (
                           <span className="text-red-400 text-xs font-bold">⛔ Over budget</span>
                         )}
@@ -733,7 +733,7 @@ export default function SetupFlow() {
         <div className="text-orange-400 font-black text-xl tracking-widest animate-pulse">
           {isDraftMode ? 'GENERATING LEAGUE & DRAFT POOL…' : 'GENERATING LEAGUE…'}
         </div>
-        <div className="text-gray-600 text-xs text-center space-y-1">
+        <div className="text-gray-500 text-xs text-center space-y-1">
           <div>Generating ~3,700 players across 30 franchises</div>
           <div>Building MLB + AAA + AA + A+ + A- + Rookie + International</div>
         </div>

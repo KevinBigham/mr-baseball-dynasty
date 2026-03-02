@@ -75,7 +75,7 @@ function CompareRow({
             }}
           />
         </div>
-        <div className="text-gray-600 text-[10px] w-12 text-center shrink-0">{label}</div>
+        <div className="text-gray-500 text-[10px] w-12 text-center shrink-0">{label}</div>
         <div className="flex-1">
           <div
             className="h-1.5 rounded-r"
@@ -198,10 +198,10 @@ function PlayerColumn({ data, traits }: { data: PlayerProfileData; traits: Playe
       </div>
       <div className="flex items-center justify-center gap-2">
         <span className="text-orange-400 font-black text-xl tabular-nums">{ovrScout}</span>
-        <span className="text-gray-600">/</span>
+        <span className="text-gray-500">/</span>
         <span className="text-gray-400 font-bold text-lg tabular-nums">{potScout}</span>
       </div>
-      <div className="text-gray-600 text-xs">
+      <div className="text-gray-500 text-xs">
         {formatSalary(player.salary)}/yr · {player.contractYearsRemaining}yr
       </div>
       {traits.length > 0 && (
@@ -302,7 +302,7 @@ export default function CompareModal() {
           <div id="compare-modal-title" className="text-orange-500 font-bold text-xs tracking-widest">PLAYER COMPARISON</div>
           <button
             onClick={onClose}
-            className="text-gray-600 hover:text-gray-400 text-xs transition-colors"
+            className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
           >
             ESC
           </button>
@@ -317,11 +317,11 @@ export default function CompareModal() {
           {/* Player selectors */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <div className="text-gray-600 text-xs mb-1">PLAYER 1</div>
+              <div className="text-gray-500 text-xs mb-1">PLAYER 1</div>
               <PlayerSearch onSelect={id => setLeftId(id)} excludeId={rightId ?? undefined} />
             </div>
             <div>
-              <div className="text-gray-600 text-xs mb-1">PLAYER 2</div>
+              <div className="text-gray-500 text-xs mb-1">PLAYER 2</div>
               <PlayerSearch onSelect={id => setRightId(id)} excludeId={leftId ?? undefined} />
             </div>
           </div>
@@ -423,21 +423,21 @@ export default function CompareModal() {
                 <div className="font-black text-lg" style={{ color: leftAdvantages >= rightAdvantages ? '#4ade80' : '#6b7280' }}>
                   {leftAdvantages}
                 </div>
-                <div className="text-gray-600">advantages</div>
+                <div className="text-gray-500">advantages</div>
               </div>
               <div className="text-gray-700">vs</div>
               <div className="text-center">
                 <div className="font-black text-lg" style={{ color: rightAdvantages >= leftAdvantages ? '#4ade80' : '#6b7280' }}>
                   {rightAdvantages}
                 </div>
-                <div className="text-gray-600">advantages</div>
+                <div className="text-gray-500">advantages</div>
               </div>
             </div>
           )}
 
           {/* Mixed type warning */}
           {left && right && !bothPitchers && !bothHitters && (
-            <div className="text-gray-600 text-xs text-center py-2">
+            <div className="text-gray-500 text-xs text-center py-2">
               Comparing a pitcher and a position player — stat comparison not applicable.
             </div>
           )}

@@ -44,7 +44,7 @@ function GradeCard({ label, players }: { label: string; players: RosterPlayer[] 
         {sorted.map(p => (
           <div key={p.playerId} className="flex justify-between text-xs text-gray-500">
             <span className="truncate mr-2">{p.name.split(' ').pop()}</span>
-            <span className="text-gray-600">{Math.round(20 + (p.overall / 550) * 60)}</span>
+            <span className="text-gray-500">{Math.round(20 + (p.overall / 550) * 60)}</span>
           </div>
         ))}
       </div>
@@ -124,7 +124,7 @@ function WinProjection({ active, rotation }: { active: RosterPlayer[]; rotation:
       <div className="text-gray-500 text-xs mb-2">PROJECTED WINS</div>
       <div className={`text-5xl font-bold tabular-nums ${color}`}>{clamped}</div>
       <div className={`text-xs mt-2 font-bold tracking-widest ${color}`}>{label}</div>
-      <div className="text-gray-600 text-xs mt-1">{162 - clamped} losses</div>
+      <div className="text-gray-500 text-xs mt-1">{162 - clamped} losses</div>
     </div>
   );
 }
@@ -206,13 +206,13 @@ export default function PreseasonPanel() {
         <div className="bloomberg-header flex items-center justify-between">
           <span>PROJECTED LINEUP</span>
           <button onClick={() => setActiveTab('roster')}
-            className="text-gray-600 hover:text-orange-400 text-xs transition-colors font-normal">
+            className="text-gray-500 hover:text-orange-400 text-xs transition-colors font-normal">
             MANAGE ROSTER →
           </button>
         </div>
         <div className="grid grid-cols-2 gap-0 divide-x divide-gray-800">
           <div>
-            <div className="text-gray-600 text-xs px-3 py-1 border-b border-gray-800">LINEUP</div>
+            <div className="text-gray-500 text-xs px-3 py-1 border-b border-gray-800">LINEUP</div>
             {hitters.sort((a, b) => b.overall - a.overall).slice(0, 8).map((p, i) => (
               <div key={p.playerId} className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-gray-800/50">
                 <div className="flex items-center gap-2">
@@ -227,7 +227,7 @@ export default function PreseasonPanel() {
             ))}
           </div>
           <div>
-            <div className="text-gray-600 text-xs px-3 py-1 border-b border-gray-800">ROTATION</div>
+            <div className="text-gray-500 text-xs px-3 py-1 border-b border-gray-800">ROTATION</div>
             {data.rotation.map((p, i) => (
               <div key={p.playerId} className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-gray-800/50">
                 <div className="flex items-center gap-2">
@@ -237,7 +237,7 @@ export default function PreseasonPanel() {
                 <span className="text-orange-600 font-bold">{Math.round(20 + (p.overall / 550) * 60)}</span>
               </div>
             ))}
-            <div className="text-gray-600 text-xs px-3 py-1 border-b border-gray-800 mt-2">BULLPEN ({data.bullpen.length})</div>
+            <div className="text-gray-500 text-xs px-3 py-1 border-b border-gray-800 mt-2">BULLPEN ({data.bullpen.length})</div>
             {data.bullpen.sort((a, b) => b.overall - a.overall).slice(0, 4).map(p => (
               <div key={p.playerId} className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-gray-800/50">
                 <span className="font-bold text-gray-400">{p.name}</span>

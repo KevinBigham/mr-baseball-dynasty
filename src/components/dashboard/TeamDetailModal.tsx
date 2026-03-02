@@ -166,7 +166,7 @@ export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props
 function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div className="bg-gray-800/50 px-2 py-1.5">
-      <div className="text-gray-600 text-[10px] uppercase">{label}</div>
+      <div className="text-gray-500 text-[10px] uppercase">{label}</div>
       <div className={`font-bold text-sm tabular-nums ${color ?? 'text-gray-300'}`}>{value}</div>
     </div>
   );

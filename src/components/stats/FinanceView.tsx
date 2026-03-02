@@ -296,7 +296,7 @@ export default function FinanceView() {
         {/* Payroll bar */}
         <div className="px-4 pb-4">
           <PayrollBar used={displayPayroll} budget={budget} />
-          <div className="flex justify-between text-xs text-gray-600 mt-1">
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>$0</span>
             <span className="text-yellow-400">CBT ${(LUXURY_TAX / 1_000_000).toFixed(0)}M</span>
             <span>{fmt$M(budget)}</span>
@@ -340,7 +340,7 @@ export default function FinanceView() {
 
       {/* ── Year projection tabs ──────────────────────────────────────────── */}
       <div className="flex gap-1">
-        <span className="text-gray-600 text-xs py-1 mr-2">PROJECTION:</span>
+        <span className="text-gray-500 text-xs py-1 mr-2">PROJECTION:</span>
         {['NOW', '+1 YR', '+2 YR', '+3 YR'].map((label, i) => (
           <button
             key={i}
@@ -362,7 +362,7 @@ export default function FinanceView() {
         <div className="bloomberg-header">40-MAN CONTRACTS</div>
         <table className="w-full">
           <thead>
-            <tr className="text-gray-600 text-xs border-b border-gray-800">
+            <tr className="text-gray-500 text-xs border-b border-gray-800">
               <th className="text-left px-3 py-1.5">PLAYER</th>
               <th className="text-left px-2 py-1.5">POS</th>
               <th className="text-left px-2 py-1.5">STATUS</th>
@@ -388,7 +388,7 @@ export default function FinanceView() {
                   <td className="px-3 py-1.5">
                     <ContractYearsBar years={p.contractYearsRemaining} />
                   </td>
-                  <td className="px-2 py-1.5 text-gray-600 text-xs">{expiresYear}</td>
+                  <td className="px-2 py-1.5 text-gray-500 text-xs">{expiresYear}</td>
                 </tr>
               );
             })}
@@ -402,7 +402,7 @@ export default function FinanceView() {
           <div className="bloomberg-header">MINOR LEAGUE CONTRACTS</div>
           <table className="w-full">
             <thead>
-              <tr className="text-gray-600 text-xs border-b border-gray-800">
+              <tr className="text-gray-500 text-xs border-b border-gray-800">
                 <th className="text-left px-3 py-1.5">PLAYER</th>
                 <th className="text-left px-2 py-1.5">POS</th>
                 <th className="text-left px-2 py-1.5">LEVEL</th>
@@ -415,7 +415,7 @@ export default function FinanceView() {
                 <tr key={p.playerId} className="bloomberg-row text-xs">
                   <td className="px-3 py-1.5 text-gray-400">{p.name}</td>
                   <td className="px-2 py-1.5 text-gray-500">{p.position}</td>
-                  <td className="px-2 py-1.5 text-gray-600 text-xs">{p.rosterStatus.replace('MINORS_', '')}</td>
+                  <td className="px-2 py-1.5 text-gray-500 text-xs">{p.rosterStatus.replace('MINORS_', '')}</td>
                   <td className={`px-2 py-1.5 text-right tabular-nums ${salaryColor(p.salary)}`}>
                     {fmt$K(p.salary)}
                   </td>

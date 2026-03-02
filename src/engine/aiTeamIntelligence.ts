@@ -66,7 +66,7 @@ export function classifyTeamMode(
   } else {
     const { runsScored, runsAllowed } = team.seasonRecord;
     wins = team.seasonRecord.wins;
-    pythagWins = Math.round(pythagenpatWinPct(runsScored, runsAllowed) * 162);
+    pythagWins = Math.round(pythagenpatWinPct(runsScored, runsAllowed) * ((team.seasonRecord.wins + team.seasonRecord.losses) || 162));
   }
 
   // Core roster age curve

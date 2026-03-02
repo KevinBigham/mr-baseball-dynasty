@@ -37,8 +37,9 @@ import {
   type TradeProposal, type TradeResult, type TradePlayerInfo,
 } from './trading';
 import { processSeasonInjuries } from './injuries';
+import { ensureMinimumRosters } from './rosterGuard';
 import { computeStaffBonuses, DEFAULT_BONUSES, type StaffBonuses } from './staffEffects';
-import { createDraftPool, scoutDraftPool, getDraftRounds, generateAnnualDraftClass, type DraftProspect } from './draft/draftPool';
+import { createDraftPool, recoverOrphanedDraftPlayers, scoutDraftPool, getDraftRounds, generateAnnualDraftClass, type DraftProspect } from './draft/draftPool';
 import { computePayrollReport, generateArbitrationCases, resolveArbitration, type PayrollReport, type ArbitrationCase } from './finances';
 import {
   generateDraftOrder, getPickingTeam, getOverallPick,
@@ -129,7 +130,7 @@ function _buildStandings(state: LeagueState): StandingsRow[] {
     pct: (t.seasonRecord.wins + t.seasonRecord.losses) > 0
       ? t.seasonRecord.wins / (t.seasonRecord.wins + t.seasonRecord.losses) : 0,
     gb: 0, runsScored: t.seasonRecord.runsScored, runsAllowed: t.seasonRecord.runsAllowed,
-    pythagWins: Math.round(pythagenpatWinPct(t.seasonRecord.runsScored, t.seasonRecord.runsAllowed) * 162),
+    pythagWins: Math.round(pythagenpatWinPct(t.seasonRecord.runsScored, t.seasonRecord.runsAllowed) * ((t.seasonRecord.wins + t.seasonRecord.losses) || 162)),
   }));
 }
 
@@ -212,6 +213,9 @@ const api = {
   async simulateSeason(onProgressCallback?: (pct: number) => void): Promise<SeasonResult> {
     const state = requireState();
     let gen = deserializeState(state.prngState);
+
+    // Ensure all teams have minimum viable rosters before sim
+    ensureMinimumRosters(state.players, state.teams);
 
     // Reset counters at season start
     resetSeasonCounters(state.players);
@@ -1737,6 +1741,10 @@ const api = {
     _seasonResults = state.seasonResults ?? [];
 
     _state = state;
+
+    // Recover any orphaned DRAFT_ELIGIBLE players (e.g. save during initial draft)
+    recoverOrphanedDraftPlayers(state.players);
+
     rebuildMaps();
   },
 

@@ -27,7 +27,7 @@ export default function MobileNav() {
         <span className="text-orange-400">
           {NAV_TABS.find(t => t.id === activeTab)?.label ?? 'MENU'}
         </span>
-        <span className="text-gray-600">{open ? '▲' : '▼'}</span>
+        <span className="text-gray-500">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
