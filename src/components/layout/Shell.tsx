@@ -55,7 +55,9 @@ export default function Shell() {
         setSaveFlash(true);
         setTimeout(() => setSaveFlash(false), 2000);
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      useUIStore.getState().addToast('Save failed', 'error');
+    }
   }, [season, userTeamId]);
 
   const handleNewGame = useCallback(() => {

@@ -66,6 +66,120 @@ function ContractYearsBar({ years, max = 7 }: { years: number; max?: number }) {
   );
 }
 
+// ─── SVG Payroll Projection Chart ─────────────────────────────────────────────
+
+function PayrollProjectionChart({
+  projPayroll, currentPayroll, season, budget,
+}: {
+  projPayroll: (yearsAhead: number) => number;
+  currentPayroll: number;
+  season: number;
+  budget: number;
+}) {
+  const W = 400;
+  const H = 200;
+  const PAD_L = 50;
+  const PAD_R = 16;
+  const PAD_T = 28;
+  const PAD_B = 36;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+  const YEARS = 5;
+  const barW = chartW / YEARS * 0.6;
+  const gap = chartW / YEARS;
+
+  const payrolls = Array.from({ length: YEARS }, (_, i) =>
+    i === 0 ? currentPayroll : projPayroll(i - 1),
+  );
+  const maxVal = Math.max(budget, LUXURY_TAX, ...payrolls) * 1.15;
+
+  const y = (val: number) => PAD_T + chartH - (val / maxVal) * chartH;
+
+  const luxY = y(LUXURY_TAX);
+  const budY = y(budget);
+
+  return (
+    <div className="p-4">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-lg mx-auto" role="img" aria-label="Payroll projection chart">
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75, 1.0].map(frac => {
+          const val = maxVal * frac;
+          const yPos = y(val);
+          return (
+            <g key={frac}>
+              <line x1={PAD_L} x2={W - PAD_R} y1={yPos} y2={yPos} stroke="#374151" strokeWidth={0.5} />
+              <text x={PAD_L - 4} y={yPos + 3} fill="#6B7280" fontSize={8} textAnchor="end" fontFamily="monospace">
+                {fmt$M(val)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* CBT line */}
+        <line x1={PAD_L} x2={W - PAD_R} y1={luxY} y2={luxY} stroke="#EAB308" strokeWidth={1} strokeDasharray="4 3" />
+        <text x={W - PAD_R} y={luxY - 4} fill="#EAB308" fontSize={7} textAnchor="end" fontFamily="monospace">
+          CBT {fmt$M(LUXURY_TAX)}
+        </text>
+
+        {/* Budget line */}
+        <line x1={PAD_L} x2={W - PAD_R} y1={budY} y2={budY} stroke="#6B7280" strokeWidth={1} strokeDasharray="4 3" />
+        <text x={PAD_L + 2} y={budY - 4} fill="#6B7280" fontSize={7} fontFamily="monospace">
+          Budget {fmt$M(budget)}
+        </text>
+
+        {/* Bars */}
+        {payrolls.map((val, i) => {
+          const barX = PAD_L + i * gap + (gap - barW) / 2;
+          const barH = Math.max(2, (val / maxVal) * chartH);
+          const barY = PAD_T + chartH - barH;
+          const overTax = val > LUXURY_TAX;
+          return (
+            <g key={i}>
+              <rect
+                x={barX} y={barY} width={barW} height={barH}
+                rx={2}
+                fill={overTax ? '#DC2626' : '#C2410C'}
+                opacity={0.9}
+              />
+              {val > 0 && (
+                <text
+                  x={barX + barW / 2} y={barY - 4}
+                  fill={overTax ? '#FCA5A5' : '#D1D5DB'} fontSize={8}
+                  textAnchor="middle" fontFamily="monospace" fontWeight="bold"
+                >
+                  {fmt$M(val)}
+                </text>
+              )}
+              <text
+                x={barX + barW / 2} y={H - PAD_B + 14}
+                fill="#9CA3AF" fontSize={9} textAnchor="middle" fontFamily="monospace"
+              >
+                {season + i}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* X axis */}
+        <line x1={PAD_L} x2={W - PAD_R} y1={PAD_T + chartH} y2={PAD_T + chartH} stroke="#4B5563" strokeWidth={0.5} />
+      </svg>
+
+      {/* Legend */}
+      <div className="flex justify-center gap-6 mt-2 text-[10px] text-gray-400 font-mono">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-2 rounded-sm bg-orange-700" /> Committed
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-px bg-yellow-500" style={{ borderTop: '2px dashed' }} /> CBT Line
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-px bg-gray-500" style={{ borderTop: '2px dashed' }} /> Budget
+        </span>
+      </div>
+    </div>
+  );
+}
+
 interface FinanceData {
   roster: RosterPlayer[];
   budget: number;
@@ -87,7 +201,7 @@ export default function FinanceView() {
       const [roster, teams, report] = await Promise.all([
         engine.getFullRoster(userTeamId),
         engine.getLeagueTeams(),
-        engine.getPayrollReport(userTeamId).catch(() => null),
+        engine.getPayrollReport(userTeamId).catch((e) => { console.warn('Payroll report unavailable:', e); return null; }),
       ]);
 
       const team = teams.find(t => t.teamId === userTeamId);
@@ -315,30 +429,15 @@ export default function FinanceView() {
         </div>
       )}
 
-      {/* ── Payroll by year projection table ─────────────────────────────── */}
+      {/* ── Payroll Projection SVG Chart ────────────────────────────────── */}
       <div className="bloomberg-border">
-        <div className="bloomberg-header">COMMITTED PAYROLL BY YEAR</div>
-        <div className="flex gap-0 divide-x divide-gray-800">
-          {[0, 1, 2, 3, 4].map(yr => {
-            const yearPayroll = projPayroll(yr - 1);
-            const yearLabel = season + yr;
-            const pct = Math.min(100, (yearPayroll / budget) * 100);
-            return (
-              <div key={yr} className="flex-1 px-4 py-3 text-center">
-                <div className="text-gray-500 text-xs mb-1">{yearLabel}</div>
-                <div className={`text-sm font-bold tabular-nums ${yearPayroll > LUXURY_TAX ? 'text-red-400' : 'text-gray-200'}`}>
-                  {yearPayroll > 0 ? fmt$M(yearPayroll) : '—'}
-                </div>
-                <div className="mt-2 h-16 flex items-end justify-center">
-                  <div
-                    className={`w-6 rounded-t transition-all ${yearPayroll > LUXURY_TAX ? 'bg-red-600' : 'bg-orange-700'}`}
-                    style={{ height: `${Math.max(4, pct)}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <div className="bloomberg-header">COMMITTED PAYROLL PROJECTION</div>
+        <PayrollProjectionChart
+          projPayroll={projPayroll}
+          currentPayroll={currentPayroll}
+          season={season}
+          budget={budget}
+        />
       </div>
     </div>
   );

@@ -980,6 +980,19 @@ const api = {
     const player = state.players.find(p => p.playerId === playerId);
     if (!player) return { accepted: false };
 
+    // Payroll check — block extensions that would exceed budget by >15%
+    const teamId = player.teamId;
+    const team = state.teams.find(t => t.teamId === teamId);
+    if (team) {
+      const currentPayroll = state.players
+        .filter(p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
+        .reduce((sum, p) => sum + p.rosterData.salary, 0);
+      const newPayroll = currentPayroll + (annualSalary - player.rosterData.salary);
+      if (newPayroll > team.budget * 1_000_000 * 1.15) {
+        return { accepted: false };
+      }
+    }
+
     // Must be on the user's team — but we don't know user's team here,
     // so we just validate the player exists and has < 6 years service
     const serviceYears = Math.floor(player.rosterData.serviceTimeDays / 172);

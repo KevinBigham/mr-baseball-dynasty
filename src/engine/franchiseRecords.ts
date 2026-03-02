@@ -27,7 +27,7 @@ export interface FranchiseRecordBook {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isPitcherPosition(position: string): boolean {
-  return position === 'SP' || position === 'RP' || position === 'CP';
+  return position === 'SP' || position === 'RP' || position === 'CL';
 }
 
 function getPlayerName(

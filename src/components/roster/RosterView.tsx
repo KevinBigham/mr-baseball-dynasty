@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
@@ -11,6 +11,7 @@ import ILManagement from './ILManagement';
 import { formatSalary } from '../../utils/format';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { SkeletonTable } from '../layout/Skeleton';
+import ScrollableTable from '../layout/ScrollableTable';
 import type { RosterStatus } from '../../types/player';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
@@ -236,7 +237,24 @@ function PlayerRow({
   showOptionCol: boolean;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const actions = isUserTeam ? getActionsForTab(tab) : [];
+
+  // Close dropdown on click/touch outside
+  useEffect(() => {
+    if (!showActions) return;
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowActions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  }, [showActions]);
 
   return (
     <tr className="bloomberg-row text-xs">
@@ -281,16 +299,15 @@ function PlayerRow({
       )}
       <td className="px-2 py-1 relative">
         {isUserTeam && actions.length > 0 && (
-          <>
+          <div ref={dropdownRef}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
-              className="text-gray-600 hover:text-orange-400 text-xs transition-colors px-1"
+              className="text-gray-600 hover:text-orange-400 text-xs transition-colors px-1 min-h-[44px] min-w-[44px]"
             >
               ···
             </button>
             {showActions && (
-              <div className="absolute right-0 top-full z-40 bg-gray-900 border border-gray-700 shadow-lg min-w-[180px]"
-                onMouseLeave={() => setShowActions(false)}>
+              <div className="absolute right-0 top-full z-40 bg-gray-900 border border-gray-700 shadow-lg min-w-[180px]">
                 {actions.map((a, i) => (
                   <button
                     key={i}
@@ -299,7 +316,7 @@ function PlayerRow({
                       setShowActions(false);
                       onAction(p.playerId, a.actionType, a.targetStatus);
                     }}
-                    className={`block w-full text-left px-3 py-2 text-xs hover:bg-gray-800 transition-colors ${
+                    className={`block w-full text-left px-3 py-2 min-h-[44px] text-xs hover:bg-gray-800 transition-colors ${
                       a.destructive ? 'text-red-400 hover:text-red-300' : 'text-gray-300 hover:text-orange-400'
                     }`}
                   >
@@ -308,7 +325,7 @@ function PlayerRow({
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </td>
     </tr>
@@ -652,7 +669,7 @@ export default function RosterView() {
 
           {/* Position players table */}
           {hitters.length > 0 && (
-            <div className="bloomberg-border mb-4 overflow-x-auto">
+            <ScrollableTable className="bloomberg-border mb-4">
               <div className="bloomberg-header px-4">POSITION PLAYERS</div>
               <table className="w-full">
                 <thead>
@@ -686,12 +703,12 @@ export default function RosterView() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           )}
 
           {/* Pitchers table */}
           {pitchers.length > 0 && (
-            <div className="bloomberg-border mb-4 overflow-x-auto">
+            <ScrollableTable className="bloomberg-border mb-4">
               <div className="bloomberg-header px-4">PITCHERS</div>
               <table className="w-full">
                 <thead>
@@ -725,7 +742,7 @@ export default function RosterView() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           )}
 
           {filteredPlayers.length === 0 && (

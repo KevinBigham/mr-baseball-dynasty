@@ -114,6 +114,10 @@ export function processSeasonInjuries(
   injuryRateMultiplier = 1.0,
   recoverySpeedMultiplier = 1.0,
 ): InjuryEvent[] {
+  // Clamp multipliers to sane bounds
+  injuryRateMultiplier = Math.max(0.1, Math.min(3.0, injuryRateMultiplier));
+  recoverySpeedMultiplier = Math.max(0.5, Math.min(2.0, recoverySpeedMultiplier));
+
   const events: InjuryEvent[] = [];
 
   // Only check MLB active players (not minors, not already on IL)

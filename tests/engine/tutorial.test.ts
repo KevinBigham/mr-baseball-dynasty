@@ -11,9 +11,9 @@ describe('Tutorial System', () => {
       expect(shouldAutoStartTutorial('rookie', 0)).toBe(true);
     });
 
-    it('returns false for non-rookie difficulty', () => {
-      expect(shouldAutoStartTutorial('normal', 0)).toBe(false);
-      expect(shouldAutoStartTutorial('hard', 0)).toBe(false);
+    it('returns true for all difficulties on first season', () => {
+      expect(shouldAutoStartTutorial('normal', 0)).toBe(true);
+      expect(shouldAutoStartTutorial('hard', 0)).toBe(true);
     });
 
     it('returns false after first season', () => {
@@ -61,8 +61,8 @@ describe('Tutorial System', () => {
   });
 
   describe('TUTORIAL_STEPS', () => {
-    it('has at least 9 steps', () => {
-      expect(TUTORIAL_STEPS.length).toBeGreaterThanOrEqual(9);
+    it('has at least 16 steps', () => {
+      expect(TUTORIAL_STEPS.length).toBeGreaterThanOrEqual(16);
     });
 
     it('all steps have required fields', () => {
@@ -79,11 +79,23 @@ describe('Tutorial System', () => {
       expect(new Set(ids).size).toBe(ids.length);
     });
 
-    it('covers multiple phases', () => {
+    it('covers multiple phases including simulating', () => {
       const phases = new Set(TUTORIAL_STEPS.map(s => s.phase));
-      expect(phases.size).toBeGreaterThanOrEqual(4);
+      expect(phases.size).toBeGreaterThanOrEqual(5);
       expect(phases.has('draft')).toBe(true);
       expect(phases.has('offseason')).toBe(true);
+      expect(phases.has('simulating')).toBe(true);
+    });
+
+    it('includes new Round 10 tutorial steps', () => {
+      const ids = TUTORIAL_STEPS.map(s => s.id);
+      expect(ids).toContain('arbitration_intro');
+      expect(ids).toContain('waiver_wire');
+      expect(ids).toContain('trade_deadline');
+      expect(ids).toContain('owner_patience');
+      expect(ids).toContain('depth_chart');
+      expect(ids).toContain('il_management');
+      expect(ids).toContain('rule5_draft');
     });
 
     it('starts with a welcome step', () => {

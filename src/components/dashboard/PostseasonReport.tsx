@@ -66,7 +66,9 @@ export default function PostseasonReport({
   const [aiMoves, setAiMoves] = useState<AIRosterMove[]>([]);
 
   useEffect(() => {
-    getEngine().getAIRosterMoves().then(setAiMoves).catch(() => {});
+    getEngine().getAIRosterMoves().then(setAiMoves).catch(() => {
+      useUIStore.getState().addToast('Could not load AI moves', 'error');
+    });
   }, []);
 
   const completedSeason = lastResult.season;

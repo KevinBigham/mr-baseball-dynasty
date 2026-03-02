@@ -39,6 +39,26 @@ export default class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     this.setState({ errorInfo });
     console.error('[ErrorBoundary] Caught error:', error, errorInfo);
+    this.emergencySave();
+  }
+
+  private emergencySave(): void {
+    Promise.all([
+      import('../../engine/engineClient'),
+      import('../../db/schema'),
+    ])
+      .then(async ([{ getEngine }, { saveGame }]) => {
+        const engine = getEngine();
+        const state = await engine.getFullState();
+        if (state) {
+          const ts = new Date().toLocaleString();
+          await saveGame(state, `Auto-Recovery — ${ts}`, 'Crash Recovery');
+          console.info('[ErrorBoundary] Emergency save completed');
+        }
+      })
+      .catch(() => {
+        // Last resort — nothing we can do if save itself fails
+      });
   }
 
   handleReset = () => {

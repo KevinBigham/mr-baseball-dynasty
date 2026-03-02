@@ -73,6 +73,55 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     phase: 'postseason',
     position: 'center',
   },
+  {
+    id: 'depth_chart',
+    title: 'Depth Chart & Lineup',
+    message: 'Switch to the Depth Chart view on the Roster tab to see your team\'s position breakdown. Click EDIT to set your batting order (1-9) and starting rotation (SP1-SP5). Click two players to swap their positions.',
+    phase: 'preseason',
+    position: 'top',
+  },
+  {
+    id: 'il_management',
+    title: 'Injured List',
+    message: 'Players can get hurt during the season. When a player is placed on the 10-day or 60-day IL, you\'ll need to promote a replacement from the minors. Monitor the IL tab on your Roster page to track recovery timelines.',
+    phase: 'simulating',
+    position: 'top',
+  },
+  {
+    id: 'trade_deadline',
+    title: 'Trade Deadline Strategy',
+    message: 'The July 31 trade deadline is a key inflection point. Contending teams should acquire rentals for a playoff push. Rebuilding teams should sell expiring contracts for prospects. Check the standings to decide your strategy.',
+    phase: 'simulating',
+    position: 'center',
+  },
+  {
+    id: 'arbitration_intro',
+    title: 'Salary Arbitration',
+    message: 'Players with 3-6 years of service time are eligible for arbitration. Their salary is determined by comparable players. You can offer extensions to lock up key players before they hit free agency — but watch your budget.',
+    phase: 'offseason',
+    position: 'top',
+  },
+  {
+    id: 'waiver_wire',
+    title: 'Waiver Wire',
+    message: 'Teams can DFA (designate for assignment) players they no longer need. Check the waiver wire for bargain pickups — sometimes other teams release solid players who can fill a gap on your roster.',
+    phase: 'offseason',
+    position: 'top',
+  },
+  {
+    id: 'rule5_draft',
+    title: 'Rule 5 Draft',
+    message: 'Players not on the 40-man roster after a certain number of minor league seasons are eligible for the Rule 5 draft. Protect your top prospects by adding them to the 40-man, or risk losing them to another team.',
+    phase: 'offseason',
+    position: 'top',
+  },
+  {
+    id: 'owner_patience',
+    title: 'Owner Expectations',
+    message: 'Your owner has expectations for team performance. Consistent losing will erode their patience. If it drops too low, you\'ll be fired. Balance short-term competitiveness with long-term rebuilding — keep the owner happy while building for the future.',
+    phase: 'any',
+    position: 'center',
+  },
 ];
 
 // ─── Tutorial State Management ──────────────────────────────────────────────
@@ -97,7 +146,7 @@ export function getNextTutorialStep(
 /**
  * Check if the tutorial should auto-start based on difficulty.
  */
-export function shouldAutoStartTutorial(difficulty: string, seasonsManaged: number): boolean {
+export function shouldAutoStartTutorial(_difficulty: string, seasonsManaged: number): boolean {
   if (seasonsManaged > 0) return false; // Only show for first season
-  return difficulty === 'rookie';
+  return true; // Show tutorial for all difficulties on first season
 }

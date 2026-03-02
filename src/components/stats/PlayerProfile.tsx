@@ -609,7 +609,9 @@ export default function PlayerProfile() {
             if (selectedPlayerId) {
               getEngine().getPlayerProfile(selectedPlayerId)
                 .then(setData)
-                .catch(() => {});
+                .catch(() => {
+                  useUIStore.getState().addToast('Failed to load player', 'error');
+                });
             }
           }}
         />

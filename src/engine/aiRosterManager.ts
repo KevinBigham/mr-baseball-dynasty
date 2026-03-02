@@ -132,10 +132,8 @@ function findSwapCandidates(
   const swaps: SwapCandidate[] = [];
 
   for (const mlb of activePlayers) {
-    // Skip if no options remaining or already used option this season
+    // Skip if no options remaining
     if (mlb.rosterData.optionYearsRemaining <= 0) continue;
-    // Skip if veteran (3+ years service) with no options
-    if (mlb.rosterData.serviceTimeDays >= 172 * 3 && mlb.rosterData.optionYearsRemaining <= 0) continue;
 
     // Find AAA prospects at same position with significantly higher OVR
     const betterProspects = aaaPlayers.filter(p =>
