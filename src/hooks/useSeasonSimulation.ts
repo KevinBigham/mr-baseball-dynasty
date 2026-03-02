@@ -166,7 +166,7 @@ export function useSeasonSimulation() {
         season:           result.season,
         wins:             userWins,
         losses:           userLosses,
-        pct:              userWins / 162,
+        pct:              (userWins + userLosses) > 0 ? userWins / (userWins + userLosses) : 0,
         playoffResult:    userTeamSeason?.playoffRound ?? null,
         awardsWon:        extractUserAwards(result, userTeamId),
         breakoutHits,

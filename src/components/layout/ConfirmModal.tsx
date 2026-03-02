@@ -25,9 +25,9 @@ export default function ConfirmModal({
     : 'bg-orange-700 hover:bg-orange-600 text-white';
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
       <div className="bloomberg-border bg-gray-900 p-6 max-w-sm">
-        {title && <div className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-2">{title}</div>}
+        {title && <div id="confirm-modal-title" className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-2">{title}</div>}
         <div className="text-gray-200 text-sm mb-4">{message}</div>
         <div className="flex gap-3">
           <button onClick={onConfirm}

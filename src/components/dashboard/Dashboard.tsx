@@ -114,9 +114,8 @@ export default function Dashboard() {
           context={sim.pressCtx}
           onClose={() => {
             setPresserAvailable(false);
-            // Check for firing after press conference
-            const currentPatience = useGameStore.getState().ownerPatience;
-            if (currentPatience <= 0) {
+            // Check for firing after press conference — use reactive ownerPatience from render scope
+            if (ownerPatience <= 0) {
               setGamePhase('fired');
             }
           }}

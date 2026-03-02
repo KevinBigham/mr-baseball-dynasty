@@ -218,7 +218,11 @@ const api = {
     ensureMinimumRosters(state.players, state.teams);
 
     // Reset counters at season start
+    _cachedLeagueAverages = null;
     resetSeasonCounters(state.players);
+
+    // Scrub lineup/rotation so stale player IDs don't persist
+    _scrubLineupRotation();
 
     const result = await simulateSeason(
       state.teams,
@@ -226,6 +230,12 @@ const api = {
       state.schedule,
       Number(gen.next()[0]),
       onProgressCallback,
+      {
+        season: state.season,
+        userTeamId: state.userTeamId,
+        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
+        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      },
     );
 
     // Advance the gen
@@ -707,6 +717,19 @@ const api = {
     const state = requireState();
     const player = _playerMap.get(playerId);
     if (!player) return { ok: false, error: 'Player not found.' };
+
+    // Budget check: block signings that would exceed team budget by >15%
+    const userTeam = _teamMap.get(state.userTeamId);
+    if (userTeam) {
+      const currentPayroll = state.players
+        .filter(p => p.teamId === state.userTeamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
+        .reduce((sum, p) => sum + p.rosterData.salary, 0);
+      const newPayroll = currentPayroll + salary;
+      if (newPayroll > userTeam.budget * 1_000_000 * 1.15) {
+        return { ok: false, error: 'Signing would exceed team budget.' };
+      }
+    }
+
     const result = doSign(player, state.userTeamId, years, salary, state.players);
     if (result.ok) rebuildMaps();
     return result;
@@ -1230,7 +1253,11 @@ const api = {
       const playerId = aiSelectPlayer(
         _draftState.prospects, teamPicks, _draftState.currentRound,
       );
-      if (playerId < 0) break;
+      if (playerId < 0) {
+        // Pool exhausted — mark draft as complete so UI knows it ended early
+        _draftState.isComplete = true;
+        break;
+      }
       this._executePick(playerId, pickingTeamId);
     }
 

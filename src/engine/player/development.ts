@@ -233,7 +233,7 @@ export function developPlayer(
   const overallDrop = Math.max(0, player.potential - player.overall);
   const retireProb  = retirementProbability(newAge, overallDrop);
 
-  if (newAge >= 35 && retireRoll < retireProb) {
+  if (newAge >= 45 || (newAge >= 35 && retireRoll < retireProb)) {
     const retired: Player = {
       ...player,
       age:         newAge,

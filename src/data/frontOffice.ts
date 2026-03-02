@@ -2,6 +2,7 @@ import type {
   FORoleDefinition, FOTraitDefinition, FOStaffMember,
   FORoleId, FOTraitId, StartModeOption,
 } from '../types/frontOffice';
+import type { RandomGenerator } from 'pure-rand';
 
 // ─── Role definitions ──────────────────────────────────────────────────────────
 
@@ -191,55 +192,92 @@ const BACKSTORIES: Record<FORoleId, string[]> = {
 
 // ─── Staff generation ──────────────────────────────────────────────────────────
 
-function generateId(): string {
-  return Math.random().toString(36).slice(2, 10);
+// Deterministic helpers that use the seeded PRNG when provided, Math.random as fallback
+function _nextFloat(gen?: RandomGenerator): [number, RandomGenerator | undefined] {
+  if (gen) {
+    const [raw, next] = gen.next();
+    return [((Number(raw) >>> 0) / 0xffffffff), next];
+  }
+  return [Math.random(), undefined];
 }
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+function generateId(gen?: RandomGenerator): [string, RandomGenerator | undefined] {
+  let f: number;
+  let next: RandomGenerator | undefined;
+  [f, next] = _nextFloat(gen);
+  return [f.toString(36).slice(2, 10) || '00000000', next];
 }
 
-function generateStaffOVR(salaryRange: [number, number], targetSalary: number): number {
-  // OVR is correlated to salary: salary = min + (ovr-40)/55 * range
+function pickRandom<T>(arr: T[], gen?: RandomGenerator): [T, RandomGenerator | undefined] {
+  let f: number;
+  let next: RandomGenerator | undefined;
+  [f, next] = _nextFloat(gen);
+  return [arr[Math.floor(f * arr.length)], next];
+}
+
+function generateStaffOVR(salaryRange: [number, number], targetSalary: number, gen?: RandomGenerator): [number, RandomGenerator | undefined] {
   const [min, max] = salaryRange;
   const range = max - min;
   const salaryCentered = (targetSalary - min) / range;
   const ovr = Math.round(40 + salaryCentered * 55);
-  // Add noise ±5 to break perfect correlation
-  return Math.max(40, Math.min(95, ovr + Math.round((Math.random() - 0.5) * 10)));
+  let f: number;
+  let next: RandomGenerator | undefined;
+  [f, next] = _nextFloat(gen);
+  return [Math.max(40, Math.min(95, ovr + Math.round((f - 0.5) * 10))), next];
 }
 
-function generateSalary(salaryRange: [number, number]): number {
+function generateSalary(salaryRange: [number, number], gen?: RandomGenerator): [number, RandomGenerator | undefined] {
   const [min, max] = salaryRange;
-  const raw = min + Math.random() * (max - min);
-  return Math.round(raw * 10) / 10;
+  let f: number;
+  let next: RandomGenerator | undefined;
+  [f, next] = _nextFloat(gen);
+  const raw = min + f * (max - min);
+  return [Math.round(raw * 10) / 10, next];
 }
 
-/** Generate N candidate staff members for a given role */
-export function generateFOCandidates(roleId: FORoleId, count = 4): FOStaffMember[] {
+/** Generate N candidate staff members for a given role.
+ *  Pass an optional seeded PRNG for deterministic output. */
+export function generateFOCandidates(roleId: FORoleId, count = 4, gen?: RandomGenerator): FOStaffMember[] {
   const role = FO_ROLES.find(r => r.id === roleId);
   if (!role) return [];
 
   const traitIds = Object.keys(FO_TRAITS) as FOTraitId[];
   const candidates: FOStaffMember[] = [];
 
-  // Sort by salary descending so the best option leads
-  const salaries: number[] = Array.from({ length: count }, () => generateSalary(role.salaryRange))
-    .sort((a, b) => b - a);
+  // Generate salaries
+  const salaries: number[] = [];
+  for (let j = 0; j < count; j++) {
+    let s: number;
+    [s, gen] = generateSalary(role.salaryRange, gen);
+    salaries.push(s);
+  }
+  salaries.sort((a, b) => b - a);
 
   for (let i = 0; i < count; i++) {
     const salary = salaries[i];
-    const ovr    = generateStaffOVR(role.salaryRange, salary);
-    const traitId = pickRandom(traitIds);
-    const backstory = pickRandom(BACKSTORIES[roleId]);
+    let ovr: number;
+    [ovr, gen] = generateStaffOVR(role.salaryRange, salary, gen);
+    let traitId: FOTraitId;
+    [traitId, gen] = pickRandom(traitIds, gen);
+    let backstory: string;
+    [backstory, gen] = pickRandom(BACKSTORIES[roleId], gen);
+    let firstName: string;
+    [firstName, gen] = pickRandom(STAFF_FIRST_NAMES, gen);
+    let lastName: string;
+    [lastName, gen] = pickRandom(STAFF_LAST_NAMES, gen);
+    let id: string;
+    [id, gen] = generateId(gen);
+    let yearsFloat: number;
+    [yearsFloat, gen] = _nextFloat(gen);
+    const yearsLeft = Math.floor(yearsFloat * 4) + 1;
 
     candidates.push({
-      id:        generateId(),
+      id,
       roleId:    role.id,
-      name:      `${pickRandom(STAFF_FIRST_NAMES)} ${pickRandom(STAFF_LAST_NAMES)}`,
+      name:      `${firstName} ${lastName}`,
       ovr,
       salary,
-      yearsLeft: Math.floor(Math.random() * 4) + 1, // 1–4 years
+      yearsLeft,
       traitId,
       backstory,
       icon:      role.icon,

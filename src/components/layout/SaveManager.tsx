@@ -193,7 +193,8 @@ export default function SaveManager({ onClose }: { onClose: () => void }) {
                 <input
                   type="text"
                   value={saveName}
-                  onChange={e => setSaveName(e.target.value)}
+                  onChange={e => setSaveName(e.target.value.replace(/<[^>]*>/g, ''))}
+                  maxLength={50}
                   className="w-full bg-gray-800 border border-gray-700 text-gray-200 text-sm px-3 py-2 focus:border-orange-500 focus:outline-none"
                   placeholder="My Dynasty Save"
                 />

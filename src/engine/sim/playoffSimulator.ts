@@ -178,8 +178,13 @@ export function simulateFullPlayoffs(
   teams: Team[],
   players: Player[],
   baseSeed: number,
-): PlayoffBracket {
+): PlayoffBracket | null {
   const { al, nl } = determinePlayoffField(standings);
+
+  // Guard: need at least 6 teams per league for the bracket format
+  if (al.length < 6 || nl.length < 6) {
+    return null;
+  }
 
   // ── Wild Card Round (best-of-3) ──
   // Seeds 1-2 get bye. 3 vs 6, 4 vs 5

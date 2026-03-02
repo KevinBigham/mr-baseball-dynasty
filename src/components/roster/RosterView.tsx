@@ -605,7 +605,7 @@ export default function RosterView() {
               placeholder="Search players..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="bg-gray-800 text-gray-300 text-xs border border-gray-700 px-3 py-1.5 w-48 placeholder-gray-600 focus:border-orange-700 outline-none"
+              className="bg-gray-800 text-gray-300 text-xs border border-gray-700 px-3 py-1.5 w-full sm:w-48 placeholder-gray-600 focus:border-orange-700 outline-none"
             />
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-xs">POS:</span>

@@ -23,7 +23,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
 
   if (!starter) {
     return (
-      <div className="flex flex-col items-center w-[90px]">
+      <div className="flex flex-col items-center w-[60px] sm:w-[90px]">
         <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
         <div className="border border-gray-800 bg-gray-900/50 rounded px-2 py-1.5 w-full text-center">
           <div className="text-gray-700 text-xs">EMPTY</div>
@@ -35,7 +35,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
   const g = ovrGrade(starter.overall);
 
   return (
-    <div className="flex flex-col items-center w-[90px]">
+    <div className="flex flex-col items-center w-[60px] sm:w-[90px]">
       <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
       {/* Starter */}
       <div
