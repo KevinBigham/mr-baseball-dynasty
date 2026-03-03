@@ -1,28 +1,41 @@
 /**
  * InSeasonDashboard — Main UI during interactive (chunked) season play.
  * Shows season progress, monthly recap, division standings, and action buttons.
+ * Includes granular sim controls: sim 1 day, 1 week, 1 month.
  */
 
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import SeasonProgressBar from './SeasonProgressBar';
 import MonthRecap from './MonthRecap';
+import PennantRace from './PennantRace';
 import type { InSeasonFlowState } from '../../hooks/useInSeasonFlow';
 
 const NEXT_SEGMENT_LABELS = ['SIM JUNE', 'SIM JULY', 'SIM AUGUST', 'SIM SEPTEMBER', 'FINALIZE'];
+
+/** Format ISO date string to display format: "Apr 15, 2026" */
+function formatSeasonDate(iso: string): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const parts = iso.split('-');
+  const month = months[Number(parts[1]) - 1] ?? '';
+  const day = Number(parts[2]);
+  return `${month} ${day}, ${parts[0]}`;
+}
 
 interface Props {
   flow: InSeasonFlowState;
 }
 
 export default function InSeasonDashboard({ flow }: Props) {
-  const { userTeamId, isSimulating, simProgress, season } = useGameStore();
+  const { userTeamId, isSimulating, simProgress, season, gamesCompleted, totalGames } = useGameStore();
   const { setActiveTab } = useUIStore();
 
   const {
     currentSegment, chunkResult, partialResult, pendingEvent,
     simNextChunk, simAllRemaining, continueAfterEvent,
     getUserOverallRecord, error,
+    currentDate, lastRangeRecord,
+    simDay, simWeek, simMonth,
   } = flow;
 
   const overallRecord = getUserOverallRecord();
@@ -38,6 +51,8 @@ export default function InSeasonDashboard({ flow }: Props) {
       <SeasonProgressBar
         completedSegment={currentSegment}
         isSimulating={isSimulating}
+        gamesCompleted={gamesCompleted}
+        totalGames={totalGames}
       />
 
       {/* Sim Progress Indicator */}
@@ -67,15 +82,20 @@ export default function InSeasonDashboard({ flow }: Props) {
         </div>
       )}
 
-      {/* Monthly Recap (after at least one chunk is done) */}
-      {!isSimulating && chunkResult && partialResult && (
+      {/* Monthly Recap (after at least one chunk or range sim is done) */}
+      {!isSimulating && partialResult && (chunkResult || lastRangeRecord) && (
         <MonthRecap
           segment={currentSegment}
           partialResult={partialResult}
           userTeamId={userTeamId}
-          chunkRecord={chunkResult.userRecord}
+          chunkRecord={chunkResult?.userRecord ?? lastRangeRecord ?? { wins: 0, losses: 0 }}
           divisionStandings={flow.divisionStandings}
         />
+      )}
+
+      {/* Pennant Race (after at least one chunk) */}
+      {!isSimulating && currentSegment >= 0 && !pendingEvent && (
+        <PennantRace />
       )}
 
       {/* Event overlays */}
@@ -213,7 +233,74 @@ export default function InSeasonDashboard({ flow }: Props) {
         </div>
       )}
 
-      {/* Action Buttons (shown when paused at roster_pause, no special event) */}
+      {/* Granular Sim Controls + Segment Buttons (shown when not simulating, no pending event) */}
+      {!isSimulating && !pendingEvent && (
+        <div className="bloomberg-border bg-gray-900">
+          <div className="bloomberg-header px-4 flex items-center justify-between">
+            <span>SIMULATION</span>
+            <span className="text-gray-500 font-normal text-xs tabular-nums">
+              {currentDate ? formatSeasonDate(currentDate) : `Season ${season}`}
+              {totalGames > 0 && ` | Game ${gamesCompleted} of ${totalGames}`}
+            </span>
+          </div>
+          <div className="p-4 space-y-3">
+            {/* Record display */}
+            {partialResult && (
+              <div className="text-center">
+                <span className="text-gray-200 text-sm font-bold tabular-nums">
+                  {overallRecord.wins}–{overallRecord.losses}
+                </span>
+              </div>
+            )}
+
+            {/* Granular controls */}
+            <div className="flex gap-2 justify-center flex-wrap">
+              <button
+                onClick={simDay}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+              >
+                SIM 1 DAY
+              </button>
+              <button
+                onClick={simWeek}
+                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+              >
+                SIM 1 WEEK
+              </button>
+              <button
+                onClick={simMonth}
+                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+              >
+                SIM 1 MONTH
+              </button>
+            </div>
+
+            {/* Segment + fast-forward controls */}
+            <div className="flex gap-2 justify-center flex-wrap pt-1 border-t border-gray-800">
+              <button
+                onClick={() => setActiveTab('roster')}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                ROSTER MOVES
+              </button>
+              <button
+                onClick={simNextChunk}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                {nextSegmentLabel}
+              </button>
+              <button
+                onClick={simAllRemaining}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                FAST SIM ALL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Buttons (shown when paused at roster_pause from segment sim) */}
       {!isSimulating && pendingEvent === 'roster_pause' && (
         <div className="bloomberg-border bg-gray-900 px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">

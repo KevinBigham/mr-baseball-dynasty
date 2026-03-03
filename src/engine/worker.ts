@@ -16,7 +16,8 @@ import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTe
 import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
 import {
   createSeasonSimState, simulateChunk, buildPartialResult,
-  type SeasonSimState, type ChunkResult,
+  simulateRange, computeSim1DayTarget, computeSim1WeekTarget, computeSim1MonthTarget,
+  type SeasonSimState, type ChunkResult, type SimRangeResult,
   SEGMENTS, SEGMENT_COUNT,
 } from './sim/incrementalSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
@@ -61,6 +62,11 @@ import { identifyHOFCandidates, simulateHOFVoting, type HallOfFameInductee, type
 import { updateFranchiseRecords, emptyRecordBook, type FranchiseRecordBook } from './franchiseRecords';
 import type { RetiredPlayerRecord } from '../types/league';
 import {
+  generateIntlClass, signIntlProspect as signIntlProspectFn,
+  processAIIntlSignings,
+  type IntlProspect,
+} from './internationalSigning';
+import {
   computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages,
   type AdvancedHittingStats, type AdvancedPitchingStats, type LeagueAverages,
 } from './advancedStats';
@@ -96,6 +102,10 @@ interface InternalDraftState {
 }
 
 let _draftState: InternalDraftState | null = null;
+
+// ─── International signing state ────────────────────────────────────────
+
+let _intlProspects: IntlProspect[] = [];
 
 // ─── In-season sim state (for chunked play) ──────────────────────────────
 
@@ -1797,6 +1807,208 @@ const api = {
     return result;
   },
 
+  // ── International Signing Period ─────────────────────────────────────────
+
+  async startIntlSigning(): Promise<{
+    prospects: import('./internationalSigning').IntlProspect[];
+    bonusPool: number;
+  }> {
+    const state = requireState();
+    let gen = deserializeState(state.prngState);
+    const maxId = state.players.reduce((m, p) => Math.max(m, p.playerId), 0);
+
+    const [prospects, players, nextGen] = generateIntlClass(gen, maxId, state.season);
+    gen = nextGen;
+
+    // Add the raw players to the global pool
+    state.players.push(...players);
+    rebuildMaps();
+
+    state.prngState = serializeState(gen);
+
+    _intlProspects = prospects;
+
+    return {
+      prospects: prospects.filter(p => !p.signed),
+      bonusPool: 5_500_000,
+    };
+  },
+
+  async signIntlProspect(
+    playerId: number,
+    bonus: number,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Prospect not found.' };
+
+    const result = signIntlProspectFn(player, state.userTeamId, bonus);
+    if (result.ok) {
+      // Mark as signed in prospect list
+      const prospect = _intlProspects.find(p => p.playerId === playerId);
+      if (prospect) {
+        prospect.signed = true;
+        prospect.signedByTeamId = state.userTeamId;
+      }
+      rebuildMaps();
+    }
+    return result;
+  },
+
+  async finishIntlSigning(): Promise<{
+    aiSignings: Array<{ prospectName: string; teamId: number; teamAbbr: string; bonus: number }>;
+  }> {
+    const state = requireState();
+    let gen = deserializeState(state.prngState);
+
+    const teamInfos = state.teams.map(t => ({ teamId: t.teamId, abbreviation: t.abbreviation }));
+    const [aiSignings, nextGen] = processAIIntlSignings(
+      _intlProspects, state.players, teamInfos, state.userTeamId, gen,
+    );
+    gen = nextGen;
+
+    // Unsigned prospects become free agents (will age out)
+    for (const prospect of _intlProspects) {
+      if (!prospect.signed) {
+        const player = _playerMap.get(prospect.playerId);
+        if (player) {
+          player.rosterData.rosterStatus = 'FREE_AGENT';
+        }
+      }
+    }
+
+    state.prngState = serializeState(gen);
+    rebuildMaps();
+    _intlProspects = [];
+
+    return { aiSignings };
+  },
+
+  // ── Pennant Race ──────────────────────────────────────────────────────────
+
+  async getPennantRace(): Promise<{
+    userDivisionRank: number;
+    userGamesBack: number;
+    userWildCardRank: number;
+    userWCGamesBack: number;
+    divisionLeader: { teamId: number; abbr: string; wins: number; losses: number };
+    isInPlayoffPosition: boolean;
+    magicNumber: number | null;
+    eliminationNumber: number | null;
+  }> {
+    const state = requireState();
+    const userTeam = _teamMap.get(state.userTeamId);
+    if (!userTeam) throw new Error('User team not found');
+
+    const standings = _buildStandings(state);
+    const userRow = standings.find(r => r.teamId === state.userTeamId);
+    if (!userRow) throw new Error('User team not in standings');
+
+    // Division standings
+    const divTeams = standings
+      .filter(r => r.league === userRow.league && r.division === userRow.division)
+      .sort((a, b) => b.pct - a.pct || b.wins - a.wins);
+
+    const divRank = divTeams.findIndex(r => r.teamId === state.userTeamId) + 1;
+    const divLeader = divTeams[0];
+    const divGB = divRank > 1
+      ? ((divLeader.wins - userRow.wins) + (userRow.losses - divLeader.losses)) / 2
+      : 0;
+
+    // Wild card standings (league-wide, excluding div winners)
+    const leagueTeams = standings.filter(r => r.league === userRow.league).sort((a, b) => b.pct - a.pct);
+    const divWinnerIds = new Set<number>();
+    const divs = ['East', 'Central', 'West'];
+    for (const div of divs) {
+      const divStandings = leagueTeams.filter(r => r.division === div);
+      if (divStandings.length > 0) divWinnerIds.add(divStandings[0].teamId);
+    }
+
+    const wcTeams = leagueTeams.filter(r => !divWinnerIds.has(r.teamId));
+    const wcRank = wcTeams.findIndex(r => r.teamId === state.userTeamId) + 1;
+    const wcGamesBack = wcRank > 3 && wcTeams[2]
+      ? ((wcTeams[2].wins - userRow.wins) + (userRow.losses - wcTeams[2].losses)) / 2
+      : 0;
+
+    const isInPlayoffPosition = divRank === 1 || wcRank <= 3;
+    const totalGames = 162;
+    const userGamesPlayed = userRow.wins + userRow.losses;
+    const gamesRemaining = totalGames - userGamesPlayed;
+
+    // Magic number: games remaining + 1 - lead over next team
+    let magicNumber: number | null = null;
+    if (divRank === 1 && divTeams.length > 1) {
+      const secondPlace = divTeams[1];
+      const secondRemaining = totalGames - secondPlace.wins - secondPlace.losses;
+      magicNumber = Math.max(0, secondRemaining + 1 - (userRow.wins - secondPlace.wins));
+      if (magicNumber <= 0) magicNumber = 0; // Already clinched
+    }
+
+    // Elimination number
+    let eliminationNumber: number | null = null;
+    if (divRank > 1 && gamesRemaining > 0) {
+      eliminationNumber = gamesRemaining + 1 - Math.abs(divGB * 2);
+      if (eliminationNumber <= 0) eliminationNumber = 0; // Eliminated
+    }
+
+    return {
+      userDivisionRank: divRank,
+      userGamesBack: divGB,
+      userWildCardRank: wcRank,
+      userWCGamesBack: wcGamesBack,
+      divisionLeader: {
+        teamId: divLeader.teamId,
+        abbr: divLeader.abbreviation,
+        wins: divLeader.wins,
+        losses: divLeader.losses,
+      },
+      isInPlayoffPosition,
+      magicNumber,
+      eliminationNumber,
+    };
+  },
+
+  // ── Playoff MVP ────────────────────────────────────────────────────────────
+
+  async getPlayoffMVP(bracket: import('./sim/playoffSimulator').PlayoffBracket): Promise<{
+    playerId: number;
+    name: string;
+    teamAbbr: string;
+    position: string;
+    statLine: string;
+  } | null> {
+    if (!bracket.championId) return null;
+    const state = requireState();
+
+    // Find the champion's players
+    const champPlayers = state.players.filter(p => p.teamId === bracket.championId);
+    if (champPlayers.length === 0) return null;
+
+    // Simple MVP: highest OVR on champion team
+    const mvp = champPlayers.reduce((best, p) => p.overall > best.overall ? p : best, champPlayers[0]);
+    const team = _teamMap.get(mvp.teamId);
+    const stats = _playerSeasonStats.get(mvp.playerId);
+
+    let statLine: string;
+    if (mvp.isPitcher && stats) {
+      const era = stats.outs > 0 ? ((stats.er / stats.outs) * 27).toFixed(2) : '0.00';
+      statLine = `${stats.w}-${stats.l}, ${era} ERA`;
+    } else if (stats) {
+      const avg = stats.ab > 0 ? (stats.h / stats.ab).toFixed(3) : '.000';
+      statLine = `${avg} / ${stats.hr} HR / ${stats.rbi} RBI`;
+    } else {
+      statLine = 'OVR ' + Math.round(20 + (mvp.overall / 550) * 60);
+    }
+
+    return {
+      playerId: mvp.playerId,
+      name: mvp.name,
+      teamAbbr: team?.abbreviation ?? '???',
+      position: mvp.position,
+      statLine,
+    };
+  },
+
   // ── Interactive Season Pacing — Chunked simulation ─────────────────────────
 
   /**
@@ -1867,6 +2079,77 @@ const api = {
     }
 
     return chunkResult;
+  },
+
+  /**
+   * Granular simulation: sim by day, week, or month.
+   * Stops at segment boundaries to preserve event triggers.
+   */
+  async simRange(
+    mode: 'day' | 'week' | 'month',
+    onProgress?: (pct: number) => void,
+  ): Promise<SimRangeResult> {
+    const state = requireState();
+    if (!_seasonSimState) throw new Error('Call startInSeason() first');
+    if (_seasonSimState.isComplete) throw new Error('Season already complete');
+
+    let targetIndex: number;
+    switch (mode) {
+      case 'day':
+        targetIndex = computeSim1DayTarget(_seasonSimState, state.schedule);
+        break;
+      case 'week':
+        targetIndex = computeSim1WeekTarget(_seasonSimState, state.schedule);
+        break;
+      case 'month':
+        targetIndex = computeSim1MonthTarget(_seasonSimState, state.schedule);
+        break;
+    }
+
+    const result = simulateRange(
+      _seasonSimState,
+      state.teams,
+      state.players,
+      state.schedule,
+      targetIndex,
+      {
+        userTeamId: state.userTeamId,
+        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
+        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      },
+      onProgress,
+    );
+
+    // Sync player season stats to worker-level cache
+    _playerSeasonStats.clear();
+    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
+      _playerSeasonStats.set(Number(key), val);
+    }
+
+    return result;
+  },
+
+  /**
+   * Get current schedule position info for UI display.
+   */
+  async getCurrentScheduleInfo(): Promise<{
+    gamesCompleted: number;
+    totalGames: number;
+    currentDate: string | null;
+    currentSegment: number;
+  }> {
+    if (!_seasonSimState) throw new Error('No in-season state');
+    const state = requireState();
+    const idx = _seasonSimState.gamesCompleted;
+    const currentDate = idx < state.schedule.length
+      ? state.schedule[idx]!.date
+      : null;
+    return {
+      gamesCompleted: _seasonSimState.gamesCompleted,
+      totalGames: _seasonSimState.totalGames,
+      currentDate,
+      currentSegment: _seasonSimState.currentSegment,
+    };
   },
 
   /**

@@ -136,6 +136,7 @@ export interface PlayerGameStats {
   pa: number; ab: number; r: number; h: number;
   doubles: number; triples: number; hr: number;
   rbi: number; bb: number; k: number; sb: number; cs: number;
+  hbp: number;
 }
 
 export interface PitcherGameStats {

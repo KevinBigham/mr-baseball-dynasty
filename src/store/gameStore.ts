@@ -38,6 +38,9 @@ interface GameStore {
   currentSegment:    number;           // 0-4 (which segment was just completed)
   inSeasonPaused:    boolean;          // true when awaiting user action between chunks
   segmentUserRecord: { wins: number; losses: number } | null;
+  currentSeasonDate: string | null;    // ISO date of next unplayed game (e.g., "2026-04-15")
+  gamesCompleted:    number;           // total schedule entries completed
+  totalGames:        number;           // total schedule entries in season
 
   // ── Tutorial ───────────────────────────────────────────────────────────────────
   tutorialActive:  boolean;
@@ -73,6 +76,9 @@ interface GameStore {
   setCurrentSegment:    (n: number) => void;
   setInSeasonPaused:    (v: boolean) => void;
   setSegmentUserRecord: (r: { wins: number; losses: number } | null) => void;
+  setCurrentSeasonDate: (d: string | null) => void;
+  setGamesCompleted:    (n: number) => void;
+  setTotalGames:        (n: number) => void;
 
   setTutorialActive:  (v: boolean) => void;
 
@@ -107,6 +113,9 @@ export const useGameStore = create<GameStore>(set => ({
   currentSegment:    -1,
   inSeasonPaused:    false,
   segmentUserRecord: null,
+  currentSeasonDate: null,
+  gamesCompleted:    0,
+  totalGames:        0,
 
   tutorialActive:  false,
 
@@ -157,6 +166,9 @@ export const useGameStore = create<GameStore>(set => ({
   setCurrentSegment:    n => set({ currentSegment: n }),
   setInSeasonPaused:    v => set({ inSeasonPaused: v }),
   setSegmentUserRecord: r => set({ segmentUserRecord: r }),
+  setCurrentSeasonDate: d => set({ currentSeasonDate: d }),
+  setGamesCompleted:    n => set({ gamesCompleted: n }),
+  setTotalGames:        n => set({ totalGames: n }),
 
   // ── Tutorial ────────────────────────────────────────────────────────────────────
   setTutorialActive: v => set({ tutorialActive: v }),
@@ -183,6 +195,9 @@ export const useGameStore = create<GameStore>(set => ({
     currentSegment: -1,
     inSeasonPaused: false,
     segmentUserRecord: null,
+    currentSeasonDate: null,
+    gamesCompleted: 0,
+    totalGames: 0,
     tutorialActive: false,
   }),
 }));

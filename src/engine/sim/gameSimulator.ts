@@ -84,7 +84,7 @@ function pickReliever(
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
 function blankBatterStats(playerId: number): PlayerGameStats {
-  return { playerId, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0, cs: 0 };
+  return { playerId, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0 };
 }
 
 function blankPitcherStats(playerId: number): PitcherGameStats {
@@ -105,6 +105,7 @@ function accumulateBatterStat(
   // AB: not counted for BB, HBP, SF
   if (outcome !== 'BB' && outcome !== 'HBP' && outcome !== 'SF') s.ab++;
   if (outcome === 'BB')  s.bb++;
+  if (outcome === 'HBP') s.hbp++;
   if (outcome === 'K')   s.k++;
   if (outcome === '1B')  { s.h++; }
   if (outcome === '2B')  { s.h++; s.doubles++; }
@@ -170,13 +171,19 @@ function simulateHalfInning(
   mannedRunner: boolean,
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
+  // Track which batter is on each base (by playerId) so we can credit runs scored
+  // baseRunners[0]=1st, baseRunners[1]=2nd, baseRunners[2]=3rd
+  const baseRunners: (number | null)[] = [null, null, null];
+
   if (mannedRunner) {
     // Start with runner on 2nd (Manfred runner)
     markov = { runners: 0b010, outs: 0, runsScored: 0 };
+    // Manfred runner is the last batter in the lineup order (approximate)
+    const mannedIdx = (lineupPos + 8) % 9;
+    baseRunners[1] = lineup[mannedIdx]!.playerId;
   }
 
   let pos = lineupPos;
-  let runsBefore = 0;
 
   while (markov.outs < 3) {
     const batter = lineup[pos % 9]!;
@@ -198,12 +205,62 @@ function simulateHalfInning(
     const pitchesThisPA = estimatePitches(outcome);
     pitchCountRef.value += pitchesThisPA;
 
+    // Snapshot runners before the PA for run-scoring credit
+    const runnersBefore = [baseRunners[0], baseRunners[1], baseRunners[2]];
+    const markovBefore = markov.runners;
+
     // Update Markov state
     const runsBefore2 = markov.runsScored;
     [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, 350);
     const runsThisPA = markov.runsScored - runsBefore2;
 
-    // Accumulate stats
+    // Credit runs scored to specific batters using runner tracking
+    // Figure out which runners scored by comparing base occupancy before/after
+    if (runsThisPA > 0) {
+      if (outcome === 'HR') {
+        // HR: batter + all base runners score
+        for (let b = 0; b < 3; b++) {
+          if ((markovBefore & (1 << b)) && runnersBefore[b] != null) {
+            markRunScored(batterStats, runnersBefore[b]!);
+          }
+        }
+        markRunScored(batterStats, batter.playerId);
+      } else {
+        // For other outcomes: runners who were on base but are no longer score
+        let credited = 0;
+        for (let b = 2; b >= 0; b--) {
+          if (credited >= runsThisPA) break;
+          if ((markovBefore & (1 << b)) && !(markov.runners & (1 << b)) && runnersBefore[b] != null) {
+            // This runner was on base and no longer is — check if they advanced past home
+            // Runners cleared from bases who aren't on a higher base scored
+            const runnerId = runnersBefore[b]!;
+            const stillOnBase = (b < 2 && baseRunners[b + 1] === runnerId) ||
+                                (markov.runners & (1 << b));
+            if (!stillOnBase) {
+              markRunScored(batterStats, runnerId);
+              credited++;
+            }
+          }
+        }
+        // If we haven't credited all runs, credit remaining to highest base runners
+        for (let b = 2; b >= 0 && credited < runsThisPA; b--) {
+          if ((markovBefore & (1 << b)) && runnersBefore[b] != null) {
+            const runnerId = runnersBefore[b]!;
+            // Check we haven't already credited this runner
+            const alreadyCredited = credited > 0; // simplified check
+            if (!alreadyCredited) {
+              markRunScored(batterStats, runnerId);
+              credited++;
+            }
+          }
+        }
+      }
+    }
+
+    // Update base runner tracking to match new Markov state
+    updateBaseRunners(baseRunners, markovBefore, markov.runners, batter.playerId, outcome);
+
+    // Accumulate stats (RBI credited to batter, runs scored handled above)
     accumulateBatterStat(batterStats, batter.playerId, outcome, runsThisPA, false);
     accumulatePitcherStat(pitcherStats, pitcher.playerId, outcome, runsThisPA, pitchesThisPA);
 
@@ -213,7 +270,94 @@ function simulateHalfInning(
     if (pos % 9 === 0) timesThroughRef.value++;
   }
 
-  return [markov.runsScored - runsBefore, pos % 9, gen];
+  return [markov.runsScored, pos % 9, gen];
+}
+
+/** Mark a batter as having scored a run */
+function markRunScored(
+  stats: Map<number, PlayerGameStats>,
+  playerId: number,
+): void {
+  const s = stats.get(playerId);
+  if (s) s.r++;
+}
+
+/** Update the base runner tracking array after a PA outcome */
+function updateBaseRunners(
+  baseRunners: (number | null)[],
+  runnersBefore: number,
+  runnersAfter: number,
+  batterId: number,
+  outcome: PAOutcome,
+): void {
+  const prev = [baseRunners[0], baseRunners[1], baseRunners[2]];
+
+  // Clear all bases first
+  baseRunners[0] = null;
+  baseRunners[1] = null;
+  baseRunners[2] = null;
+
+  switch (outcome) {
+    case 'HR':
+      // All bases cleared, batter scores (no one on base)
+      break;
+    case '3B':
+      baseRunners[2] = batterId;
+      break;
+    case '2B':
+      baseRunners[1] = batterId;
+      // Runner from 1st may be on 3rd
+      if ((runnersBefore & 0b001) && (runnersAfter & 0b100)) {
+        baseRunners[2] = prev[0];
+      }
+      break;
+    case '1B':
+      baseRunners[0] = batterId;
+      // Runner from 2nd may be on 3rd
+      if ((runnersBefore & 0b010) && (runnersAfter & 0b100)) {
+        baseRunners[2] = prev[1];
+      } else if ((runnersBefore & 0b010) && !(runnersAfter & 0b010)) {
+        // Runner from 2nd scored (not on 2nd or 3rd anymore)
+      }
+      // Runner from 1st may be on 2nd or 3rd
+      if ((runnersBefore & 0b001) && (runnersAfter & 0b100) && !baseRunners[2]) {
+        baseRunners[2] = prev[0];
+      } else if ((runnersBefore & 0b001) && (runnersAfter & 0b010)) {
+        baseRunners[1] = prev[0];
+      }
+      break;
+    case 'BB':
+    case 'HBP':
+      baseRunners[0] = batterId;
+      // Force plays push runners up
+      if (runnersBefore & 0b001) baseRunners[1] = prev[0];
+      if ((runnersBefore & 0b011) === 0b011) baseRunners[2] = prev[1];
+      // If bases were loaded, runner from 3rd scored
+      if ((runnersBefore & 0b010) && !(runnersBefore & 0b001) && (runnersAfter & 0b010)) {
+        baseRunners[1] = prev[1]; // stays on 2nd (no force)
+      }
+      if ((runnersBefore & 0b100) && !((runnersBefore & 0b011) === 0b011)) {
+        baseRunners[2] = prev[2]; // stays on 3rd (no force)
+      }
+      break;
+    case 'GDP':
+      // Runner on 1st out, others may advance
+      if ((runnersBefore & 0b010) && (runnersAfter & 0b100)) {
+        baseRunners[2] = prev[1];
+      }
+      break;
+    case 'SF':
+      // Runner from 3rd scores, others stay
+      if ((runnersBefore & 0b001) && (runnersAfter & 0b001)) baseRunners[0] = prev[0];
+      if ((runnersBefore & 0b010) && (runnersAfter & 0b010)) baseRunners[1] = prev[1];
+      break;
+    default:
+      // Outs: runners stay where they are
+      if (runnersAfter & 0b001) baseRunners[0] = prev[0];
+      if (runnersAfter & 0b010) baseRunners[1] = prev[1];
+      if (runnersAfter & 0b100) baseRunners[2] = prev[2];
+      break;
+  }
 }
 
 // ─── Full game simulation ─────────────────────────────────────────────────────
@@ -305,6 +449,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     .reduce((sum, p) => sum + (p.hitterAttributes?.fielding ?? 350), 0) / 9;
 
   const MAX_INNINGS = 25;
+  let finalInning = 9;
 
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
@@ -326,7 +471,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
 
-    // Pitcher management: pull home starter?
+    // Pitcher management: pull home starter? (save situation: home leads by ≤3 in 9th+)
+    const homeLeadForSave = ctx.homeScore > ctx.awayScore && (ctx.homeScore - ctx.awayScore) <= 3;
     homePitcher = managePitcher(
       gen,
       homePitcher,
@@ -336,11 +482,17 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.homeTeam.teamId,
       homeUsedPitchers,
       inning,
-      false, // not save situation for top
+      homeLeadForSave && inning >= 8,
       input.homeTeam.bullpenReliefCounter,
     );
 
     // ── BOTTOM of inning (home bats) ───────────────────────────────────────
+    // Walk-off check: if home team leads after top of 9th+, skip bottom half
+    if (inning >= 9 && ctx.homeScore > ctx.awayScore) {
+      finalInning = inning;
+      break;
+    }
+
     const bottomManned = shouldUseMannedRunner({ ...ctx, inning, isTop: false });
     let homeRuns: number;
     [homeRuns, homeLineupPos, gen] = simulateHalfInning(
@@ -359,7 +511,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
 
-    // Pitcher management: pull away starter?
+    // Pitcher management: pull away starter? (save situation: away leads by ≤3 in 9th+)
+    const awayLeadForSave = ctx.awayScore > ctx.homeScore && (ctx.awayScore - ctx.homeScore) <= 3;
     awayPitcher = managePitcher(
       gen,
       awayPitcher,
@@ -369,11 +522,12 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       input.awayTeam.teamId,
       awayUsedPitchers,
       inning,
-      false,
+      awayLeadForSave && inning >= 8,
       input.awayTeam.bullpenReliefCounter,
     );
 
     // ── Game over? ─────────────────────────────────────────────────────────
+    finalInning = inning;
     if (inning >= 9 && ctx.homeScore !== ctx.awayScore) break;
     if (inning >= MAX_INNINGS) break; // Tie after 25 innings: break (shouldn't happen)
   }
@@ -389,7 +543,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayTeamId: input.awayTeam.teamId,
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
-    innings: 9, // tracked externally
+    innings: finalInning,
     homeBatting: Array.from(homeBatterStats.values()),
     awayBatting: Array.from(awayBatterStats.values()),
     homePitching: Array.from(homePitcherStats.values()),
@@ -402,7 +556,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     awayTeamId: input.awayTeam.teamId,
     homeScore: ctx.homeScore,
     awayScore: ctx.awayScore,
-    innings: 9,
+    innings: finalInning,
     boxScore,
   };
 }
@@ -468,17 +622,28 @@ function assignPitcherDecisions(
   homeScore: number,
   awayScore: number,
 ): void {
-  // Win goes to pitcher of record for winning team (last pitcher to lead while they pitched)
-  // Simplified: win goes to starter of winning team, save to last reliever if applicable
   const winnerStats = homeScore > awayScore ? homePitcherStats : awayPitcherStats;
   const loserStats  = homeScore > awayScore ? awayPitcherStats : homePitcherStats;
+  const margin = Math.abs(homeScore - awayScore);
 
-  // Starter gets the W (first pitcher in map)
+  // Starter gets the W (first pitcher in the winning team's map)
   const winnerArr = Array.from(winnerStats.values());
   if (winnerArr.length > 0) {
     winnerArr[0]!.decision = 'W';
-    // Last reliever of winner gets save if SP didn't finish and margin ≤ 3
+
+    // Save: last reliever of winning team gets a save if:
+    //   - SP didn't finish the game (there are relievers)
+    //   - Final margin ≤ 3 runs OR reliever pitched 3+ innings
+    if (winnerArr.length > 1) {
+      const closer = winnerArr[winnerArr.length - 1]!;
+      const closerIP = closer.outs / 3;
+      if (margin <= 3 || closerIP >= 3) {
+        closer.decision = 'S';
+      }
+    }
   }
+
+  // Loss goes to starter of losing team
   const loserArr = Array.from(loserStats.values());
   if (loserArr.length > 0) {
     loserArr[0]!.decision = 'L';

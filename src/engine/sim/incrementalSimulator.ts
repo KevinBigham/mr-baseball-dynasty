@@ -360,3 +360,279 @@ export function simulateChunk(
     isSeasonComplete: state.isComplete,
   };
 }
+
+// ─── Granular simulation — sim by day / week / month ─────────────────────────
+
+export interface SimRangeResult {
+  gamesSimulated: number;
+  startIndex: number;
+  endIndex: number;
+  startDate: string;
+  endDate: string;
+  crossedEvent: ChunkEvent | null;
+  crossedSegment: number | null;
+  partialResult: PartialSeasonResult;
+  userRecord: { wins: number; losses: number };
+  isSeasonComplete: boolean;
+}
+
+/** Compute target index for "sim 1 day" — all games on the next unplayed date. */
+export function computeSim1DayTarget(
+  state: SeasonSimState,
+  schedule: ScheduleEntry[],
+): number {
+  const idx = state.gamesCompleted;
+  if (idx >= schedule.length) return schedule.length;
+  const date = schedule[idx]!.date;
+  let target = idx;
+  while (target < schedule.length && schedule[target]!.date === date) {
+    target++;
+  }
+  return target;
+}
+
+/** Compute target index for "sim 1 week" — all games within next 7 calendar days. */
+export function computeSim1WeekTarget(
+  state: SeasonSimState,
+  schedule: ScheduleEntry[],
+): number {
+  const idx = state.gamesCompleted;
+  if (idx >= schedule.length) return schedule.length;
+  const startDate = new Date(schedule[idx]!.date + 'T00:00:00Z');
+  const endDate = new Date(startDate);
+  endDate.setUTCDate(endDate.getUTCDate() + 7);
+  const endDateStr = endDate.toISOString().slice(0, 10);
+  let target = idx;
+  while (target < schedule.length && schedule[target]!.date < endDateStr) {
+    target++;
+  }
+  return target;
+}
+
+/** Compute target index for "sim 1 month" — all games through end of current calendar month. */
+export function computeSim1MonthTarget(
+  state: SeasonSimState,
+  schedule: ScheduleEntry[],
+): number {
+  const idx = state.gamesCompleted;
+  if (idx >= schedule.length) return schedule.length;
+  const currentDate = schedule[idx]!.date;
+  const parts = currentDate.split('-');
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const endDateStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+  let target = idx;
+  while (target < schedule.length && schedule[target]!.date < endDateStr) {
+    target++;
+  }
+  return target;
+}
+
+/**
+ * Simulate games from gamesCompleted up to targetEndIndex, stopping early
+ * at segment boundaries to trigger events (allstar, deadline, etc.).
+ * Mutates `state` in-place.
+ */
+export function simulateRange(
+  state: SeasonSimState,
+  teams: Team[],
+  players: Player[],
+  schedule: ScheduleEntry[],
+  targetEndIndex: number,
+  options?: {
+    userTeamId?: number;
+    userLineupOrder?: number[];
+    userRotationOrder?: number[];
+  },
+  onProgress?: (pct: number) => void,
+): SimRangeResult {
+  const startIdx = state.gamesCompleted;
+
+  // If already complete, return immediately
+  if (state.isComplete || startIdx >= state.totalGames) {
+    const date = startIdx > 0 ? (schedule[startIdx - 1]?.date ?? '') : '';
+    return {
+      gamesSimulated: 0,
+      startIndex: startIdx,
+      endIndex: startIdx,
+      startDate: date,
+      endDate: date,
+      crossedEvent: 'complete',
+      crossedSegment: null,
+      partialResult: buildPartialResult(state, teams),
+      userRecord: { wins: 0, losses: 0 },
+      isSeasonComplete: true,
+    };
+  }
+
+  // Clamp target to total games
+  let effectiveEnd = Math.min(targetEndIndex, state.totalGames);
+
+  // Find the next segment boundary and clamp to it
+  const nextBoundaryIdx = state.currentSegment + 1;
+  const nextBoundary = nextBoundaryIdx < state.segmentBoundaries.length
+    ? state.segmentBoundaries[nextBoundaryIdx]!
+    : state.totalGames;
+  effectiveEnd = Math.min(effectiveEnd, nextBoundary);
+
+  // Build lookup maps
+  const playerTeamMap = new Map<number, number>();
+  const playerPositionMap = new Map<number, string>();
+  for (const p of players) {
+    playerTeamMap.set(p.playerId, p.teamId);
+    playerPositionMap.set(p.playerId, p.position);
+  }
+
+  const teamMap = new Map<number, Team>();
+  for (const t of teams) teamMap.set(t.teamId, t);
+
+  const playerStatsMap = new Map<number, PlayerSeasonStats>();
+  for (const [key, val] of Object.entries(state.playerStats)) {
+    playerStatsMap.set(Number(key), val);
+  }
+
+  // Track user record
+  const userTeamId = options?.userTeamId;
+  const userWinsBefore = userTeamId ? (state.teamWins[userTeamId] ?? 0) : 0;
+  const userLossesBefore = userTeamId ? (state.teamLosses[userTeamId] ?? 0) : 0;
+
+  const rangeSize = effectiveEnd - startIdx;
+  let rangeCompleted = 0;
+
+  // ─── Game simulation loop (same logic as simulateChunk) ───
+  for (let i = startIdx; i < effectiveEnd; i++) {
+    const entry = schedule[i];
+    if (!entry) continue;
+
+    const homeTeam = teamMap.get(entry.homeTeamId);
+    const awayTeam = teamMap.get(entry.awayTeamId);
+
+    if (!homeTeam || !awayTeam) {
+      state.gamesCompleted++;
+      rangeCompleted++;
+      continue;
+    }
+
+    const gameSeed = (state.baseSeed ^ (entry.gameId * 2654435761)) >>> 0;
+
+    const homeWithRotation: Team = {
+      ...homeTeam,
+      rotationIndex: state.rotationIndex[entry.homeTeamId] ?? 0,
+      bullpenReliefCounter: state.bullpenOffset[entry.homeTeamId] ?? 0,
+    };
+    const awayWithRotation: Team = {
+      ...awayTeam,
+      rotationIndex: state.rotationIndex[entry.awayTeamId] ?? 0,
+      bullpenReliefCounter: state.bullpenOffset[entry.awayTeamId] ?? 0,
+    };
+
+    const isUserGame = userTeamId !== undefined &&
+      (entry.homeTeamId === userTeamId || entry.awayTeamId === userTeamId);
+
+    const input: SimulateGameInput = {
+      gameId: entry.gameId,
+      season: state.season,
+      date: entry.date,
+      homeTeam: homeWithRotation,
+      awayTeam: awayWithRotation,
+      players,
+      seed: gameSeed,
+      ...(isUserGame ? {
+        userTeamId: options!.userTeamId,
+        userLineupOrder: options!.userLineupOrder,
+        userRotationOrder: options!.userRotationOrder,
+      } : {}),
+    };
+
+    const result = simulateGame(input);
+
+    // Advance rotation and bullpen
+    state.rotationIndex[entry.homeTeamId] = (state.rotationIndex[entry.homeTeamId] ?? 0) + 1;
+    state.rotationIndex[entry.awayTeamId] = (state.rotationIndex[entry.awayTeamId] ?? 0) + 1;
+    state.bullpenOffset[entry.homeTeamId] = (state.bullpenOffset[entry.homeTeamId] ?? 0) + 3;
+    state.bullpenOffset[entry.awayTeamId] = (state.bullpenOffset[entry.awayTeamId] ?? 0) + 3;
+
+    // Update team records
+    if (result.homeScore > result.awayScore) {
+      state.teamWins[entry.homeTeamId] = (state.teamWins[entry.homeTeamId] ?? 0) + 1;
+      state.teamLosses[entry.awayTeamId] = (state.teamLosses[entry.awayTeamId] ?? 0) + 1;
+    } else {
+      state.teamWins[entry.awayTeamId] = (state.teamWins[entry.awayTeamId] ?? 0) + 1;
+      state.teamLosses[entry.homeTeamId] = (state.teamLosses[entry.homeTeamId] ?? 0) + 1;
+    }
+    state.teamRS[entry.homeTeamId] = (state.teamRS[entry.homeTeamId] ?? 0) + result.homeScore;
+    state.teamRS[entry.awayTeamId] = (state.teamRS[entry.awayTeamId] ?? 0) + result.awayScore;
+    state.teamRA[entry.homeTeamId] = (state.teamRA[entry.homeTeamId] ?? 0) + result.awayScore;
+    state.teamRA[entry.awayTeamId] = (state.teamRA[entry.awayTeamId] ?? 0) + result.homeScore;
+
+    // Accumulate player stats
+    const box = result.boxScore;
+    accumulateBatting(playerStatsMap, box.homeBatting, playerTeamMap, state.season);
+    accumulateBatting(playerStatsMap, box.awayBatting, playerTeamMap, state.season);
+    accumulatePitching(playerStatsMap, box.homePitching, playerTeamMap, playerPositionMap, state.season);
+    accumulatePitching(playerStatsMap, box.awayPitching, playerTeamMap, playerPositionMap, state.season);
+
+    state.gamesCompleted++;
+    rangeCompleted++;
+
+    if (rangeSize > 0 && rangeCompleted % 50 === 0 && onProgress) {
+      onProgress(rangeCompleted / rangeSize);
+    }
+  }
+
+  // Serialize player stats back
+  state.playerStats = {};
+  for (const [pid, stats] of playerStatsMap.entries()) {
+    state.playerStats[String(pid)] = stats;
+  }
+
+  // Sync team seasonRecord on Team objects
+  for (const t of teams) {
+    t.seasonRecord = {
+      wins: state.teamWins[t.teamId] ?? 0,
+      losses: state.teamLosses[t.teamId] ?? 0,
+      runsScored: state.teamRS[t.teamId] ?? 0,
+      runsAllowed: state.teamRA[t.teamId] ?? 0,
+    };
+  }
+
+  // Check if we hit a segment boundary
+  let crossedEvent: ChunkEvent | null = null;
+  let crossedSegment: number | null = null;
+
+  if (state.gamesCompleted >= nextBoundary && state.currentSegment < SEGMENT_COUNT) {
+    const segInfo = SEGMENTS[state.currentSegment]!;
+    crossedEvent = segInfo.event;
+    crossedSegment = state.currentSegment;
+    state.currentSegment++;
+    if (state.currentSegment >= SEGMENT_COUNT) {
+      state.isComplete = true;
+    }
+  }
+
+  // User record for this range
+  const userWinsAfter = userTeamId ? (state.teamWins[userTeamId] ?? 0) : 0;
+  const userLossesAfter = userTeamId ? (state.teamLosses[userTeamId] ?? 0) : 0;
+
+  const startDate = startIdx < schedule.length ? (schedule[startIdx]?.date ?? '') : '';
+  const lastIdx = state.gamesCompleted > 0 ? state.gamesCompleted - 1 : 0;
+  const endDate = lastIdx < schedule.length ? (schedule[lastIdx]?.date ?? '') : '';
+
+  return {
+    gamesSimulated: rangeCompleted,
+    startIndex: startIdx,
+    endIndex: state.gamesCompleted,
+    startDate,
+    endDate,
+    crossedEvent,
+    crossedSegment,
+    partialResult: buildPartialResult(state, teams),
+    userRecord: {
+      wins: userWinsAfter - userWinsBefore,
+      losses: userLossesAfter - userLossesBefore,
+    },
+    isSeasonComplete: state.isComplete,
+  };
+}

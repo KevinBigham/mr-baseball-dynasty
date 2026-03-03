@@ -274,6 +274,7 @@ function PlayerRow({
             <button
               onClick={(e) => { e.stopPropagation(); setShowActions(!showActions); }}
               className="text-gray-500 hover:text-orange-400 text-xs transition-colors px-1 min-h-[44px] min-w-[44px]"
+              aria-label="Player actions menu"
             >
               ···
             </button>

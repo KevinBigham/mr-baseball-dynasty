@@ -52,6 +52,9 @@ export default function AllStarBreak({ result, season, playerNames, onContinue }
             <div className="text-blue-400 text-xs font-bold tracking-wider border-b border-blue-900 pb-1">
               TOP HITTERS
             </div>
+            {topHitters.length === 0 && (
+              <div className="text-gray-500 text-xs">No qualifying hitters yet</div>
+            )}
             {topHitters.map((h, i) => (
               <div key={i} className="text-xs flex justify-between items-center">
                 <span className="text-gray-300">{playerNames[h.playerId] ?? `#${h.playerId}`}</span>
@@ -67,6 +70,9 @@ export default function AllStarBreak({ result, season, playerNames, onContinue }
             <div className="text-red-400 text-xs font-bold tracking-wider border-b border-red-900 pb-1">
               TOP PITCHERS
             </div>
+            {topPitchers.length === 0 && (
+              <div className="text-gray-500 text-xs">No qualifying pitchers yet</div>
+            )}
             {topPitchers.map((p, i) => (
               <div key={i} className="text-xs flex justify-between items-center">
                 <span className="text-gray-300">{playerNames[p.playerId] ?? `#${p.playerId}`}</span>

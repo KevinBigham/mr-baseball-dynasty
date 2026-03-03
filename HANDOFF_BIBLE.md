@@ -1,36 +1,37 @@
 # Mr. Baseball Dynasty — Handoff Bible
-> Last updated: 2026-03-01 by Claude (Sonnet 4.6)
+> Last updated: 2026-03-03 by Claude (Opus 4.6)
 > Branch: `claude/baseball-dynasty-sim-UjlF2`
-> Commit: `ad74ae4`
 
 ---
 
 ## 0. TL;DR — State of the Game Right Now
 
-**What exists:** A complete, playable baseball dynasty simulation.
+**What exists:** A complete, deeply featured baseball dynasty simulation.
 - 30 teams, ~3,700 procedurally generated players across 7 farm levels
-- Full 162-game season simulation (deterministic, seeded, ~1s per season)
-- Playoff bracket (Wild Card → DS → CS → World Series)
-- Roster management (promote/demote/DFA/release)
-- Free agency shopping
-- Trade system (incoming AI offers + propose your own)
+- Full 162-game season simulation with interactive month-by-month pacing
+- Playoff bracket (Wild Card → DS → CS → World Series) with Playoff MVP
+- Roster management (promote/demote/DFA/release/depth chart/IL)
+- Free agency, arbitration, waivers, Rule 5 draft, amateur draft
+- International Signing Period with bonus pool bidding
+- Contract extension negotiations (offer/counter-offer)
+- Trade system (incoming AI offers + propose your own + shop players)
+- Prospect Pipeline board with farm grades and ETA
+- Pennant Race tracker (division rank, WC position, magic/elimination numbers)
+- Advanced stats (wOBA, wRC+, FIP, xFIP, WAR)
+- Hall of Fame, franchise records, career leaderboards
+- Tutorial system, owner expectations, coaching staff effects
 - Auto-save / manual save / new game reset
-- Rich narrative layer: press conferences, rivalry tracking, MFSN predictions, moments gallery, storyboard arcs, weekly cards, owner patience, team morale
-- 35 passing tests across 3 test suites
+- 478 passing tests across 56 test suites
 
 **What's NOT built yet (priority order):**
-1. Player Development Lab (assign prospects to programs)
-2. International Signing Period (bid on INTL prospects)
-3. Rule 5 Draft
-4. Amateur Draft (college + HS)
-5. Arbitration system
-6. Contract extensions for current players
-7. Injuries system (IL stints with recovery timelines)
-8. Coaching staff active effects (currently selected but not affecting sim)
-9. Scouting reports (fog-of-war on opponent players)
-10. Historical player tracking / career stats across seasons
-11. Team finance screen (payroll, luxury tax)
-12. Waiver wire
+1. Player Development Lab (assign prospects to specific programs)
+2. Scouting reports / fog-of-war on opponent players
+3. Player personality & team chemistry system
+4. Coaching staff hiring/firing UI with salary costs
+5. Minor league rehab assignments
+6. Narrative moments (trade rumors, press reactions, rivalry events)
+7. Compensatory draft picks
+8. Historical season browsing / league history viewer
 
 ---
 
@@ -143,7 +144,7 @@ Stored in `gameStore.gamePhase`. The Dashboard component orchestrates transition
 
 ```bash
 npm run dev          # Dev server at http://localhost:5173
-npm run test         # Run 35 tests (all must pass)
+npm run test         # Run 478 tests (all must pass)
 npm run test:watch   # Watch mode
 npm run typecheck    # Zero-tolerance TypeScript check
 npm run build        # Production build

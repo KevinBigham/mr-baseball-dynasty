@@ -6,11 +6,11 @@ import {
 } from '../../src/types/offseason';
 
 describe('Offseason Phase Types', () => {
-  it('defines exactly 7 phases in order', () => {
-    expect(OFFSEASON_PHASE_ORDER).toHaveLength(7);
+  it('defines exactly 9 phases in order', () => {
+    expect(OFFSEASON_PHASE_ORDER).toHaveLength(9);
     expect(OFFSEASON_PHASE_ORDER).toEqual([
       'arbitration', 'waivers', 'annual_draft',
-      'rule5', 'free_agency', 'trading', 'summary',
+      'rule5', 'intl_signing', 'free_agency', 'extensions', 'trading', 'summary',
     ]);
   });
 
@@ -52,11 +52,27 @@ describe('Offseason Phase Types', () => {
     expect(draftIdx).toBeLessThan(rule5Idx);
   });
 
+  it('intl signing happens after rule5 and before free agency', () => {
+    const rule5Idx = OFFSEASON_PHASE_ORDER.indexOf('rule5');
+    const intlIdx = OFFSEASON_PHASE_ORDER.indexOf('intl_signing');
+    const faIdx = OFFSEASON_PHASE_ORDER.indexOf('free_agency');
+    expect(intlIdx).toBeGreaterThan(rule5Idx);
+    expect(intlIdx).toBeLessThan(faIdx);
+  });
+
+  it('extensions happen after free agency and before trading', () => {
+    const faIdx = OFFSEASON_PHASE_ORDER.indexOf('free_agency');
+    const extIdx = OFFSEASON_PHASE_ORDER.indexOf('extensions');
+    const tradeIdx = OFFSEASON_PHASE_ORDER.indexOf('trading');
+    expect(extIdx).toBeGreaterThan(faIdx);
+    expect(extIdx).toBeLessThan(tradeIdx);
+  });
+
   it('type OffseasonPhase accepts all phase values', () => {
     const phases: OffseasonPhase[] = [
       'arbitration', 'waivers', 'annual_draft',
-      'rule5', 'free_agency', 'trading', 'summary',
+      'rule5', 'intl_signing', 'free_agency', 'extensions', 'trading', 'summary',
     ];
-    expect(phases).toHaveLength(7);
+    expect(phases).toHaveLength(9);
   });
 });
