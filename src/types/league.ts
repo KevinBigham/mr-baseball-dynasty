@@ -50,6 +50,8 @@ export interface LeagueState {
   rotationOrder?: number[];
   seasonResults?: SeasonResult[];
   seasonSimState?: import('../engine/sim/incrementalSimulator').SeasonSimState;
+  devAssignments?: Record<string, import('../engine/devPrograms').DevAssignment>;
+  scoutingReports?: Record<string, import('../engine/scouting').ScoutingReport>;
 }
 
 export interface SeasonResult {
