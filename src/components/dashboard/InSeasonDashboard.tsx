@@ -1,0 +1,248 @@
+/**
+ * InSeasonDashboard — Main UI during interactive (chunked) season play.
+ * Shows season progress, monthly recap, division standings, and action buttons.
+ */
+
+import { useGameStore } from '../../store/gameStore';
+import { useUIStore } from '../../store/uiStore';
+import SeasonProgressBar from './SeasonProgressBar';
+import MonthRecap from './MonthRecap';
+import type { InSeasonFlowState } from '../../hooks/useInSeasonFlow';
+
+const NEXT_SEGMENT_LABELS = ['SIM JUNE', 'SIM JULY', 'SIM AUGUST', 'SIM SEPTEMBER', 'FINALIZE'];
+
+interface Props {
+  flow: InSeasonFlowState;
+}
+
+export default function InSeasonDashboard({ flow }: Props) {
+  const { userTeamId, isSimulating, simProgress, season } = useGameStore();
+  const { setActiveTab } = useUIStore();
+
+  const {
+    currentSegment, chunkResult, partialResult, pendingEvent,
+    simNextChunk, simAllRemaining, continueAfterEvent,
+    getUserOverallRecord, error,
+  } = flow;
+
+  const overallRecord = getUserOverallRecord();
+  const nextSegmentLabel = currentSegment >= 0 && currentSegment < 4
+    ? NEXT_SEGMENT_LABELS[currentSegment]
+    : currentSegment >= 4
+    ? 'SEASON COMPLETE'
+    : 'SIM APRIL–MAY';
+
+  return (
+    <div className="space-y-4">
+      {/* Season Progress Bar */}
+      <SeasonProgressBar
+        completedSegment={currentSegment}
+        isSimulating={isSimulating}
+      />
+
+      {/* Sim Progress Indicator */}
+      {isSimulating && (
+        <div className="bloomberg-border bg-gray-900 px-4 py-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-orange-400 text-xs font-bold tracking-widest animate-pulse">
+              SIMULATING...
+            </span>
+            <span className="text-gray-500 text-xs tabular-nums">
+              {Math.round(simProgress * 100)}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-gray-800 rounded overflow-hidden">
+            <div
+              className="h-full bg-orange-500 transition-all duration-300"
+              style={{ width: `${Math.round(simProgress * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Error display */}
+      {error && (
+        <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">
+          {error}
+        </div>
+      )}
+
+      {/* Monthly Recap (after at least one chunk is done) */}
+      {!isSimulating && chunkResult && partialResult && (
+        <MonthRecap
+          segment={currentSegment}
+          partialResult={partialResult}
+          userTeamId={userTeamId}
+          chunkRecord={chunkResult.userRecord}
+          divisionStandings={flow.divisionStandings}
+        />
+      )}
+
+      {/* Event overlays */}
+      {!isSimulating && pendingEvent === 'allstar' && (
+        <div className="bloomberg-border bg-gray-900">
+          <div className="bloomberg-header px-4 flex items-center justify-between">
+            <span>ALL-STAR BREAK</span>
+            <span className="text-yellow-500 font-normal text-xs">Mid-Season Event</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="text-center">
+              <div className="text-orange-400 text-sm font-bold tracking-wider">
+                MR. BASEBALL MIDSUMMER CLASSIC
+              </div>
+              <div className="text-gray-500 text-xs mt-1">
+                The first half is in the books. Your team is {overallRecord.wins}–{overallRecord.losses}.
+              </div>
+              <div className="text-gray-500 text-xs mt-1">
+                Use this break to make roster adjustments before the second half.
+              </div>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setActiveTab('roster')}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                ROSTER MOVES
+              </button>
+              <button
+                onClick={() => { continueAfterEvent(); simNextChunk(); }}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+              >
+                CONTINUE TO SECOND HALF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isSimulating && pendingEvent === 'deadline' && (
+        <div className="bloomberg-border bg-gray-900">
+          <div className="bloomberg-header px-4 flex items-center justify-between">
+            <span>TRADE DEADLINE</span>
+            <span className="text-red-500 font-normal text-xs">Deadline Approaching</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="text-center">
+              <div className="text-orange-400 text-sm font-bold tracking-wider">
+                JULY 31 — TRADE DEADLINE
+              </div>
+              <div className="text-gray-500 text-xs mt-1">
+                {overallRecord.wins > overallRecord.losses
+                  ? 'You\'re in the hunt. Time to make a move to bolster the roster.'
+                  : 'The season hasn\'t gone as planned. Consider selling for the future.'}
+              </div>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setActiveTab('roster')}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                ROSTER MOVES
+              </button>
+              <button
+                onClick={() => { continueAfterEvent(); simNextChunk(); }}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+              >
+                CONTINUE TO AUGUST
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isSimulating && pendingEvent === 'callups' && (
+        <div className="bloomberg-border bg-gray-900">
+          <div className="bloomberg-header px-4 flex items-center justify-between">
+            <span>SEPTEMBER</span>
+            <span className="text-blue-500 font-normal text-xs">Stretch Run</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="text-center">
+              <div className="text-orange-400 text-sm font-bold tracking-wider">
+                SEPTEMBER STRETCH RUN
+              </div>
+              <div className="text-gray-500 text-xs mt-1">
+                The pennant race is heating up. Review your roster and call up reinforcements.
+              </div>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => setActiveTab('roster')}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                ROSTER MOVES
+              </button>
+              <button
+                onClick={() => { continueAfterEvent(); simNextChunk(); }}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+              >
+                SIM SEPTEMBER
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isSimulating && pendingEvent === 'complete' && (
+        <div className="bloomberg-border bg-gray-900">
+          <div className="bloomberg-header px-4 flex items-center justify-between">
+            <span>SEASON COMPLETE</span>
+            <span className="text-green-500 font-normal text-xs">Final Results</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="text-center">
+              <div className="text-orange-400 text-sm font-bold tracking-wider">
+                {season} REGULAR SEASON — FINAL
+              </div>
+              <div className="text-gray-200 text-lg font-bold tabular-nums mt-2">
+                {overallRecord.wins}–{overallRecord.losses}
+              </div>
+              <div className="text-gray-500 text-xs mt-1">
+                The regular season is complete. Time for playoffs and the offseason.
+              </div>
+            </div>
+            <div className="flex justify-center">
+              <button
+                onClick={continueAfterEvent}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-8 py-3 uppercase tracking-widest transition-colors"
+              >
+                CONTINUE TO POSTSEASON
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Buttons (shown when paused at roster_pause, no special event) */}
+      {!isSimulating && pendingEvent === 'roster_pause' && (
+        <div className="bloomberg-border bg-gray-900 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-gray-500 text-xs">
+              Make roster moves or continue to the next month.
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveTab('roster')}
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                ROSTER MOVES
+              </button>
+              <button
+                onClick={() => { continueAfterEvent(); simNextChunk(); }}
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+              >
+                {nextSegmentLabel}
+              </button>
+              <button
+                onClick={() => { continueAfterEvent(); simAllRemaining(); }}
+                className="border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+              >
+                FAST SIM ALL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

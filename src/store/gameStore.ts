@@ -3,7 +3,7 @@ import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
 export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
-export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason' | 'fired';
+export type GamePhase = 'preseason' | 'in_season' | 'simulating' | 'postseason' | 'offseason' | 'fired';
 export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
 interface GameStore {
@@ -33,6 +33,11 @@ interface GameStore {
 
   // ── Breakout Watch ───────────────────────────────────────────────────────────
   breakoutWatch:   BreakoutCandidate[];
+
+  // ── In-Season Pacing ────────────────────────────────────────────────────────
+  currentSegment:    number;           // 0-4 (which segment was just completed)
+  inSeasonPaused:    boolean;          // true when awaiting user action between chunks
+  segmentUserRecord: { wins: number; losses: number } | null;
 
   // ── Tutorial ───────────────────────────────────────────────────────────────────
   tutorialActive:  boolean;
@@ -65,6 +70,10 @@ interface GameStore {
 
   setBreakoutWatch:   (candidates: BreakoutCandidate[]) => void;
 
+  setCurrentSegment:    (n: number) => void;
+  setInSeasonPaused:    (v: boolean) => void;
+  setSegmentUserRecord: (r: { wins: number; losses: number } | null) => void;
+
   setTutorialActive:  (v: boolean) => void;
 
   // ── Reset ───────────────────────────────────────────────────────────────────
@@ -94,6 +103,10 @@ export const useGameStore = create<GameStore>(set => ({
   teamMorale:      65,    // Start optimistic but below peak
 
   breakoutWatch:   [],
+
+  currentSegment:    -1,
+  inSeasonPaused:    false,
+  segmentUserRecord: null,
 
   tutorialActive:  false,
 
@@ -140,6 +153,11 @@ export const useGameStore = create<GameStore>(set => ({
   // ── Breakout watch ────────────────────────────────────────────────────────────
   setBreakoutWatch: candidates => set({ breakoutWatch: candidates }),
 
+  // ── In-season pacing ──────────────────────────────────────────────────────────
+  setCurrentSegment:    n => set({ currentSegment: n }),
+  setInSeasonPaused:    v => set({ inSeasonPaused: v }),
+  setSegmentUserRecord: r => set({ segmentUserRecord: r }),
+
   // ── Tutorial ────────────────────────────────────────────────────────────────────
   setTutorialActive: v => set({ tutorialActive: v }),
 
@@ -162,6 +180,9 @@ export const useGameStore = create<GameStore>(set => ({
     ownerPatience: 70,
     teamMorale: 65,
     breakoutWatch: [],
+    currentSegment: -1,
+    inSeasonPaused: false,
+    segmentUserRecord: null,
     tutorialActive: false,
   }),
 }));
