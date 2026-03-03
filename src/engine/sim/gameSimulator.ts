@@ -13,10 +13,23 @@ import {
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
-function buildLineup(players: Player[], teamId: number): Player[] {
+function buildLineup(players: Player[], teamId: number, customOrder?: number[]): Player[] {
   const hitters = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE' && !p.isPitcher,
   );
+
+  // If a custom batting order is provided, use it (validating players are still active)
+  if (customOrder && customOrder.length === 9) {
+    const hitterMap = new Map(hitters.map(h => [h.playerId, h]));
+    const ordered: Player[] = [];
+    for (const id of customOrder) {
+      const h = hitterMap.get(id);
+      if (h) ordered.push(h);
+    }
+    // If all 9 are valid, use the custom order; otherwise fall back to attribute sort
+    if (ordered.length === 9) return ordered;
+  }
+
   // Sort by composite offensive rating (contact + power + eye)
   hitters.sort((a, b) => {
     const aVal = (a.hitterAttributes?.contact ?? 0) + (a.hitterAttributes?.power ?? 0) * 0.8
@@ -25,16 +38,28 @@ function buildLineup(players: Player[], teamId: number): Player[] {
                + (b.hitterAttributes?.eye ?? 0) * 0.6;
     return bVal - aVal;
   });
-  // Return top 9 (simple lineup; batting order optimization is v1.0)
+  // Return top 9
   return hitters.slice(0, 9);
 }
 
-function pickStarter(players: Player[], teamId: number, rotationIndex: number): Player | null {
+function pickStarter(players: Player[], teamId: number, rotationIndex: number, customRotation?: number[]): Player | null {
   const starters = players.filter(
     p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE'
       && p.position === 'SP',
   );
   if (starters.length === 0) return null;
+
+  // If a custom rotation order is provided, cycle through it
+  if (customRotation && customRotation.length > 0) {
+    const starterMap = new Map(starters.map(s => [s.playerId, s]));
+    // Filter to only valid active SPs
+    const validIds = customRotation.filter(id => starterMap.has(id));
+    if (validIds.length > 0) {
+      const pickId = validIds[rotationIndex % validIds.length];
+      return starterMap.get(pickId) ?? null;
+    }
+  }
+
   starters.sort((a, b) => b.overall - a.overall);
   return starters[rotationIndex % starters.length] ?? null;
 }
@@ -201,6 +226,12 @@ export interface SimulateGameInput {
   awayTeam: Team;
   players: Player[];
   seed: number;
+  /** Optional user-set batting order (9 player IDs) — used when the matching team is batting */
+  userLineupOrder?: number[];
+  /** Optional user-set rotation order (up to 5 SP player IDs) — used when the matching team is pitching */
+  userRotationOrder?: number[];
+  /** The user's team ID — needed to know which team gets the custom orders */
+  userTeamId?: number;
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -209,13 +240,15 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   const parkFactor = PARK_FACTORS[input.homeTeam.parkFactorId]
     ?? PARK_FACTORS[4]!; // fallback to neutral
 
-  // Build lineups
-  const homeLineup = buildLineup(input.players, input.homeTeam.teamId);
-  const awayLineup = buildLineup(input.players, input.awayTeam.teamId);
+  // Build lineups — apply user custom order only for the user's team
+  const homeIsUser = input.userTeamId !== undefined && input.homeTeam.teamId === input.userTeamId;
+  const awayIsUser = input.userTeamId !== undefined && input.awayTeam.teamId === input.userTeamId;
+  const homeLineup = buildLineup(input.players, input.homeTeam.teamId, homeIsUser ? input.userLineupOrder : undefined);
+  const awayLineup = buildLineup(input.players, input.awayTeam.teamId, awayIsUser ? input.userLineupOrder : undefined);
 
-  // Pick starters using rotation index
-  let homeSP = pickStarter(input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex);
-  let awaySP = pickStarter(input.players, input.awayTeam.teamId, input.awayTeam.rotationIndex);
+  // Pick starters using rotation index — apply user custom rotation only for the user's team
+  let homeSP = pickStarter(input.players, input.homeTeam.teamId, input.homeTeam.rotationIndex, homeIsUser ? input.userRotationOrder : undefined);
+  let awaySP = pickStarter(input.players, input.awayTeam.teamId, input.awayTeam.rotationIndex, awayIsUser ? input.userRotationOrder : undefined);
 
   // Fallback: use a reliever as "spot starter" if no SP
   if (!homeSP) {

@@ -220,10 +220,23 @@ export function calcMoraleDelta(
   return Math.max(-15, Math.min(15, Math.round(delta)));
 }
 
-// ─── News generation ──────────────────────────────────────────────────────────
+// ─── Deterministic helpers ────────────────────────────────────────────────────
 
+let _newsCounter = 0;
+
+/** Deterministic news item ID — only used as React keys */
 function nid(): string {
-  return Math.random().toString(36).slice(2, 9);
+  return 'n' + (++_newsCounter);
+}
+
+/** Simple deterministic hash for seeded sorting */
+function hashStr(str: string, seed: number): number {
+  let h = seed | 0;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 0x5bd1e995);
+    h ^= h >>> 15;
+  }
+  return h >>> 0;
 }
 
 const OFFSEASON_RUMORS = [
@@ -352,7 +365,7 @@ export function generateSeasonNews(result: SeasonResult, userTeamId: number): Ne
   }
 
   // ── Offseason Rumors (always 2–3) ─────────────────────────────────────────
-  const shuffled = [...OFFSEASON_RUMORS].sort(() => Math.random() - 0.5);
+  const shuffled = [...OFFSEASON_RUMORS].sort((a, b) => hashStr(a.headline, s) - hashStr(b.headline, s));
   for (const r of shuffled.slice(0, 3)) {
     items.push({ id: nid(), season: s, type: 'rumor', icon: r.icon, priority: 1,
       headline: r.headline, body: r.body,

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { StandingsData, RosterData, LeaderboardEntry } from '../types/league';
+import type { StandingsData, RosterData, LeaderboardEntry, LeaderboardFullEntry } from '../types/league';
 import type { NewsItem } from '../engine/narrative';
 import type { RivalRecord } from '../engine/rivalry';
 import type { MFSNReport } from '../engine/predictions';
@@ -30,6 +30,7 @@ interface LeagueStore {
   standings:      StandingsData | null;
   roster:         RosterData | null;
   leaderboard:    LeaderboardEntry[];
+  leaderboardFull: LeaderboardFullEntry[];
   lastSeasonERA:  number;
   lastSeasonBA:   number;
   lastSeasonRPG:  number;
@@ -59,9 +60,13 @@ interface LeagueStore {
   // ── Weekly MRBD Card ──────────────────────────────────────────────────────────
   weeklyStories:    WeeklyStory[];
 
+  // ── Trade History ───────────────────────────────────────────────────────────
+  tradeHistory:     TradeHistoryRecord[];
+
   setStandings:           (d: StandingsData) => void;
   setRoster:              (d: RosterData) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
+  setLeaderboardFull:     (d: LeaderboardFullEntry[]) => void;
   setLastSeasonStats:     (era: number, ba: number, rpg: number) => void;
 
   addNewsItems:           (items: NewsItem[]) => void;
@@ -83,6 +88,20 @@ interface LeagueStore {
 
   addMoments:             (items: SeasonMoment[]) => void;
   setWeeklyStories:       (stories: WeeklyStory[]) => void;
+
+  addTradeRecord:         (record: TradeHistoryRecord) => void;
+
+  resetAll:               () => void;
+}
+
+// ─── Trade History ────────────────────────────────────────────────────────────
+
+export interface TradeHistoryRecord {
+  season: number;
+  partnerTeamAbbr: string;
+  sent: string[];
+  received: string[];
+  type: 'incoming' | 'proposed';
 }
 
 // ─── Key moment generator ─────────────────────────────────────────────────────
@@ -124,6 +143,7 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   standings:        null,
   roster:           null,
   leaderboard:      [],
+  leaderboardFull:  [],
   lastSeasonERA:    0,
   lastSeasonBA:     0,
   lastSeasonRPG:    0,
@@ -136,10 +156,12 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   poachEvent:       null,
   moments:          [],
   weeklyStories:    [],
+  tradeHistory:     [],
 
   setStandings:       d => set({ standings: d }),
   setRoster:          d => set({ roster: d }),
   setLeaderboard:     d => set({ leaderboard: d }),
+  setLeaderboardFull: d => set({ leaderboardFull: d }),
   setLastSeasonStats: (era, ba, rpg) => set({ lastSeasonERA: era, lastSeasonBA: ba, lastSeasonRPG: rpg }),
 
   addNewsItems: items => set(state => ({
@@ -172,4 +194,27 @@ export const useLeagueStore = create<LeagueStore>(set => ({
     moments: [...items, ...state.moments].slice(0, 100),
   })),
   setWeeklyStories: stories => set({ weeklyStories: stories }),
+
+  addTradeRecord: record => set(state => ({
+    tradeHistory: [record, ...state.tradeHistory].slice(0, 50),
+  })),
+
+  resetAll: () => set({
+    standings: null,
+    roster: null,
+    leaderboard: [],
+    lastSeasonERA: 0,
+    lastSeasonBA: 0,
+    lastSeasonRPG: 0,
+    newsItems: [],
+    rivals: [],
+    franchiseHistory: [],
+    presserAvailable: false,
+    presserDone: false,
+    mfsnReport: null,
+    poachEvent: null,
+    moments: [],
+    weeklyStories: [],
+    tradeHistory: [],
+  }),
 }));

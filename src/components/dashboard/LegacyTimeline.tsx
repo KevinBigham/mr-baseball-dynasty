@@ -163,6 +163,10 @@ function EraCard({ era }: { era: FranchiseEra }) {
         className="px-4 py-3 flex items-center justify-between cursor-pointer"
         style={{ background: `${era.color}0d` }}
         onClick={() => setExpanded(e => !e)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
           <span className="text-xl">{era.emoji}</span>
@@ -191,7 +195,7 @@ function EraCard({ era }: { era: FranchiseEra }) {
               <div className="font-black tabular-nums text-yellow-400">{era.titles}</div>
             </div>
           )}
-          <span className="text-gray-600">{expanded ? '▲' : '▼'}</span>
+          <span className="text-gray-500">{expanded ? '▲' : '▼'}</span>
         </div>
       </div>
 
@@ -227,7 +231,7 @@ function FranchiseStats({ history }: { history: SeasonSummary[] }) {
         { label: 'WS TITLES',    value: titles,                      color: titles > 0 ? '#fbbf24' : '#374151' },
       ].map(s => (
         <div key={s.label} className="bloomberg-border bg-gray-900 px-3 py-2 text-center">
-          <div className="text-gray-600 text-xs">{s.label}</div>
+          <div className="text-gray-500 text-xs">{s.label}</div>
           <div className="font-black text-base tabular-nums" style={{ color: s.color }}>{s.value}</div>
         </div>
       ))}
@@ -257,7 +261,7 @@ export default function LegacyTimeline() {
     <div className="bloomberg-border bg-gray-900">
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>FRANCHISE LEGACY</span>
-        <span className="text-gray-600 text-xs normal-case font-normal">
+        <span className="text-gray-500 text-xs normal-case font-normal">
           {history.length} season{history.length !== 1 ? 's' : ''}
         </span>
       </div>

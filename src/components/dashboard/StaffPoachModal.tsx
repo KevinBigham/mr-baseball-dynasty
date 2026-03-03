@@ -69,7 +69,7 @@ export default function StaffPoachModal({
               <div className="text-xs" style={{ color: staffMember.color }}>
                 {staffMember.title} · OVR {staffMember.ovr}
               </div>
-              <div className="text-gray-600 text-xs mt-0.5 italic truncate">
+              <div className="text-gray-500 text-xs mt-0.5 italic truncate">
                 "{staffMember.backstory}"
               </div>
             </div>

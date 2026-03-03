@@ -245,7 +245,7 @@ function initRosterData(
 }
 
 // ─── Generate single player ────────────────────────────────────────────────────
-function generatePlayer(
+export function generatePlayer(
   gen: RandomGenerator,
   teamId: number,
   pos: Position,

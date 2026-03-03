@@ -3,12 +3,20 @@ import type { Team, TeamSeasonStats } from './team';
 import type { ScheduleEntry, BoxScore } from './game';
 import type { SeasonAwards, DivisionChampion } from '../engine/player/awards';
 import type { DevelopmentEvent } from '../engine/player/development';
+import type { InjuryEvent } from '../engine/injuries';
 
 export interface LeagueEnvironment {
   // Calibration factors (1.0 = neutral)
   pitcherBuffFactor: number;
   hitterBuffFactor: number;
   babipAdjustment: number;
+}
+
+export interface RetiredPlayerRecord {
+  name: string;
+  position: string;
+  seasons: PlayerSeasonStats[];
+  retiredSeason: number;
 }
 
 export interface LeagueState {
@@ -19,6 +27,28 @@ export interface LeagueState {
   environment: LeagueEnvironment;
   prngState: number[];  // Serialized PRNG state
   userTeamId: number;
+  careerHistory?: Record<string, PlayerSeasonStats[]>;
+  retiredPlayers?: Record<string, RetiredPlayerRecord>;
+  hallOfFame?: import('../engine/hallOfFame').HallOfFameInductee[];
+  franchiseRecords?: import('../engine/franchiseRecords').FranchiseRecordBook;
+  playerSeasonStats?: Record<string, PlayerSeasonStats>;
+  lastAIRosterMoves?: import('../engine/aiRosterManager').AIRosterMove[];
+  foStaff?: import('../types/frontOffice').FOStaffMember[];
+  draftState?: {
+    mode: string;
+    pool: Player[];
+    prospects: import('../engine/draft/draftPool').DraftProspect[];
+    picks: import('../engine/draft/draftAI').DraftPick[];
+    draftOrder: number[];
+    currentRound: number;
+    currentPickInRound: number;
+    totalRounds: number;
+    userTeamId: number;
+    isComplete: boolean;
+  };
+  lineupOrder?: number[];
+  rotationOrder?: number[];
+  seasonResults?: SeasonResult[];
 }
 
 export interface SeasonResult {
@@ -35,6 +65,7 @@ export interface SeasonResult {
   awards?: SeasonAwards;
   divisionChampions?: DivisionChampion[];
   developmentEvents?: DevelopmentEvent[];
+  injuryEvents?: InjuryEvent[];
 }
 
 // ─── Worker API response shapes ───────────────────────────────────────────────
@@ -74,6 +105,13 @@ export interface RosterPlayer {
   serviceTimeDays: number;
   salary: number;
   contractYearsRemaining: number;
+  // Injury info (if currently on IL)
+  injuryInfo?: {
+    type: string;
+    severity: string;
+    daysRemaining: number;
+    description: string;
+  };
   // Season stats (current season)
   stats: {
     // Hitting
@@ -105,6 +143,27 @@ export interface LeaderboardEntry {
   displayValue: string;
 }
 
+export interface LeaderboardFullEntry {
+  rank: number;
+  playerId: number;
+  name: string;
+  teamAbbr: string;
+  teamId: number;
+  position: string;
+  age: number;
+  isPitcher: boolean;
+  stats: Record<string, number>;
+}
+
+export interface LeaderboardFullOptions {
+  category: 'hitting' | 'pitching';
+  sortBy: string;
+  minPA?: number;
+  minIP?: number;
+  position?: string;
+  limit?: number;
+}
+
 export interface PlayerProfileData {
   player: {
     playerId: number;
@@ -121,14 +180,28 @@ export interface PlayerProfileData {
     serviceTimeDays: number;
     salary: number;
     contractYearsRemaining: number;
+    isPitcher: boolean;
+    teamId: number;
+    teamAbbr: string;
+    optionYearsRemaining: number;
+    tradeValue: number;         // 0–100 from evaluatePlayer()
   };
   seasonStats: {
     season: number;
     // batting or pitching stats depending on player type
     [key: string]: number;
   } | null;
-  careerStats: {
-    seasons: number;
-    [key: string]: number;
-  };
+  careerStats: PlayerSeasonStats[];
+}
+
+export interface AwardCandidate {
+  playerId:  number;
+  name:      string;
+  teamAbbr:  string;
+  teamId:    number;
+  position:  string;
+  age:       number;
+  isPitcher: boolean;
+  score:     number;
+  stats:     Record<string, number>;
 }

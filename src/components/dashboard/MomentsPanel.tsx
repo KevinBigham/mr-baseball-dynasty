@@ -23,6 +23,10 @@ function MomentCard({ moment }: { moment: SeasonMoment }) {
         boxShadow: moment.isUserTeam ? `0 0 12px ${meta.color}20` : undefined,
       }}
       onClick={() => setExpanded(e => !e)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+      tabIndex={0}
+      role="button"
+      aria-expanded={expanded}
     >
       {/* Category badge + season */}
       <div
@@ -99,7 +103,7 @@ export default function MomentsPanel({ moments }: { moments: SeasonMoment[] }) {
     <div className="bloomberg-border bg-gray-900">
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>FRANCHISE MOMENTS</span>
-        <span className="text-gray-600 text-xs normal-case font-normal">
+        <span className="text-gray-500 text-xs normal-case font-normal">
           {moments.length} moment{moments.length !== 1 ? 's' : ''}
         </span>
       </div>

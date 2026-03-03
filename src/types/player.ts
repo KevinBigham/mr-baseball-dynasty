@@ -53,6 +53,20 @@ export interface DevelopmentData {
   phase: 'prospect' | 'ascent' | 'prime' | 'decline' | 'retirement';
 }
 
+// ─── Injury data ─────────────────────────────────────────────────────────────
+
+export type InjurySeverity = 'minor' | 'moderate' | 'severe';
+
+export interface InjuryRecord {
+  type: string;                   // e.g. "Hamstring strain", "UCL tear"
+  description: string;            // Narrative sentence
+  severity: InjurySeverity;
+  ilDays: number;                 // 10, 60, or 120+
+  recoveryDaysRemaining: number;  // Ticks down each game day
+  gameInjured: number;            // Game number in the schedule (0–2429)
+  season: number;
+}
+
 // ─── Roster / contract data ───────────────────────────────────────────────────
 export type RosterStatus =
   | 'MLB_ACTIVE'
@@ -89,6 +103,7 @@ export interface PlayerRosterData {
   arbitrationEligible: boolean;
   freeAgentEligible: boolean;
   hasTenAndFive: boolean;
+  currentInjury?: InjuryRecord;
 }
 
 // ─── Full Player type ─────────────────────────────────────────────────────────

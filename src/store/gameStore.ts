@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
-export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'frontOffice';
+export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
+export type GamePhase = 'preseason' | 'simulating' | 'postseason' | 'offseason' | 'fired';
+export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
 interface GameStore {
   // ── Core game state ──────────────────────────────────────────────────────────
@@ -12,6 +14,8 @@ interface GameStore {
   simProgress:   number;   // 0–1
   gameStarted:   boolean;
   seasonsManaged: number;
+  gamePhase:     GamePhase;
+  seasonPhase:   SeasonPhase;
 
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
@@ -30,12 +34,17 @@ interface GameStore {
   // ── Breakout Watch ───────────────────────────────────────────────────────────
   breakoutWatch:   BreakoutCandidate[];
 
+  // ── Tutorial ───────────────────────────────────────────────────────────────────
+  tutorialActive:  boolean;
+
   // ── Setters ───────────────────────────────────────────────────────────────────
   setSeason:          (s: number) => void;
   setUserTeamId:      (id: number) => void;
   setSimulating:      (v: boolean) => void;
   setSimProgress:     (v: number) => void;
   setGameStarted:     (v: boolean) => void;
+  setGamePhase:       (p: GamePhase) => void;
+  setSeasonPhase:     (p: SeasonPhase) => void;
   incrementSeasonsManaged: () => void;
 
   setSetupScreen:     (s: SetupScreen) => void;
@@ -55,6 +64,11 @@ interface GameStore {
   adjustTeamMorale:   (delta: number) => void;
 
   setBreakoutWatch:   (candidates: BreakoutCandidate[]) => void;
+
+  setTutorialActive:  (v: boolean) => void;
+
+  // ── Reset ───────────────────────────────────────────────────────────────────
+  resetAll:           () => void;
 }
 
 export const useGameStore = create<GameStore>(set => ({
@@ -65,6 +79,8 @@ export const useGameStore = create<GameStore>(set => ({
   simProgress:     0,
   gameStarted:     false,
   seasonsManaged:  0,
+  gamePhase:       'preseason',
+  seasonPhase:     'early',
 
   setupScreen:     'title',
   startMode:       'instant',
@@ -79,12 +95,16 @@ export const useGameStore = create<GameStore>(set => ({
 
   breakoutWatch:   [],
 
+  tutorialActive:  false,
+
   // ── Core setters ─────────────────────────────────────────────────────────────
   setSeason:       season      => set({ season }),
   setUserTeamId:   id          => set({ userTeamId: id }),
   setSimulating:   v           => set({ isSimulating: v }),
   setSimProgress:  v           => set({ simProgress: v }),
   setGameStarted:  v           => set({ gameStarted: v }),
+  setGamePhase:    p           => set({ gamePhase: p }),
+  setSeasonPhase:  p           => set({ seasonPhase: p }),
   incrementSeasonsManaged: ()  => set(state => ({ seasonsManaged: state.seasonsManaged + 1 })),
 
   // ── Setup setters ─────────────────────────────────────────────────────────────
@@ -119,4 +139,29 @@ export const useGameStore = create<GameStore>(set => ({
 
   // ── Breakout watch ────────────────────────────────────────────────────────────
   setBreakoutWatch: candidates => set({ breakoutWatch: candidates }),
+
+  // ── Tutorial ────────────────────────────────────────────────────────────────────
+  setTutorialActive: v => set({ tutorialActive: v }),
+
+  // ── Reset all (new game) ──────────────────────────────────────────────────────
+  resetAll: () => set({
+    season: 2026,
+    userTeamId: 6,
+    isSimulating: false,
+    simProgress: 0,
+    gameStarted: false,
+    seasonsManaged: 0,
+    gamePhase: 'preseason' as GamePhase,
+    seasonPhase: 'early' as SeasonPhase,
+    setupScreen: 'title' as SetupScreen,
+    startMode: 'instant' as StartModeId,
+    frontOffice: [],
+    foBudget: 15,
+    difficulty: 'normal' as const,
+    ownerArchetype: 'patient_builder' as OwnerArchetype,
+    ownerPatience: 70,
+    teamMorale: 65,
+    breakoutWatch: [],
+    tutorialActive: false,
+  }),
 }));

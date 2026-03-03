@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="64" fill="#0a0a0f"/>
+  <circle cx="256" cy="256" r="192" fill="none" stroke="#f97316" stroke-width="8"/>
+  <path d="M160 96 Q256 192 160 416" fill="none" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
+  <path d="M352 96 Q256 192 352 416" fill="none" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
+  <line x1="148" y1="140" x2="168" y2="150" stroke="#6b7280" stroke-width="4"/>
+  <line x1="142" y1="182" x2="164" y2="186" stroke="#6b7280" stroke-width="4"/>
+  <line x1="140" y1="224" x2="160" y2="224" stroke="#6b7280" stroke-width="4"/>
+  <line x1="140" y1="266" x2="160" y2="266" stroke="#6b7280" stroke-width="4"/>
+  <line x1="142" y1="308" x2="164" y2="304" stroke="#6b7280" stroke-width="4"/>
+  <line x1="148" y1="350" x2="168" y2="340" stroke="#6b7280" stroke-width="4"/>
+  <line x1="364" y1="140" x2="344" y2="150" stroke="#6b7280" stroke-width="4"/>
+  <line x1="370" y1="182" x2="348" y2="186" stroke="#6b7280" stroke-width="4"/>
+  <line x1="372" y1="224" x2="352" y2="224" stroke="#6b7280" stroke-width="4"/>
+  <line x1="372" y1="266" x2="352" y2="266" stroke="#6b7280" stroke-width="4"/>
+  <line x1="370" y1="308" x2="348" y2="304" stroke="#6b7280" stroke-width="4"/>
+  <line x1="364" y1="350" x2="344" y2="340" stroke="#6b7280" stroke-width="4"/>
+  <text x="256" y="480" text-anchor="middle" fill="#f97316" font-family="monospace" font-size="36" font-weight="bold">MRBD</text>
+</svg>

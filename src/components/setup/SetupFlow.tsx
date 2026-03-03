@@ -5,6 +5,8 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, generateFOCandidates } from '../../data/frontOffice';
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
+import type { OwnerArchetype } from '../../engine/narrative';
+import DraftRoom from '../draft/DraftRoom';
 
 // ─── Team list ─────────────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ function OVRBadge({ ovr }: { ovr: number }) {
   return (
     <div className="text-center min-w-[44px]">
       <div className="text-2xl font-black tabular-nums leading-none" style={{ color }}>{ovr}</div>
-      <div className="text-xs text-gray-600 mt-0.5">OVR</div>
+      <div className="text-xs text-gray-500 mt-0.5">OVR</div>
     </div>
   );
 }
@@ -63,10 +65,10 @@ function TitleScreen() {
     <div className="flex flex-col items-center justify-center min-h-screen gap-8 p-8"
       style={{ background: 'radial-gradient(ellipse at 50% 10%, #1a2a1a 0%, #050a05 60%)' }}>
       <div className="text-center space-y-2">
-        <div className="text-gray-600 text-xs tracking-[0.3em] uppercase">Season 2026</div>
+        <div className="text-gray-500 text-xs tracking-[0.3em] uppercase">Season 2026</div>
         <div className="text-orange-500 font-black text-4xl tracking-widest">MR. BASEBALL</div>
         <div className="text-orange-700 font-bold text-xl tracking-[0.4em]">DYNASTY</div>
-        <div className="text-gray-600 text-xs mt-4">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
+        <div className="text-gray-500 text-xs mt-4">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
       </div>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -91,7 +93,7 @@ function TitleScreen() {
           <div key={f.label} className="space-y-1">
             <div className="text-xl">{f.icon}</div>
             <div className="text-orange-400 text-xs font-bold">{f.label}</div>
-            <div className="text-gray-600 text-xs">{f.sub}</div>
+            <div className="text-gray-500 text-xs">{f.sub}</div>
           </div>
         ))}
       </div>
@@ -118,13 +120,13 @@ function TeamSelectScreen() {
         <div className="text-center space-y-1 pt-2">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Choose Your Franchise</div>
           <div className="text-orange-400 font-black text-2xl tracking-wider">SELECT YOUR TEAM</div>
-          <div className="text-gray-600 text-xs">You'll manage this franchise for your dynasty run</div>
+          <div className="text-gray-500 text-xs">You'll manage this franchise for your dynasty run</div>
         </div>
 
         {/* Division grids */}
         {grouped.map(({ div, teams }) => (
           <div key={div}>
-            <div className="text-gray-600 text-xs font-bold tracking-[0.2em] uppercase mb-2 px-1">
+            <div className="text-gray-500 text-xs font-bold tracking-[0.2em] uppercase mb-2 px-1">
               {div}
             </div>
             <div className="grid grid-cols-5 gap-2">
@@ -150,7 +152,7 @@ function TeamSelectScreen() {
                     <div className={`font-black text-sm ${selected ? 'text-orange-400' : 'text-gray-300'}`}>
                       {t.abbr}
                     </div>
-                    <div className="text-gray-600 text-xs mt-0.5 leading-tight truncate">{t.city}</div>
+                    <div className="text-gray-500 text-xs mt-0.5 leading-tight truncate">{t.city}</div>
                   </button>
                 );
               })}
@@ -215,7 +217,7 @@ function StartModeScreen() {
         <div className="text-center pt-2 space-y-1">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Franchise Setup</div>
           <div className="text-orange-400 font-black text-2xl tracking-wider">START MODE</div>
-          <div className="text-gray-600 text-xs">How do you want to build your roster?</div>
+          <div className="text-gray-500 text-xs">How do you want to build your roster?</div>
         </div>
 
         <div className="space-y-3">
@@ -261,8 +263,8 @@ function StartModeScreen() {
                     <div className="text-gray-400 text-xs font-bold mb-1">{mode.sub}</div>
                     <div className="text-gray-500 text-xs leading-relaxed">{mode.desc}</div>
                     <div className="flex gap-4 mt-2">
-                      <span className="text-gray-600 text-xs">{mode.time}</span>
-                      {mode.diff && <span className="text-gray-600 text-xs">{mode.diff}</span>}
+                      <span className="text-gray-500 text-xs">{mode.time}</span>
+                      {mode.diff && <span className="text-gray-500 text-xs">{mode.diff}</span>}
                     </div>
                   </div>
                   {selected && (
@@ -276,6 +278,149 @@ function StartModeScreen() {
 
         <div className="flex gap-3">
           <button onClick={() => setSetupScreen('teamSelect')}
+            className="flex-1 py-2 text-xs font-bold text-gray-500 hover:text-gray-300"
+            style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}>
+            ← Back
+          </button>
+          <button onClick={() => setSetupScreen('difficulty')}
+            className="flex-[2] py-3 text-sm font-black uppercase tracking-widest"
+            style={{ background: '#ea580c', color: '#000', borderRadius: 6 }}>
+            SET DIFFICULTY →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Screen: Difficulty & Owner ────────────────────────────────────────────────
+
+const DIFFICULTIES: Array<{
+  id: 'rookie' | 'normal' | 'hard';
+  label: string;
+  icon: string;
+  foBudget: number;
+  patience: string;
+  desc: string;
+}> = [
+  { id: 'rookie', label: 'ROOKIE', icon: '🟢', foBudget: 22, patience: 'Forgiving', desc: 'Training wheels — generous budget, patient ownership. Learn the ropes without pressure.' },
+  { id: 'normal', label: 'NORMAL', icon: '🟡', foBudget: 15, patience: 'Moderate', desc: 'The real deal — balanced budget and expectations. A fair challenge for any GM.' },
+  { id: 'hard',   label: 'HARD',   icon: '🔴', foBudget: 10, patience: 'Demanding', desc: 'Prove yourself — tight budget, impatient owner. Every decision matters.' },
+];
+
+const ARCHETYPES: Array<{
+  id: OwnerArchetype;
+  label: string;
+  icon: string;
+  desc: string;
+  expectation: string;
+}> = [
+  { id: 'win_now',         label: 'WIN-NOW',         icon: '🏆', desc: 'Aggressive ownership that demands results now.',              expectation: 'Expects playoff appearances every year' },
+  { id: 'patient_builder', label: 'PATIENT BUILDER',  icon: '🌱', desc: 'Long-term vision with emphasis on development.',             expectation: 'Focuses on farm system and sustained success' },
+  { id: 'penny_pincher',   label: 'COST-CONSCIOUS',   icon: '💰', desc: 'Payroll discipline above all — do more with less.',          expectation: 'Stay under budget, find value in the margins' },
+];
+
+function DifficultyScreen() {
+  const { difficulty, setDifficulty, ownerArchetype, setOwnerArchetype, setFoBudget, setSetupScreen } = useGameStore();
+
+  const handleDifficulty = (d: 'rookie' | 'normal' | 'hard') => {
+    setDifficulty(d);
+    const diff = DIFFICULTIES.find(x => x.id === d);
+    if (diff) setFoBudget(diff.foBudget);
+  };
+
+  return (
+    <div className="min-h-screen p-6 overflow-auto"
+      style={{ background: 'radial-gradient(ellipse at 50% 0%, #2a1a1a 0%, #0a0505 70%)' }}>
+      <div className="max-w-lg mx-auto space-y-6">
+        <div className="text-center pt-2 space-y-1">
+          <div className="text-gray-500 text-xs tracking-widest uppercase">Franchise Setup</div>
+          <div className="text-orange-400 font-black text-2xl tracking-wider">DIFFICULTY</div>
+          <div className="text-gray-500 text-xs">Set the challenge level and ownership style</div>
+        </div>
+
+        {/* Difficulty cards */}
+        <div className="space-y-3">
+          <div className="text-gray-500 text-xs font-bold tracking-widest uppercase">CHALLENGE LEVEL</div>
+          {DIFFICULTIES.map(d => {
+            const selected = difficulty === d.id;
+            return (
+              <div
+                key={d.id}
+                onClick={() => handleDifficulty(d.id)}
+                className="rounded-lg p-4 transition-all duration-100 cursor-pointer"
+                style={{
+                  background: selected ? 'rgba(234,88,12,0.12)' : 'rgba(255,255,255,0.03)',
+                  border: selected ? '1px solid rgba(234,88,12,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{d.icon}</span>
+                      <span className="font-black text-sm" style={{ color: selected ? '#f97316' : '#e2e8f0' }}>
+                        {d.label}
+                      </span>
+                      {d.id === 'normal' && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                          style={{ background: 'rgba(234,88,12,0.2)', color: '#f97316', border: '1px solid rgba(234,88,12,0.4)' }}>
+                          RECOMMENDED
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-gray-400 text-xs leading-relaxed">{d.desc}</div>
+                    <div className="flex gap-4 mt-2">
+                      <span className="text-gray-500 text-xs">FO Budget: ${d.foBudget}M</span>
+                      <span className="text-gray-500 text-xs">Owner: {d.patience}</span>
+                    </div>
+                  </div>
+                  {selected && (
+                    <div className="text-orange-500 font-black text-lg shrink-0">✓</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Owner archetype */}
+        <div className="space-y-3">
+          <div className="text-gray-500 text-xs font-bold tracking-widest uppercase">OWNER ARCHETYPE</div>
+          {ARCHETYPES.map(a => {
+            const selected = ownerArchetype === a.id;
+            return (
+              <div
+                key={a.id}
+                onClick={() => setOwnerArchetype(a.id)}
+                className="rounded-lg p-4 transition-all duration-100 cursor-pointer"
+                style={{
+                  background: selected ? 'rgba(167,139,250,0.10)' : 'rgba(255,255,255,0.03)',
+                  border: selected ? '1px solid rgba(167,139,250,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">{a.icon}</span>
+                      <span className="font-black text-sm" style={{ color: selected ? '#a78bfa' : '#e2e8f0' }}>
+                        {a.label}
+                      </span>
+                    </div>
+                    <div className="text-gray-400 text-xs leading-relaxed">{a.desc}</div>
+                    <div className="text-gray-500 text-xs mt-1">{a.expectation}</div>
+                  </div>
+                  {selected && (
+                    <div className="font-black text-lg shrink-0" style={{ color: '#a78bfa' }}>✓</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Nav */}
+        <div className="flex gap-3 pb-6">
+          <button onClick={() => setSetupScreen('startMode')}
             className="flex-1 py-2 text-xs font-bold text-gray-500 hover:text-gray-300"
             style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}>
             ← Back
@@ -334,7 +479,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
         <div className="text-center pt-2 space-y-1">
           <div className="text-gray-500 text-xs tracking-widest uppercase">Build Your</div>
           <div className="font-black text-2xl tracking-wider" style={{ color: '#a78bfa' }}>FRONT OFFICE</div>
-          <div className="text-gray-600 text-xs">Hire your staff before Opening Day — or skip and hire later</div>
+          <div className="text-gray-500 text-xs">Hire your staff before Opening Day — or skip and hire later</div>
           <div className="text-orange-400 text-xs font-bold">{teamName}</div>
         </div>
 
@@ -346,7 +491,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
               <span className="text-sm font-black tabular-nums" style={{ color: budgetColor }}>
                 ${foSpent.toFixed(1)}M
               </span>
-              <span className="text-xs text-gray-600">/ ${foBudgetMax}M</span>
+              <span className="text-xs text-gray-500">/ ${foBudgetMax}M</span>
               {foRemaining > 0
                 ? <span className="text-xs font-bold text-green-400">${foRemaining.toFixed(1)}M left</span>
                 : <span className="text-xs font-bold text-red-400">⛔ MAXED</span>
@@ -433,7 +578,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
                           </span>
                           <span className="text-xs text-gray-500">${c.salary}M/yr · {c.yearsLeft}yr</span>
                         </div>
-                        <div className="text-xs text-gray-600 mt-1 italic">{trait.desc}</div>
+                        <div className="text-xs text-gray-500 mt-1 italic">{trait.desc}</div>
                       </div>
                       <div className="shrink-0">
                         <OVRBadge ovr={c.ovr} />
@@ -487,7 +632,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
                       </div>
                       <div className="text-gray-500 text-xs">{role.desc}</div>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className="text-gray-600 text-xs">${role.salaryRange[0]}–${role.salaryRange[1]}M/yr</span>
+                        <span className="text-gray-500 text-xs">${role.salaryRange[0]}–${role.salaryRange[1]}M/yr</span>
                         {!canAffordMin && (
                           <span className="text-red-400 text-xs font-bold">⛔ Over budget</span>
                         )}
@@ -523,11 +668,11 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
             }
           </button>
           <button
-            onClick={() => setSetupScreen('startMode')}
+            onClick={() => setSetupScreen('difficulty')}
             className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-300 transition-colors"
             style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}
           >
-            ← Back to Start Mode
+            ← Back to Difficulty
           </button>
         </div>
       </div>
@@ -538,11 +683,13 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
 // ─── Main SetupFlow ────────────────────────────────────────────────────────────
 
 export default function SetupFlow() {
-  const { setupScreen, userTeamId, setGameStarted, setSeason, setUserTeamId } = useGameStore();
+  const { setupScreen, userTeamId, startMode, frontOffice, setGameStarted, setSeason, setUserTeamId, setSetupScreen } = useGameStore();
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
+
+  const isDraftMode = startMode === 'snake10' || startMode === 'snake25' || startMode === 'snake26';
 
   const handleStartGame = useCallback(async () => {
     setError(null);
@@ -551,26 +698,42 @@ export default function SetupFlow() {
       const engine = getEngine();
       const seed   = Date.now() % 2147483647;
       await engine.newGame(seed, userTeamId);
-      setUserTeamId(userTeamId);
-      setSelectedTeam(userTeamId);
-      setSeason(2026);
-      setGameStarted(true);
-      const standings = await engine.getStandings();
-      setStandings(standings);
+
+      // Send FO staff to worker
+      if (frontOffice.length > 0) {
+        await engine.setFrontOffice(frontOffice);
+      }
+
+      if (isDraftMode) {
+        // Start the draft and transition to draft screen
+        await engine.startDraft(startMode);
+        setUserTeamId(userTeamId);
+        setSelectedTeam(userTeamId);
+        setSeason(2026);
+        setSetupScreen('draft');
+      } else {
+        // Instant mode — go straight to game
+        setUserTeamId(userTeamId);
+        setSelectedTeam(userTeamId);
+        setSeason(2026);
+        setGameStarted(true);
+        const standings = await engine.getStandings();
+        setStandings(standings);
+      }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [userTeamId, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings]);
+  }, [userTeamId, startMode, frontOffice, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-6">
         <div className="text-orange-400 font-black text-xl tracking-widest animate-pulse">
-          GENERATING LEAGUE…
+          {isDraftMode ? 'GENERATING LEAGUE & DRAFT POOL…' : 'GENERATING LEAGUE…'}
         </div>
-        <div className="text-gray-600 text-xs text-center space-y-1">
+        <div className="text-gray-500 text-xs text-center space-y-1">
           <div>Generating ~3,700 players across 30 franchises</div>
           <div>Building MLB + AAA + AA + A+ + A- + Rookie + International</div>
         </div>
@@ -583,7 +746,9 @@ export default function SetupFlow() {
     case 'title':       return <TitleScreen />;
     case 'teamSelect':  return <TeamSelectScreen />;
     case 'startMode':   return <StartModeScreen />;
+    case 'difficulty':  return <DifficultyScreen />;
     case 'frontOffice': return <FrontOfficeScreen onStartGame={handleStartGame} />;
+    case 'draft':       return <DraftRoom />;
     default:            return <TitleScreen />;
   }
 }

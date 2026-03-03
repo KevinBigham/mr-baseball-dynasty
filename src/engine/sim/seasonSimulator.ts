@@ -111,8 +111,14 @@ export async function simulateSeason(
   schedule: ScheduleEntry[],
   baseSeed: number,
   onProgress?: (pct: number) => void,
+  options?: {
+    season?: number;
+    userTeamId?: number;
+    userLineupOrder?: number[];
+    userRotationOrder?: number[];
+  },
 ): Promise<SeasonResult> {
-  const season = new Date().getFullYear(); // Caller should pass season number; use current year as fallback
+  const season = options?.season ?? new Date().getFullYear();
 
   // Build lookup maps for player metadata
   const playerTeamMap = new Map<number, number>();
@@ -181,6 +187,9 @@ export async function simulateSeason(
       bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
     };
 
+    const isUserGame = options?.userTeamId !== undefined &&
+      (entry.homeTeamId === options.userTeamId || entry.awayTeamId === options.userTeamId);
+
     const input: SimulateGameInput = {
       gameId: entry.gameId,
       season,
@@ -189,6 +198,11 @@ export async function simulateSeason(
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      ...(isUserGame ? {
+        userTeamId: options!.userTeamId,
+        userLineupOrder: options!.userLineupOrder,
+        userRotationOrder: options!.userRotationOrder,
+      } : {}),
     };
 
     const result = simulateGame(input);

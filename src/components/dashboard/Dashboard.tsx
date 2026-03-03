@@ -1,134 +1,88 @@
-import { useState, useCallback, useEffect } from 'react';
-import { getEngine } from '../../engine/engineClient';
+/**
+ * Dashboard.tsx — thin coordinator that delegates to phase sub-components.
+ * Season simulation logic lives in useSeasonSimulation hook.
+ * Offseason flow lives in useOffseasonFlow hook.
+ */
+
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { useLeagueStore, generateKeyMoment, type SeasonSummary } from '../../store/leagueStore';
+import { useLeagueStore } from '../../store/leagueStore';
+import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
-import type { SeasonResult } from '../../types/league';
-import type { AwardWinner, DivisionChampion } from '../../engine/player/awards';
-import {
-  getOwnerArchetype, calcOwnerPatienceDelta, calcMoraleDelta,
-  generateSeasonNews, generateBreakoutWatch, resolveBreakoutWatch,
-} from '../../engine/narrative';
-import { initRivals, updateRivals } from '../../engine/rivalry';
-import { generatePreseasonPredictions, resolvePredictions } from '../../engine/predictions';
-import { shouldTriggerPoach, generatePoachEvent } from '../../engine/staffPoaching';
+import { useSeasonSimulation } from '../../hooks/useSeasonSimulation';
+import { useOffseasonFlow } from '../../hooks/useOffseasonFlow';
+import { getOwnerArchetype } from '../../engine/narrative';
+import { generatePreseasonPredictions } from '../../engine/predictions';
+import { detectArcType } from '../../engine/storyboard';
 import { generateSeasonArc } from '../../engine/storyboard';
-import { generateSeasonMoments } from '../../engine/moments';
+import { getTeamLabel } from '../../data/teamOptions';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
 } from './FranchisePanel';
-import PressConference   from './PressConference';
-import RivalryPanel      from './RivalryPanel';
-import LegacyTimeline    from './LegacyTimeline';
-import MFSNPanel         from './MFSNPanel';
-import DevGradeCard      from './DevGradeCard';
-import StaffPoachModal   from './StaffPoachModal';
-import ReputationCard    from './ReputationCard';
-import StoryboardPanel   from './StoryboardPanel';
-import MomentsPanel      from './MomentsPanel';
-import WeeklyCard, { buildWeeklyCard } from './WeeklyCard';
-import type { PressContext } from '../../data/pressConference';
+import PressConference from './PressConference';
+import StaffPoachModal from './StaffPoachModal';
+import RivalryPanel from './RivalryPanel';
+import LegacyTimeline from './LegacyTimeline';
+import ReputationCard from './ReputationCard';
+import StoryboardPanel from './StoryboardPanel';
+import MomentsPanel from './MomentsPanel';
+import WeeklyCard from './WeeklyCard';
+import MFSNPanel from './MFSNPanel';
+import LoadingFallback from '../layout/LoadingFallback';
+import AllStarBreak from './AllStarBreak';
+import MidSeasonCheckIn from './MidSeasonCheckIn';
+import TradeDeadline from './TradeDeadline';
+import TutorialOverlay from '../tutorial/TutorialOverlay';
+import { shouldAutoStartTutorial } from '../../engine/tutorial';
 
-const TEAM_OPTIONS = [
-  { id: 1,  label: 'ADM — New Harbor Admirals (AL East)' },
-  { id: 2,  label: 'COL — Capitol City Colonials (AL East)' },
-  { id: 3,  label: 'LOB — Boston Bay Lobsters (AL East)' },
-  { id: 4,  label: 'STM — Steel City Steamers (AL East)' },
-  { id: 5,  label: 'HAM — Lake City Hammers (AL East)' },
-  { id: 6,  label: 'WLV — River City Wolves (AL Central)' },
-  { id: 7,  label: 'CRU — South City Crushers (AL Central)' },
-  { id: 8,  label: 'FOX — Prairie City Foxes (AL Central)' },
-  { id: 9,  label: 'MIN — Twin Peaks Miners (AL Central)' },
-  { id: 10, label: 'MON — Crown City Monarchs (AL Central)' },
-  { id: 11, label: 'GUL — Bay City Gulls (AL West)' },
-  { id: 12, label: 'RAT — Desert City Rattlers (AL West)' },
-  { id: 13, label: 'COU — Sun Valley Cougars (AL West)' },
-  { id: 14, label: 'LUM — Northwest City Lumberjacks (AL West)' },
-  { id: 15, label: 'ANG — Anaheim Hills Angels (AL West)' },
-  { id: 16, label: 'MET — New Harbor Metros (NL East)' },
-  { id: 17, label: 'BRA — Peach City Brawlers (NL East)' },
-  { id: 18, label: 'TID — Palmetto City Tides (NL East)' },
-  { id: 19, label: 'PAT — Brick City Patriots (NL East)' },
-  { id: 20, label: 'HUR — Swamp City Hurricanes (NL East)' },
-  { id: 21, label: 'CUB — Lake City Cubs (NL Central)' },
-  { id: 22, label: 'RED — Gateway City Redbirds (NL Central)' },
-  { id: 23, label: 'CIN — Blue Grass City Reds (NL Central)' },
-  { id: 24, label: 'AST — Bayou City Astros (NL Central)' },
-  { id: 25, label: 'BRW — Lake Front Brewers (NL Central)' },
-  { id: 26, label: 'DOD — Harbor Bay Dodgers (NL West)' },
-  { id: 27, label: 'GNT — Bay City Giants (NL West)' },
-  { id: 28, label: 'PAD — Harbor Lights Padres (NL West)' },
-  { id: 29, label: 'ROC — Mile High City Rockies (NL West)' },
-  { id: 30, label: 'DIA — Sandstone Park Diamondbacks (NL West)' },
-];
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function AwardRow({ label, winner }: { label: string; winner: AwardWinner | null }) {
-  if (!winner) return null;
-  return (
-    <div className="flex items-start gap-3 py-1.5 border-b border-gray-800 last:border-0">
-      <div className="text-gray-500 text-xs w-28 shrink-0 pt-0.5">{label}</div>
-      <div className="flex-1">
-        <span className="text-orange-400 font-mono text-xs font-bold">{winner.name}</span>
-        <span className="text-gray-500 text-xs ml-2">{winner.teamAbbr} · {winner.position} · Age {winner.age}</span>
-        <div className="text-gray-400 font-mono text-xs mt-0.5">{winner.statLine}</div>
-      </div>
-    </div>
-  );
-}
-
-function DivChamp({ champ }: { champ: DivisionChampion }) {
-  return (
-    <div className="flex items-center justify-between py-1 border-b border-gray-800 last:border-0">
-      <div className="text-gray-500 text-xs w-24 shrink-0">{champ.league} {champ.division.toUpperCase()}</div>
-      <div className="text-gray-200 text-xs font-mono font-bold flex-1 mx-2">{champ.abbreviation}</div>
-      <div className="text-orange-400 font-mono text-xs tabular-nums">{champ.wins}–{champ.losses}</div>
-    </div>
-  );
-}
-
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
+const PostseasonReport   = lazy(() => import('./PostseasonReport'));
+const OffseasonDashboard = lazy(() => import('./OffseasonDashboard'));
 
 export default function Dashboard() {
   const {
-    season, userTeamId, isSimulating, difficulty,
-    setSeason, setSimulating, setSimProgress,
-    ownerArchetype, ownerPatience, teamMorale,
-    adjustOwnerPatience, adjustTeamMorale, setOwnerArchetype,
-    breakoutWatch, setBreakoutWatch, incrementSeasonsManaged, seasonsManaged,
-    frontOffice,
+    season, userTeamId, isSimulating, simProgress, gamePhase, seasonPhase,
+    setOwnerArchetype, ownerPatience, seasonsManaged,
+    adjustOwnerPatience, adjustTeamMorale, setGamePhase, setSeasonPhase,
+    tutorialActive, setTutorialActive, difficulty,
   } = useGameStore();
 
   const {
-    setStandings, setLeaderboard, setLastSeasonStats,
-    addNewsItems, rivals, setRivals, updateRivals: storeUpdateRivals,
-    addSeasonSummary, setPresserAvailable, presserAvailable, presserDone, setPresserDone,
+    setPresserAvailable, presserAvailable, presserDone, setPresserDone,
     mfsnReport, setMFSNReport,
-    poachEvent, setPoachEvent, resolvePoachEvent,
+    poachEvent, resolvePoachEvent,
     standings: currentStandings,
-    moments, addMoments,
-    weeklyStories, setWeeklyStories,
+    moments, weeklyStories,
     franchiseHistory,
   } = useLeagueStore();
 
   const { setActiveTab } = useUIStore();
 
-  const [lastResult,       setLastResult]       = useState<SeasonResult | null>(null);
-  const [error,            setError]            = useState<string | null>(null);
-  const [pressCtx,         setPressCtx]         = useState<PressContext | null>(null);
-  const [lastBreakouts,    setLastBreakouts]    = useState(0);
-  const [lastBusts,        setLastBusts]        = useState(0);
-  const [postSimArcWins,   setPostSimArcWins]   = useState<number | undefined>(undefined);
-  const [postSimArcPO,     setPostSimArcPO]     = useState<boolean | undefined>(undefined);
-  const [postSimArcChamp,  setPostSimArcChamp]  = useState<boolean | undefined>(undefined);
+  const sim = useSeasonSimulation();
+  const offseason = useOffseasonFlow(sim.clearSimState);
 
-  // ── Set owner archetype on mount ──────────────────────────────────────────
+  // Fetch player name map for AllStarBreak display
+  const [playerNames, setPlayerNames] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (sim.lastResult) {
+      getEngine().getPlayerNameMap().then(setPlayerNames);
+    }
+  }, [sim.lastResult]);
+
+  // Set owner archetype on mount
   useEffect(() => {
     setOwnerArchetype(getOwnerArchetype(userTeamId));
   }, [userTeamId, setOwnerArchetype]);
 
-  // ── Generate MFSN pre-season predictions on first render (or season change) ─
+  // Auto-start tutorial for rookie difficulty, first season
+  useEffect(() => {
+    if (shouldAutoStartTutorial(difficulty, seasonsManaged) && !tutorialActive) {
+      setTutorialActive(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Generate MFSN pre-season predictions
   useEffect(() => {
     if (!mfsnReport || mfsnReport.season !== season) {
       const lastStandings = currentStandings?.standings ?? null;
@@ -137,181 +91,39 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season, userTeamId]);
 
-  // ── Simulate season ────────────────────────────────────────────────────────
-  const simulateSeason = useCallback(async () => {
-    setError(null);
-    setSimulating(true);
-    setSimProgress(0);
-    try {
-      const engine = getEngine();
-      const result = await engine.simulateSeason();
-      setLastResult(result);
-      setSeason(result.season + 1);
-      setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
+  const showPresser = presserAvailable && !presserDone && sim.pressCtx !== null;
 
-      const [standings, hrLeaders] = await Promise.all([
-        engine.getStandings(),
-        engine.getLeaderboard('hr', 10),
-      ]);
-      setStandings(standings);
-      setLeaderboard(hrLeaders);
-      setSimProgress(1);
-
-      // ── Resolve MFSN predictions ───────────────────────────────────────────
-      if (mfsnReport && !mfsnReport.resolved && standings.standings) {
-        setMFSNReport(resolvePredictions(mfsnReport, standings.standings));
-      }
-
-      // ── Narrative ──────────────────────────────────────────────────────────
-      const userTeamSeason = result.teamSeasons.find(ts => ts.teamId === userTeamId);
-      const userWins       = userTeamSeason?.record.wins ?? 81;
-      const userLosses     = userTeamSeason?.record.losses ?? 81;
-      const isPlayoff      = !!userTeamSeason?.playoffRound;
-      const isChampion     = userTeamSeason?.playoffRound === 'Champion';
-
-      const breakoutsLeague = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
-      const bustsLeague     = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
-      const breakoutsProxy  = Math.round(breakoutsLeague / 10);
-      setLastBreakouts(breakoutsLeague);
-      setLastBusts(bustsLeague);
-
-      if (userTeamSeason) {
-        // Owner patience
-        adjustOwnerPatience(calcOwnerPatienceDelta(
-          ownerArchetype, userTeamSeason, isPlayoff, isChampion, difficulty, breakoutsProxy,
-        ));
-        // Team morale
-        const retirements = (result.developmentEvents ?? []).filter(e => e.type === 'retirement').length;
-        const breakouts   = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
-        const busts       = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
-        adjustTeamMorale(calcMoraleDelta(userWins, isPlayoff, isChampion, breakouts, retirements, busts));
-      }
-
-      // Resolve breakout watch
-      let breakoutHits = 0, breakoutBusts = 0;
-      if (breakoutWatch.length > 0) {
-        try {
-          const roster   = await engine.getRoster(userTeamId);
-          const allPlayers = [...roster.active, ...roster.minors, ...roster.il];
-          const resolved  = resolveBreakoutWatch(breakoutWatch, allPlayers);
-          breakoutHits  = resolved.filter(c => c.hit === true).length;
-          breakoutBusts = resolved.filter(c => c.hit === false).length;
-          setBreakoutWatch(resolved);
-        } catch { /* non-fatal */ }
-      }
-
-      // Rivals — init on first season, update after
-      if (rivals.length === 0 && standings.standings) {
-        const newRivals = initRivals(userTeamId, standings.standings);
-        setRivals(newRivals);
-      } else if (standings.standings) {
-        const updated = updateRivals(rivals, standings.standings, userTeamId, isPlayoff);
-        storeUpdateRivals(updated);
-      }
-
-      // News
-      addNewsItems(generateSeasonNews(result, userTeamId));
-
-      // Franchise history
-      const summary: SeasonSummary = {
-        season:           result.season,
-        wins:             userWins,
-        losses:           userLosses,
-        pct:              userWins / 162,
-        playoffResult:    userTeamSeason?.playoffRound ?? null,
-        awardsWon:        [],
-        breakoutHits,
-        ownerPatienceEnd: ownerPatience,
-        teamMoraleEnd:    teamMorale,
-        leagueERA:        result.leagueERA,
-        leagueBA:         result.leagueBA,
-        keyMoment:        '',
-      };
-      summary.keyMoment = generateKeyMoment(summary);
-      addSeasonSummary(summary);
-
-      // Season count
-      incrementSeasonsManaged();
-
-      // ── Storyboard arc resolution ─────────────────────────────────────────
-      setPostSimArcWins(userWins);
-      setPostSimArcPO(isPlayoff);
-      setPostSimArcChamp(isChampion);
-
-      // ── Season Moments ────────────────────────────────────────────────────
-      const newMoments = generateSeasonMoments(result, summary, userTeamId);
-      if (newMoments.length > 0) addMoments(newMoments);
-
-      // ── Weekly MRBD Card ──────────────────────────────────────────────────
-      const weekStories = buildWeeklyCard(
-        result, standings.standings ?? null, userTeamId, userWins, isChampion, isPlayoff,
-      );
-      setWeeklyStories(weekStories);
-
-      // Queue presser
-      setPressCtx({
-        wins:           userWins,
-        losses:         userLosses,
-        isPlayoff,
-        isChampion,
-        ownerArchetype,
-        breakoutHits,
-        breakoutBusts,
-        season:         result.season,
-        seasonsManaged: seasonsManaged + 1,
-      });
-      setPresserAvailable(true);
-      setPresserDone(false);
-
-      // ── Staff poaching check ──────────────────────────────────────────────
-      if (shouldTriggerPoach(userWins, frontOffice.length, result.season) && !poachEvent) {
-        const event = generatePoachEvent(frontOffice, result.season);
-        if (event) setPoachEvent(event);
-      }
-
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSimulating(false);
-    }
-  }, [
-    userTeamId, difficulty, ownerArchetype, ownerPatience, teamMorale,
-    breakoutWatch, rivals, seasonsManaged, frontOffice, mfsnReport, poachEvent,
-    setSeason, setSimulating, setSimProgress,
-    setStandings, setLeaderboard, setLastSeasonStats,
-    adjustOwnerPatience, adjustTeamMorale,
-    setBreakoutWatch, setRivals, storeUpdateRivals, addNewsItems,
-    addSeasonSummary, incrementSeasonsManaged, setPresserAvailable, setPresserDone,
-    setMFSNReport, setPoachEvent,
-    addMoments, setWeeklyStories,
-  ]);
-
-  // ── Breakout watch at start of season ─────────────────────────────────────
-  const refreshBreakoutWatch = useCallback(async () => {
-    if (breakoutWatch.length > 0 && breakoutWatch.some(c => c.hit === null)) return;
-    try {
-      const engine     = getEngine();
-      const roster     = await engine.getRoster(userTeamId);
-      const allPlayers = [...roster.active, ...roster.minors, ...roster.il];
-      setBreakoutWatch(generateBreakoutWatch(allPlayers));
-    } catch { /* non-fatal */ }
-  }, [userTeamId, breakoutWatch, setBreakoutWatch]);
-
-  const completedSeason = lastResult ? lastResult.season : null;
-  const showPresser = presserAvailable && !presserDone && pressCtx !== null;
+  // Determine effective phase for tutorial
+  const tutorialPhase = gamePhase === 'offseason'
+    ? offseason.currentPhase
+    : gamePhase;
 
   return (
     <div className="p-4 space-y-4">
 
-      {/* ── Press Conference modal ───────────────────────────────────────────── */}
-      {showPresser && pressCtx && (
+      {/* ── Tutorial Overlay ─────────────────────────────────────── */}
+      <TutorialOverlay
+        currentPhase={tutorialPhase}
+        enabled={tutorialActive}
+        onDisable={() => setTutorialActive(false)}
+      />
+
+      {/* ── Press Conference modal ─────────────────────────────────── */}
+      {showPresser && sim.pressCtx && (
         <PressConference
-          context={pressCtx}
-          onClose={() => setPresserAvailable(false)}
+          context={sim.pressCtx}
+          onClose={() => {
+            setPresserAvailable(false);
+            // Check for firing after press conference — use reactive ownerPatience from render scope
+            if (ownerPatience <= 0) {
+              setGamePhase('fired');
+            }
+          }}
+          arcType={detectArcType(franchiseHistory, ownerPatience, seasonsManaged)}
         />
       )}
 
-      {/* ── Staff Poaching modal ─────────────────────────────────────────────── */}
+      {/* ── Staff Poaching modal ───────────────────────────────────── */}
       {poachEvent && !poachEvent.resolved && (
         <StaffPoachModal
           event={poachEvent}
@@ -328,28 +140,44 @@ export default function Dashboard() {
         />
       )}
 
-      {/* ── Control row ──────────────────────────────────────────────────────── */}
+      {/* ── Control row ───────────────────────────────────────────── */}
       <div className="flex gap-3 items-center flex-wrap">
         <div className="bloomberg-border bg-gray-900 px-4 py-2 flex-1 min-w-48">
           <div className="text-gray-500 text-xs">FRANCHISE</div>
           <div className="text-orange-400 font-bold text-xs truncate">
-            {TEAM_OPTIONS.find(t => t.id === userTeamId)?.label ?? '---'}
+            {getTeamLabel(userTeamId)}
           </div>
         </div>
         <div className="bloomberg-border bg-gray-900 px-4 py-2">
           <div className="text-gray-500 text-xs">SEASON</div>
           <div className="text-gray-200 font-bold tabular-nums">{season}</div>
         </div>
+        {ownerPatience <= 15 && ownerPatience > 0 && (
+          <div className="bloomberg-border bg-red-950/50 border-red-800 px-4 py-2 animate-pulse">
+            <div className="text-red-500 font-bold text-xs tracking-widest">HOT SEAT</div>
+            <div className="text-red-400 text-xs">Patience: {ownerPatience}%</div>
+          </div>
+        )}
         <button
-          onClick={simulateSeason}
+          onClick={sim.simulateSeason}
           disabled={isSimulating}
           className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 disabled:text-gray-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
         >
           {isSimulating ? 'SIMULATING…' : `⚾ SIM ${season} SEASON`}
         </button>
 
-        {/* Presser re-open button if done */}
-        {presserAvailable && presserDone && pressCtx && (
+        {isSimulating && (
+          <div className="text-gray-500 text-xs italic px-2 animate-pulse min-w-[180px]">
+            {simProgress < 0.10 ? 'Spring Training — camp battles underway...' :
+             simProgress < 0.25 ? 'April — Opening Day, a new season begins.' :
+             simProgress < 0.50 ? 'June — All-Star break approaches...' :
+             simProgress < 0.70 ? 'August — dog days, trade deadline passed...' :
+             simProgress < 0.90 ? 'September — pennant race heating up...' :
+             'Computing final results...'}
+          </div>
+        )}
+
+        {presserAvailable && presserDone && sim.pressCtx && (
           <button
             onClick={() => setPresserDone(false)}
             className="border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-3 py-2 uppercase tracking-wider transition-colors"
@@ -368,208 +196,128 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {error && (
-        <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{error}</div>
+      {sim.error && (
+        <div className="bloomberg-border bg-red-950 px-4 py-2 text-red-400 text-xs">{sim.error}</div>
       )}
 
-      {/* ── Owner Patience + Team Morale ──────────────────────────────────────── */}
+      {/* ── Quick Actions ─────────────────────────────────────────── */}
+      {!isSimulating && (
+        <div className="flex gap-2 flex-wrap">
+          {(gamePhase === 'preseason' ? [
+            { label: 'VIEW ROSTER', tab: 'roster' as const },
+            { label: 'STANDINGS', tab: 'standings' as const },
+            { label: 'FINANCES', tab: 'finance' as const },
+            { label: 'HISTORY', tab: 'history' as const },
+          ] : gamePhase === 'postseason' ? [
+            { label: 'STANDINGS', tab: 'standings' as const },
+            { label: 'LEADERBOARDS', tab: 'stats' as const },
+            { label: 'YOUR ROSTER', tab: 'roster' as const },
+            { label: 'HISTORY', tab: 'history' as const },
+          ] : [
+            { label: 'ROSTER', tab: 'roster' as const },
+            { label: 'FINANCES', tab: 'finance' as const },
+            { label: 'STANDINGS', tab: 'standings' as const },
+          ]).map(a => (
+            <button
+              key={a.label}
+              onClick={() => setActiveTab(a.tab)}
+              className="border border-gray-800 hover:border-gray-600 text-gray-500 hover:text-gray-400 text-[10px] px-3 py-1 uppercase tracking-wider transition-colors"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Owner Patience + Team Morale ──────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <OwnerPatiencePanel />
         <MoralePanel />
       </div>
 
-      {/* ── Pre-sim state: Storyboard arc + MFSN predictions + opening day ──────── */}
-      {!lastResult && (
-        <div className="space-y-3">
-          {/* Season Storyboard — pre-sim narrative */}
-          <StoryboardPanel
-            arc={generateSeasonArc(
-              franchiseHistory, ownerPatience, seasonsManaged, season, 'pre',
-            )}
-            phase="pre"
+      {/* ── Phase-specific content (lazy-loaded) ─────────────────── */}
+      <Suspense fallback={<LoadingFallback />}>
+        {/* Preseason */}
+        {!sim.lastResult && gamePhase === 'preseason' && (
+          <PreseasonDashboard onRefreshBreakoutWatch={sim.refreshBreakoutWatch} />
+        )}
+
+        {/* Mid-season events + Postseason report */}
+        {sim.lastResult && seasonPhase === 'allstar' && (
+          <>
+            <MidSeasonCheckIn
+              result={sim.lastResult}
+              userTeamId={userTeamId}
+              seasonPhase={seasonPhase}
+              ownerPatience={ownerPatience}
+              onContinue={() => setSeasonPhase('deadline')}
+            />
+            <AllStarBreak
+              result={sim.lastResult}
+              season={sim.lastResult.season}
+              playerNames={playerNames}
+              onContinue={() => setSeasonPhase('deadline')}
+            />
+          </>
+        )}
+
+        {sim.lastResult && seasonPhase === 'deadline' && (
+          <TradeDeadline
+            userTeamId={userTeamId}
+            season={sim.lastResult.season}
+            userWins={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.wins ?? 0}
+            userLosses={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.losses ?? 0}
+            onContinue={() => setSeasonPhase('complete')}
           />
+        )}
 
-          {/* Opening Day card */}
-          <div className="bloomberg-border bg-gray-900 px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
-              <div className="text-gray-600 text-xs">
-                Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
-              </div>
-            </div>
-            <button
-              onClick={refreshBreakoutWatch}
-              className="border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors shrink-0"
-            >
-              🔍 Breakout Watch
-            </button>
-          </div>
+        {sim.lastResult && seasonPhase === 'complete' && (
+          <PostseasonReport
+            lastResult={sim.lastResult}
+            lastBreakouts={sim.lastBreakouts}
+            lastBusts={sim.lastBusts}
+            playoffBracket={sim.playoffBracket}
+            awardRaceData={sim.awardRaceData}
+            onEnterOffseason={offseason.enterOffseason}
+          />
+        )}
 
-          {/* MFSN pre-season predictions */}
-          {mfsnReport && !mfsnReport.resolved && (
-            <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
-          )}
-        </div>
-      )}
+        {/* Offseason */}
+        {gamePhase === 'offseason' && (
+          <OffseasonDashboard flow={offseason} />
+        )}
+      </Suspense>
 
-      {/* ── Breakout Watch ────────────────────────────────────────────────────── */}
+      {/* ── Breakout Watch ────────────────────────────────────────── */}
       <BreakoutWatchPanel />
 
-      {/* ── Development Grade (post-season only) ─────────────────────────────── */}
-      {lastResult && (
-        <DevGradeCard
-          lastSeasonBreakouts={lastBreakouts}
-          lastSeasonBusts={lastBusts}
-        />
-      )}
-
-      {/* ── Season Report ─────────────────────────────────────────────────────── */}
-      {lastResult && (
-        <div className="space-y-4">
-          <div className="bloomberg-border bg-gray-900 px-4 py-2">
-            <div className="text-orange-500 font-bold text-xs tracking-widest">
-              {completedSeason} SEASON COMPLETE — OFFSEASON REPORT
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { label: 'LEAGUE BA',  value: lastResult.leagueBA.toFixed(3),  sub: 'Batting average' },
-              { label: 'LEAGUE ERA', value: lastResult.leagueERA.toFixed(2), sub: 'Earned run avg' },
-              { label: 'RUNS/GAME',  value: lastResult.leagueRPG.toFixed(2), sub: 'Per team' },
-              { label: 'WINS SD',    value: lastResult.teamWinsSD.toFixed(1), sub: 'Parity' },
-            ].map(stat => (
-              <div key={stat.label} className="bloomberg-border bg-gray-900 px-4 py-3">
-                <div className="text-gray-500 text-xs">{stat.label}</div>
-                <div className="text-orange-400 font-bold text-lg tabular-nums">{stat.value}</div>
-                <div className="text-gray-600 text-xs">{stat.sub}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {lastResult.divisionChampions && lastResult.divisionChampions.length > 0 && (
-              <div className="bloomberg-border bg-gray-900">
-                <div className="bloomberg-header px-4">DIVISION CHAMPIONS</div>
-                <div className="px-4 py-2">
-                  {lastResult.divisionChampions.map(champ => (
-                    <DivChamp key={`${champ.league}-${champ.division}`} champ={champ} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {lastResult.awards && (
-              <div className="bloomberg-border bg-gray-900">
-                <div className="bloomberg-header px-4">AWARDS</div>
-                <div className="px-4 py-2">
-                  <AwardRow label="AL MVP"      winner={lastResult.awards.mvpAL} />
-                  <AwardRow label="NL MVP"      winner={lastResult.awards.mvpNL} />
-                  <AwardRow label="AL CY YOUNG" winner={lastResult.awards.cyYoungAL} />
-                  <AwardRow label="NL CY YOUNG" winner={lastResult.awards.cyYoungNL} />
-                  <AwardRow label="AL ROY"      winner={lastResult.awards.royAL} />
-                  <AwardRow label="NL ROY"      winner={lastResult.awards.royNL} />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {lastResult.developmentEvents && lastResult.developmentEvents.length > 0 && (
-            <div className="bloomberg-border bg-gray-900">
-              <div className="bloomberg-header px-4">OFFSEASON DEVELOPMENT</div>
-              <div className="px-4 py-3 grid grid-cols-2 gap-x-8">
-                <div>
-                  <div className="text-green-500 text-xs font-bold mb-1.5">▲ BREAKOUTS</div>
-                  {lastResult.developmentEvents.filter(e => e.type === 'breakout').slice(0, 8).map(e => (
-                    <div key={e.playerId} className="flex justify-between py-0.5 border-b border-gray-800 last:border-0">
-                      <span className="text-gray-300 font-mono text-xs">{e.playerName}</span>
-                      <span className="text-green-400 font-mono text-xs tabular-nums">+{e.overallDelta}</span>
-                    </div>
-                  ))}
-                  {lastResult.developmentEvents.filter(e => e.type === 'breakout').length === 0 && (
-                    <div className="text-gray-600 text-xs">No major breakouts</div>
-                  )}
-                </div>
-                <div>
-                  {lastResult.developmentEvents.filter(e => e.type === 'bust').length > 0 && (<>
-                    <div className="text-red-500 text-xs font-bold mb-1.5">▼ DECLINES</div>
-                    {lastResult.developmentEvents.filter(e => e.type === 'bust').slice(0, 5).map(e => (
-                      <div key={e.playerId} className="flex justify-between py-0.5 border-b border-gray-800 last:border-0">
-                        <span className="text-gray-300 font-mono text-xs">{e.playerName}</span>
-                        <span className="text-red-400 font-mono text-xs tabular-nums">{e.overallDelta}</span>
-                      </div>
-                    ))}
-                  </>)}
-                  {lastResult.developmentEvents.filter(e => e.type === 'retirement').length > 0 && (<>
-                    <div className="text-gray-500 text-xs font-bold mb-1 mt-3">◼ RETIREMENTS</div>
-                    {lastResult.developmentEvents.filter(e => e.type === 'retirement').slice(0, 6).map(e => (
-                      <div key={e.playerId} className="py-0.5 border-b border-gray-800 last:border-0">
-                        <span className="text-gray-500 font-mono text-xs">{e.playerName}</span>
-                      </div>
-                    ))}
-                  </>)}
-                </div>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-800 flex gap-6 text-xs text-gray-500">
-                <span><span className="text-green-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'breakout').length}</span> breakouts</span>
-                <span><span className="text-red-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'bust').length}</span> declines</span>
-                <span><span className="text-gray-400 font-bold">{lastResult.developmentEvents.filter(e => e.type === 'retirement').length}</span> retirements</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 flex-wrap">
-            <button onClick={() => setActiveTab('standings')}
-              className="border border-orange-700 hover:border-orange-500 text-orange-600 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
-              FINAL STANDINGS →
-            </button>
-            <button onClick={() => setActiveTab('stats')}
-              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
-              LEADERBOARDS →
-            </button>
-            <button onClick={() => setActiveTab('roster')}
-              className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-4 py-1.5 uppercase tracking-wider transition-colors">
-              YOUR ROSTER →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Post-sim Storyboard arc resolution ────────────────────────────────── */}
-      {lastResult && (
+      {/* ── Post-sim Storyboard arc resolution ────────────────────── */}
+      {sim.lastResult && (
         <StoryboardPanel
           arc={generateSeasonArc(
             franchiseHistory, ownerPatience, seasonsManaged, season - 1, 'post',
-            postSimArcWins, postSimArcPO, postSimArcChamp,
+            sim.postSimArcWins, sim.postSimArcPO, sim.postSimArcChamp,
           )}
           phase="post"
         />
       )}
 
-      {/* ── This Week in MRBD ─────────────────────────────────────────────────── */}
+      {/* ── This Week in MRBD ────────────────────────────────────── */}
       {weeklyStories.length > 0 && (
-        <WeeklyCard stories={weeklyStories} season={lastResult?.season ?? season - 1} />
+        <WeeklyCard stories={weeklyStories} season={sim.lastResult?.season ?? season - 1} />
       )}
 
-      {/* ── MFSN Resolved Predictions ─────────────────────────────────────────── */}
+      {/* ── MFSN Resolved Predictions ────────────────────────────── */}
       {mfsnReport && mfsnReport.resolved && (
         <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
       )}
 
-      {/* ── Rivalry Panel ─────────────────────────────────────────────────────── */}
+      {/* ── Always-visible panels ────────────────────────────────── */}
       <RivalryPanel />
-
-      {/* ── Franchise Reputation ──────────────────────────────────────────────── */}
       <ReputationCard />
-
-      {/* ── Legacy Timeline ───────────────────────────────────────────────────── */}
       <LegacyTimeline />
-
-      {/* ── Franchise Moments Gallery ─────────────────────────────────────────── */}
       <MomentsPanel moments={moments} />
-
-      {/* ── News Feed ─────────────────────────────────────────────────────────── */}
       <NewsFeedPanel />
-
     </div>
   );
 }
