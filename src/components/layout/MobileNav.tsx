@@ -11,7 +11,11 @@ const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'profile',    label: 'PLAYER' },
 ];
 
-export default function MobileNav() {
+interface MobileNavProps {
+  onNewGame?: () => void;
+}
+
+export default function MobileNav({ onNewGame }: MobileNavProps) {
   const { activeTab, setActiveTab } = useUIStore();
   const [open, setOpen] = useState(false);
 
@@ -50,6 +54,14 @@ export default function MobileNav() {
               {tab.label}
             </button>
           ))}
+          {onNewGame && (
+            <button
+              onClick={() => { setOpen(false); onNewGame(); }}
+              className="w-full text-left px-4 py-3 text-xs font-bold tracking-wider uppercase transition-colors text-red-500 hover:text-red-400 hover:bg-gray-900 border-t border-gray-800"
+            >
+              NEW GAME
+            </button>
+          )}
         </div>
       )}
     </nav>

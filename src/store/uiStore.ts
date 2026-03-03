@@ -19,6 +19,7 @@ interface UIStore {
   modalOpen: string | null;
   comparePlayerIds: [number, number] | null;
   toasts: ToastItem[];
+  rosterViewMode: string | null;
   setActiveTab: (t: NavTab) => void;
   setSelectedTeam: (id: number | null) => void;
   setSelectedPlayer: (id: number | null) => void;
@@ -28,6 +29,7 @@ interface UIStore {
   setComparePlayerIds: (ids: [number, number] | null) => void;
   addToast: (message: string, type: ToastItem['type']) => void;
   removeToast: (id: number) => void;
+  setRosterViewMode: (mode: string | null) => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -39,6 +41,7 @@ export const useUIStore = create<UIStore>((set) => ({
   modalOpen: null,
   comparePlayerIds: null,
   toasts: [],
+  rosterViewMode: null,
   setActiveTab: t => set({ activeTab: t }),
   setSelectedTeam: id => set({ selectedTeamId: id }),
   setSelectedPlayer: id => set({ selectedPlayerId: id }),
@@ -51,4 +54,5 @@ export const useUIStore = create<UIStore>((set) => ({
     set(s => ({ toasts: [...s.toasts, { id, message, type }] }));
   },
   removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
+  setRosterViewMode: (mode) => set({ rosterViewMode: mode }),
 }));

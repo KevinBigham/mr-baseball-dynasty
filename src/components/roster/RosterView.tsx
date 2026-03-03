@@ -335,7 +335,19 @@ export default function RosterView() {
   const { gameStarted, userTeamId } = useGameStore();
   const { selectedTeamId, setSelectedPlayer, setActiveTab } = useUIStore();
   const [rosterTab, setRosterTab] = useState<RosterTab>('ACTIVE');
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const rosterViewModeFromStore = useUIStore(s => s.rosterViewMode);
+  const setRosterViewModeStore = useUIStore(s => s.setRosterViewMode);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    (rosterViewModeFromStore as ViewMode) || 'table'
+  );
+
+  // Consume rosterViewMode from store (deep-link from in-season dashboard)
+  useEffect(() => {
+    if (rosterViewModeFromStore) {
+      setViewMode(rosterViewModeFromStore as ViewMode);
+      setRosterViewModeStore(null);
+    }
+  }, [rosterViewModeFromStore, setRosterViewModeStore]);
   const [loading, setLoading] = useState(false);
   const [fullRoster, setFullRoster] = useState<FullRosterData | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);

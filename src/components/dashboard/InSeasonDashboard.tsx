@@ -4,11 +4,13 @@
  * Includes granular sim controls: sim 1 day, 1 week, 1 month.
  */
 
+import { useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import SeasonProgressBar from './SeasonProgressBar';
 import MonthRecap from './MonthRecap';
 import PennantRace from './PennantRace';
+import MidSeasonFAPanel from './MidSeasonFAPanel';
 import type { InSeasonFlowState } from '../../hooks/useInSeasonFlow';
 
 const NEXT_SEGMENT_LABELS = ['SIM JUNE', 'SIM JULY', 'SIM AUGUST', 'SIM SEPTEMBER', 'FINALIZE'];
@@ -29,6 +31,7 @@ interface Props {
 export default function InSeasonDashboard({ flow }: Props) {
   const { userTeamId, isSimulating, simProgress, season, gamesCompleted, totalGames } = useGameStore();
   const { setActiveTab } = useUIStore();
+  const [showFAPanel, setShowFAPanel] = useState(false);
 
   const {
     currentSegment, chunkResult, partialResult, pendingEvent,
@@ -257,19 +260,19 @@ export default function InSeasonDashboard({ flow }: Props) {
             <div className="flex gap-2 justify-center flex-wrap">
               <button
                 onClick={simDay}
-                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-3 py-2 sm:px-5 uppercase tracking-widest transition-colors"
               >
                 SIM 1 DAY
               </button>
               <button
                 onClick={simWeek}
-                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-3 py-2 sm:px-5 uppercase tracking-widest transition-colors"
               >
                 SIM 1 WEEK
               </button>
               <button
                 onClick={simMonth}
-                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-5 py-2 uppercase tracking-widest transition-colors"
+                className="border border-orange-600 hover:border-orange-400 text-orange-500 hover:text-orange-300 font-bold text-xs px-3 py-2 sm:px-5 uppercase tracking-widest transition-colors"
               >
                 SIM 1 MONTH
               </button>
@@ -279,19 +282,31 @@ export default function InSeasonDashboard({ flow }: Props) {
             <div className="flex gap-2 justify-center flex-wrap pt-1 border-t border-gray-800">
               <button
                 onClick={() => setActiveTab('roster')}
-                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
               >
                 ROSTER MOVES
               </button>
               <button
+                onClick={() => setShowFAPanel(true)}
+                className="border border-gray-700 hover:border-green-500 text-gray-400 hover:text-green-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
+              >
+                FREE AGENTS
+              </button>
+              <button
+                onClick={() => { useUIStore.getState().setRosterViewMode('depth'); setActiveTab('roster'); }}
+                className="border border-gray-700 hover:border-blue-500 text-gray-400 hover:text-blue-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
+              >
+                EDIT LINEUP
+              </button>
+              <button
                 onClick={simNextChunk}
-                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
               >
                 {nextSegmentLabel}
               </button>
               <button
                 onClick={simAllRemaining}
-                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
               >
                 FAST SIM ALL
               </button>
@@ -307,16 +322,22 @@ export default function InSeasonDashboard({ flow }: Props) {
             <div className="text-gray-500 text-xs">
               Make roster moves or continue to the next month.
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setActiveTab('roster')}
-                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+                className="border border-gray-700 hover:border-orange-500 text-gray-400 hover:text-orange-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
               >
                 ROSTER MOVES
               </button>
               <button
+                onClick={() => { useUIStore.getState().setRosterViewMode('depth'); setActiveTab('roster'); }}
+                className="border border-gray-700 hover:border-blue-500 text-gray-400 hover:text-blue-400 text-xs px-3 py-2 sm:px-4 uppercase tracking-wider transition-colors"
+              >
+                EDIT LINEUP
+              </button>
+              <button
                 onClick={() => { continueAfterEvent(); simNextChunk(); }}
-                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+                className="bg-orange-600 hover:bg-orange-500 text-black font-bold text-xs px-4 py-2 sm:px-6 uppercase tracking-widest transition-colors"
               >
                 {nextSegmentLabel}
               </button>
@@ -330,6 +351,8 @@ export default function InSeasonDashboard({ flow }: Props) {
           </div>
         </div>
       )}
+      {/* Mid-Season Free Agent Panel */}
+      {showFAPanel && <MidSeasonFAPanel onClose={() => setShowFAPanel(false)} />}
     </div>
   );
 }

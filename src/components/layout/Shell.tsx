@@ -125,7 +125,7 @@ export default function Shell() {
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <span className="text-orange-500 font-bold text-xs sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
           <span className="text-gray-500 text-xs hidden sm:inline">⚾</span>
-          <span className="text-gray-500 text-xs hidden sm:inline">SEASON {season}</span>
+          <span className="text-gray-500 text-xs">S{season}</span>
         </div>
         {isSimulating && (
           <div className="flex items-center gap-2" aria-live="polite" role="status">
@@ -170,7 +170,7 @@ export default function Shell() {
       </header>
 
       {/* ── Mobile Nav (hamburger) ─────────────────────────────────── */}
-      <MobileNav />
+      <MobileNav onNewGame={() => setShowNewGameConfirm(true)} />
 
       {/* ── Desktop Nav bar ─────────────────────────────────────────── */}
       <nav className="hidden sm:flex border-b border-gray-800 bg-gray-950 shrink-0" role="navigation" aria-label="Main navigation">
