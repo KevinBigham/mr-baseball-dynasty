@@ -16,7 +16,8 @@ import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTe
 import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
 import {
   createSeasonSimState, simulateChunk, buildPartialResult,
-  type SeasonSimState, type ChunkResult,
+  simulateRange, computeSim1DayTarget, computeSim1WeekTarget, computeSim1MonthTarget,
+  type SeasonSimState, type ChunkResult, type SimRangeResult,
   SEGMENTS, SEGMENT_COUNT,
 } from './sim/incrementalSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
@@ -2078,6 +2079,77 @@ const api = {
     }
 
     return chunkResult;
+  },
+
+  /**
+   * Granular simulation: sim by day, week, or month.
+   * Stops at segment boundaries to preserve event triggers.
+   */
+  async simRange(
+    mode: 'day' | 'week' | 'month',
+    onProgress?: (pct: number) => void,
+  ): Promise<SimRangeResult> {
+    const state = requireState();
+    if (!_seasonSimState) throw new Error('Call startInSeason() first');
+    if (_seasonSimState.isComplete) throw new Error('Season already complete');
+
+    let targetIndex: number;
+    switch (mode) {
+      case 'day':
+        targetIndex = computeSim1DayTarget(_seasonSimState, state.schedule);
+        break;
+      case 'week':
+        targetIndex = computeSim1WeekTarget(_seasonSimState, state.schedule);
+        break;
+      case 'month':
+        targetIndex = computeSim1MonthTarget(_seasonSimState, state.schedule);
+        break;
+    }
+
+    const result = simulateRange(
+      _seasonSimState,
+      state.teams,
+      state.players,
+      state.schedule,
+      targetIndex,
+      {
+        userTeamId: state.userTeamId,
+        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
+        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      },
+      onProgress,
+    );
+
+    // Sync player season stats to worker-level cache
+    _playerSeasonStats.clear();
+    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
+      _playerSeasonStats.set(Number(key), val);
+    }
+
+    return result;
+  },
+
+  /**
+   * Get current schedule position info for UI display.
+   */
+  async getCurrentScheduleInfo(): Promise<{
+    gamesCompleted: number;
+    totalGames: number;
+    currentDate: string | null;
+    currentSegment: number;
+  }> {
+    if (!_seasonSimState) throw new Error('No in-season state');
+    const state = requireState();
+    const idx = _seasonSimState.gamesCompleted;
+    const currentDate = idx < state.schedule.length
+      ? state.schedule[idx]!.date
+      : null;
+    return {
+      gamesCompleted: _seasonSimState.gamesCompleted,
+      totalGames: _seasonSimState.totalGames,
+      currentDate,
+      currentSegment: _seasonSimState.currentSegment,
+    };
   },
 
   /**
