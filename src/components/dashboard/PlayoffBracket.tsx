@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import type { PlayoffBracket, PlayoffSeries } from '../../engine/sim/playoffSimulator';
 import { useGameStore } from '../../store/gameStore';
+import { getEngine } from '../../engine/engineClient';
 
 // ─── Series card ──────────────────────────────────────────────────────────────
 
@@ -91,8 +93,30 @@ function Connector() {
 
 // ─── Main bracket ─────────────────────────────────────────────────────────────
 
+interface PlayoffMVPData {
+  playerId: number;
+  name: string;
+  teamAbbr: string;
+  position: string;
+  statLine: string;
+}
+
 export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracket }) {
   const { userTeamId } = useGameStore();
+  const [mvp, setMvp] = useState<PlayoffMVPData | null>(null);
+
+  useEffect(() => {
+    if (!bracket.championId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const engine = getEngine();
+        const result = await engine.getPlayoffMVP(bracket);
+        if (!cancelled && result) setMvp(result);
+      } catch { /* non-fatal */ }
+    })();
+    return () => { cancelled = true; };
+  }, [bracket]);
 
   const allPlayoffTeamIds = new Set([
     ...bracket.alTeams.map(t => t.teamId),
@@ -129,6 +153,13 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
           {bracket.worldSeries && (
             <div className="text-gray-500 text-xs mt-2 tabular-nums">
               World Series: {bracket.worldSeries.higherSeedWins}-{bracket.worldSeries.lowerSeedWins}
+            </div>
+          )}
+          {mvp && (
+            <div className="mt-3 pt-2 border-t border-gray-700">
+              <div className="text-yellow-600 text-[10px] tracking-[0.15em] font-bold">WORLD SERIES MVP</div>
+              <div className="text-yellow-400 text-sm font-bold mt-0.5">{mvp.name}</div>
+              <div className="text-gray-400 text-xs">{mvp.position} · {mvp.teamAbbr} · {mvp.statLine}</div>
             </div>
           )}
         </div>

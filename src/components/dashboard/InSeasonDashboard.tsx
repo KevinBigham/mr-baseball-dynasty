@@ -7,6 +7,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import SeasonProgressBar from './SeasonProgressBar';
 import MonthRecap from './MonthRecap';
+import PennantRace from './PennantRace';
 import type { InSeasonFlowState } from '../../hooks/useInSeasonFlow';
 
 const NEXT_SEGMENT_LABELS = ['SIM JUNE', 'SIM JULY', 'SIM AUGUST', 'SIM SEPTEMBER', 'FINALIZE'];
@@ -76,6 +77,11 @@ export default function InSeasonDashboard({ flow }: Props) {
           chunkRecord={chunkResult.userRecord}
           divisionStandings={flow.divisionStandings}
         />
+      )}
+
+      {/* Pennant Race (after at least one chunk) */}
+      {!isSimulating && currentSegment >= 0 && !pendingEvent && (
+        <PennantRace />
       )}
 
       {/* Event overlays */}

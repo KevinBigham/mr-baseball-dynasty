@@ -1,7 +1,8 @@
 /**
- * OffseasonDashboard — Phase-aware router for the 7-step offseason flow.
+ * OffseasonDashboard — Phase-aware router for the 9-step offseason flow.
  *
- * Phases: arbitration → waivers → annual_draft → rule5 → free_agency → trading → summary
+ * Phases: arbitration → waivers → annual_draft → rule5 → intl_signing →
+ *         free_agency → extensions → trading → summary
  */
 
 import { useGameStore } from '../../store/gameStore';
@@ -11,6 +12,8 @@ import OffseasonSummary from '../offseason/OffseasonSummary';
 import ArbitrationPanel from '../offseason/ArbitrationPanel';
 import WaiversPanel from '../offseason/WaiversPanel';
 import Rule5Panel from '../offseason/Rule5Panel';
+import IntlSigningPanel from '../offseason/IntlSigningPanel';
+import ExtensionPanel from '../offseason/ExtensionPanel';
 import AnnualDraft from '../draft/AnnualDraft';
 import { OFFSEASON_PHASE_ORDER, OFFSEASON_PHASE_LABELS, type OffseasonPhase } from '../../types/offseason';
 import type { OffseasonFlowState } from '../../hooks/useOffseasonFlow';
@@ -19,7 +22,7 @@ interface Props {
   flow: OffseasonFlowState;
 }
 
-/** Progress bar showing the 7 offseason phases */
+/** Progress bar showing the 9 offseason phases */
 function PhaseProgressBar({ currentPhase }: { currentPhase: string }) {
   const currentIdx = OFFSEASON_PHASE_ORDER.indexOf(currentPhase as OffseasonPhase);
 
@@ -109,9 +112,15 @@ export default function OffseasonDashboard({ flow }: Props) {
         <Rule5Panel
           onComplete={(selections) => {
             flow.advanceToNextPhase();
-            // selections stored via flow if needed
             void selections;
           }}
+          onTransaction={flow.logOffseasonTx}
+        />
+      )}
+
+      {flow.currentPhase === 'intl_signing' && (
+        <IntlSigningPanel
+          onComplete={flow.advanceToNextPhase}
           onTransaction={flow.logOffseasonTx}
         />
       )}
@@ -119,6 +128,13 @@ export default function OffseasonDashboard({ flow }: Props) {
       {flow.currentPhase === 'free_agency' && (
         <FreeAgencyPanel
           onDone={flow.advanceToNextPhase}
+          onTransaction={flow.logOffseasonTx}
+        />
+      )}
+
+      {flow.currentPhase === 'extensions' && (
+        <ExtensionPanel
+          onComplete={flow.advanceToNextPhase}
           onTransaction={flow.logOffseasonTx}
         />
       )}
