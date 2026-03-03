@@ -2,6 +2,8 @@
 > Last updated: 2026-03-03 by Claude (Opus 4.6)
 > Branch: `claude/baseball-dynasty-sim-UjlF2`
 
+> **SEE ALSO: [`CODEX_HANDOFF.md`](./CODEX_HANDOFF.md)** — The definitive comprehensive handoff document with complete API reference, every file documented, architecture deep-dives, and the full roadmap. If you're Codex (or any AI agent) picking this project up, start there.
+
 ---
 
 ## 0. TL;DR — State of the Game Right Now
