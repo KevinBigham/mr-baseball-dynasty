@@ -40,7 +40,7 @@ export function getOrCreate(
 export function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
   playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
-    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number }>,
+    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number; hbp?: number }>,
   playerTeamMap: Map<number, number>,
   season: number,
 ): void {
@@ -58,6 +58,7 @@ export function accumulateBatting(
     s.rbi   += gs.rbi;
     s.bb    += gs.bb;
     s.k     += gs.k;
+    s.hbp   += gs.hbp ?? 0;
   }
 }
 

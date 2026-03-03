@@ -203,6 +203,7 @@ export const useLeagueStore = create<LeagueStore>(set => ({
     standings: null,
     roster: null,
     leaderboard: [],
+    leaderboardFull: [],
     lastSeasonERA: 0,
     lastSeasonBA: 0,
     lastSeasonRPG: 0,

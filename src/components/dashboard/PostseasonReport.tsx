@@ -134,6 +134,37 @@ export default function PostseasonReport({
         )}
       </div>
 
+      {lastResult.awards && (lastResult.awards.goldGloveAL?.length > 0 || lastResult.awards.silverSluggerAL?.length > 0) && (
+        <div className="grid grid-cols-2 gap-4">
+          {lastResult.awards.goldGloveAL?.length > 0 && (
+            <div className="bloomberg-border bg-gray-900">
+              <div className="bloomberg-header px-4">GOLD GLOVE AWARDS</div>
+              <div className="px-4 py-2">
+                {[...(lastResult.awards.goldGloveAL ?? []), ...(lastResult.awards.goldGloveNL ?? [])].map(gg => (
+                  <div key={`gg-${gg.playerId}`} className="flex items-center justify-between py-0.5 border-b border-gray-800 last:border-0">
+                    <span className="text-gray-300 font-mono text-xs">{gg.name}</span>
+                    <span className="text-gray-500 text-xs">{gg.teamAbbr} · {gg.position}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {lastResult.awards.silverSluggerAL?.length > 0 && (
+            <div className="bloomberg-border bg-gray-900">
+              <div className="bloomberg-header px-4">SILVER SLUGGER AWARDS</div>
+              <div className="px-4 py-2">
+                {[...(lastResult.awards.silverSluggerAL ?? []), ...(lastResult.awards.silverSluggerNL ?? [])].map(ss => (
+                  <div key={`ss-${ss.playerId}`} className="flex items-center justify-between py-0.5 border-b border-gray-800 last:border-0">
+                    <span className="text-gray-300 font-mono text-xs">{ss.name}</span>
+                    <span className="text-gray-500 text-xs">{ss.teamAbbr} · {ss.position}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {playoffBracket && <PlayoffBracketView bracket={playoffBracket} />}
 
       {aiMoves.length > 0 && <AITransactionsPanel moves={aiMoves} />}

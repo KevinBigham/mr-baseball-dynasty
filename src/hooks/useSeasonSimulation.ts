@@ -31,6 +31,13 @@ function extractUserAwards(result: SeasonResult, userTeamId: number): string[] {
   if (a.cyYoungNL?.teamId === userTeamId) awards.push(`NL Cy Young — ${a.cyYoungNL.name}`);
   if (a.royAL?.teamId === userTeamId) awards.push(`AL ROY — ${a.royAL.name}`);
   if (a.royNL?.teamId === userTeamId) awards.push(`NL ROY — ${a.royNL.name}`);
+  // Gold Glove and Silver Slugger winners from the user's team
+  for (const gg of [...(a.goldGloveAL ?? []), ...(a.goldGloveNL ?? [])]) {
+    if (gg.teamId === userTeamId) awards.push(`Gold Glove — ${gg.name} (${gg.position})`);
+  }
+  for (const ss of [...(a.silverSluggerAL ?? []), ...(a.silverSluggerNL ?? [])]) {
+    if (ss.teamId === userTeamId) awards.push(`Silver Slugger — ${ss.name} (${ss.position})`);
+  }
   return awards;
 }
 

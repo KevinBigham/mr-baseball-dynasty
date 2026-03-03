@@ -37,7 +37,11 @@ export default function PennantRace() {
     return () => { cancelled = true; };
   }, [userTeamId]);
 
-  if (!data) return null;
+  if (!data) return (
+    <div className="bloomberg-border bg-gray-900 px-4 py-3">
+      <div className="text-gray-500 text-xs text-center">Loading pennant race data...</div>
+    </div>
+  );
 
   const {
     userDivisionRank, userGamesBack, userWildCardRank, userWCGamesBack,
