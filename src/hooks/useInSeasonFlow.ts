@@ -12,6 +12,7 @@ import * as Comlink from 'comlink';
 import { getEngine } from '../engine/engineClient';
 import { useGameStore } from '../store/gameStore';
 import { useLeagueStore } from '../store/leagueStore';
+import { autoSave } from '../utils/autoSave';
 import type { ChunkResult, PartialSeasonResult, SimRangeResult } from '../engine/sim/incrementalSimulator';
 import type { SeasonResult } from '../types/league';
 import type { StandingsRow } from '../types/league';
@@ -47,7 +48,7 @@ export interface InSeasonFlowState {
 
 export function useInSeasonFlow(): InSeasonFlowState {
   const {
-    userTeamId,
+    userTeamId, season,
     setSimulating, setSimProgress,
     setGamePhase, setCurrentSegment: storeSetSegment,
     setInSeasonPaused, setSegmentUserRecord,
@@ -144,6 +145,9 @@ export function useInSeasonFlow(): InSeasonFlowState {
       await refreshStandings();
       await refreshScheduleInfo();
 
+      // Auto-save at each pause point
+      autoSave(season, userTeamId);
+
       if (result.isSeasonComplete) {
         // Season is done — finalize
         const finalResult = await engine.finalizeSeason();
@@ -161,7 +165,7 @@ export function useInSeasonFlow(): InSeasonFlowState {
     } finally {
       setSimulating(false);
     }
-  }, [setSimulating, setSimProgress, storeSetSegment, setInSeasonPaused, setSegmentUserRecord, refreshStandings, refreshScheduleInfo]);
+  }, [setSimulating, setSimProgress, storeSetSegment, setInSeasonPaused, setSegmentUserRecord, refreshStandings, refreshScheduleInfo, season, userTeamId]);
 
   /** Sim the next chunk (called from UI button) */
   const simNextChunk = useCallback(async () => {
@@ -188,13 +192,16 @@ export function useInSeasonFlow(): InSeasonFlowState {
 
       await refreshStandings();
       await refreshScheduleInfo();
+
+      // Auto-save after fast sim completes
+      autoSave(season, userTeamId);
     } catch (e) {
       setError(String(e));
     } finally {
       setSimulating(false);
       setSimProgress(1);
     }
-  }, [setSimulating, setSimProgress, storeSetSegment, setInSeasonPaused, refreshStandings, refreshScheduleInfo]);
+  }, [setSimulating, setSimProgress, storeSetSegment, setInSeasonPaused, refreshStandings, refreshScheduleInfo, season, userTeamId]);
 
   // ── Granular simulation ───────────────────────────────────────────────────────
 

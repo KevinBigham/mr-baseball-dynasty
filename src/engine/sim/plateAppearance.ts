@@ -66,9 +66,9 @@ function hitterToRates(h: HitterAttributes): {
   return {
     kRate:     Math.max(0.05, LEAGUE_RATES.kRate    * (2 - contactFactor)),
     bbRate:    Math.max(0.03, LEAGUE_RATES.bbRate   * eyeFactor),
-    // exponent=1.8: balanced HR sensitivity — enough 40HR seasons (gate ≥ 2) while
-    // controlling ERA tail; at avg power (400) = league rate, at 500 = +48% vs +56% with 2.0
-    hrRate:    Math.max(0.005, LEAGUE_RATES.hrRate  * Math.pow(powerFactor, 1.8)),
+    // exponent=1.9: tuned HR sensitivity — enough 40HR seasons (gate ≥ 2) while
+    // controlling ERA tail; at avg power (400) = league rate, at 500 = +54%
+    hrRate:    Math.max(0.005, LEAGUE_RATES.hrRate  * Math.pow(powerFactor, 1.9)),
     hbpRate:   LEAGUE_RATES.hbpRate, // not player-specific yet
     babip:     Math.max(0.22, Math.min(0.38, LEAGUE_RATES.babip * (0.85 + 0.15 * contactFactor))),
     gbPercent: Math.max(0.30, Math.min(0.65, 0.45 - (h.power - 400) * 0.0002)),

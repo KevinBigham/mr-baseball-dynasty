@@ -27,7 +27,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'draft_scouting',
     title: 'Scouting Grades',
-    message: 'OVR shows current ability and POT shows future potential. Your scouting staff quality affects how accurate these grades are — better scouts mean less noise in the evaluations.',
+    message: 'OVR shows current ability and POT shows future potential. Look for prospects with a big gap between OVR and POT — they have the most room to grow into stars. Use the Scouting tab to gather intel on rival teams\' players.',
     phase: 'draft',
     position: 'top',
   },
@@ -69,7 +69,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'development',
     title: 'Player Development',
-    message: 'Young players develop during the offseason. Coaching staff and work ethic affect growth rates. Keep an eye on your minor league pipeline — today\'s prospects are tomorrow\'s stars.',
+    message: 'Young players develop during the offseason based on their age, work ethic, and natural growth curves. Use the Development Lab on the Roster tab to assign prospects to focused training programs and accelerate their growth.',
     phase: 'postseason',
     position: 'center',
   },

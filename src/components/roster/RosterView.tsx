@@ -8,6 +8,8 @@ import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import DepthChart from './DepthChart';
 import ProspectPipeline from './ProspectPipeline';
 import ILManagement from './ILManagement';
+import DevLab from './DevLab';
+import ScoutingReports from './ScoutingReports';
 import { formatSalary } from '../../utils/format';
 import { SkeletonTable } from '../layout/Skeleton';
 import ScrollableTable from '../layout/ScrollableTable';
@@ -16,7 +18,7 @@ import type { RosterStatus } from '../../types/player';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
-type ViewMode = 'table' | 'depth' | 'pipeline';
+type ViewMode = 'table' | 'depth' | 'pipeline' | 'devlab' | 'scouting';
 
 interface FullRosterData {
   teamId: number;
@@ -335,7 +337,19 @@ export default function RosterView() {
   const { gameStarted, userTeamId } = useGameStore();
   const { selectedTeamId, setSelectedPlayer, setActiveTab } = useUIStore();
   const [rosterTab, setRosterTab] = useState<RosterTab>('ACTIVE');
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const rosterViewModeFromStore = useUIStore(s => s.rosterViewMode);
+  const setRosterViewModeStore = useUIStore(s => s.setRosterViewMode);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    (rosterViewModeFromStore as ViewMode) || 'table'
+  );
+
+  // Consume rosterViewMode from store (deep-link from in-season dashboard)
+  useEffect(() => {
+    if (rosterViewModeFromStore) {
+      setViewMode(rosterViewModeFromStore as ViewMode);
+      setRosterViewModeStore(null);
+    }
+  }, [rosterViewModeFromStore, setRosterViewModeStore]);
   const [loading, setLoading] = useState(false);
   const [fullRoster, setFullRoster] = useState<FullRosterData | null>(null);
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -539,6 +553,20 @@ export default function RosterView() {
           >
             PIPELINE
           </button>
+          {isUserTeam && (
+            <button
+              onClick={() => setViewMode('devlab')}
+              className={`text-xs px-2 py-1 transition-colors ${viewMode === 'devlab' ? 'text-orange-400 bg-orange-900/30' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              DEV LAB
+            </button>
+          )}
+          <button
+            onClick={() => setViewMode('scouting')}
+            className={`text-xs px-2 py-1 transition-colors ${viewMode === 'scouting' ? 'text-orange-400 bg-orange-900/30' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            SCOUTING
+          </button>
         </div>
       </div>
 
@@ -558,7 +586,21 @@ export default function RosterView() {
         </div>
       )}
 
-      {viewMode === 'pipeline' ? (
+      {viewMode === 'devlab' && isUserTeam ? (
+        <DevLab
+          players={[
+            ...(fullRoster?.active ?? []),
+            ...(fullRoster?.aaa ?? []),
+            ...(fullRoster?.aa ?? []),
+            ...(fullRoster?.aPlus ?? []),
+            ...(fullRoster?.aMinus ?? []),
+            ...(fullRoster?.rookie ?? []),
+            ...(fullRoster?.intl ?? []),
+          ]}
+        />
+      ) : viewMode === 'scouting' ? (
+        <ScoutingReports />
+      ) : viewMode === 'pipeline' ? (
         <ProspectPipeline
           players={[
             ...(fullRoster?.active ?? []),

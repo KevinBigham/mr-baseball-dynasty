@@ -70,6 +70,8 @@ import {
   computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages,
   type AdvancedHittingStats, type AdvancedPitchingStats, type LeagueAverages,
 } from './advancedStats';
+import type { DevAssignment, DevProgram } from './devPrograms';
+import { generateScoutingReport, getDisplayGrades, gaussianNoise, type ScoutingReport } from './scouting';
 // ─── Worker-side state ────────────────────────────────────────────────────────
 // The worker owns the canonical game state. The UI queries for what it needs.
 
@@ -106,6 +108,12 @@ let _draftState: InternalDraftState | null = null;
 // ─── International signing state ────────────────────────────────────────
 
 let _intlProspects: IntlProspect[] = [];
+
+// ─── Dev Lab state ───────────────────────────────────────────────────────
+let _devAssignments = new Map<number, DevAssignment>();
+
+// ─── Scouting state ──────────────────────────────────────────────────────
+let _scoutingReports = new Map<number, ScoutingReport>();
 
 // ─── In-season sim state (for chunked play) ──────────────────────────────
 
@@ -322,10 +330,12 @@ const api = {
     }
 
     // ── Offseason: player development + aging ─────────────────────────────────
+    const devAssignmentsObj: Record<number, DevAssignment> = {};
+    for (const [pid, a] of _devAssignments) devAssignmentsObj[pid] = a;
     const offseasonResult = advanceOffseason(state.players, gen, {
       hitter: staffBonuses.hitterDevMultiplier,
       pitcher: staffBonuses.pitcherDevMultiplier,
-    });
+    }, devAssignmentsObj);
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 
@@ -1707,6 +1717,181 @@ const api = {
     return _franchiseRecords ?? emptyRecordBook();
   },
 
+  // ── Dev Lab ──────────────────────────────────────────────────────────────
+  async assignDevProgram(playerId: number, program: DevProgram): Promise<{ ok: boolean; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+    if (player.teamId !== state.userTeamId) return { ok: false, error: 'Not your player' };
+    // Max 10 active assignments
+    const activeCount = Array.from(_devAssignments.values()).filter(a => a.program !== 'balanced').length;
+    if (activeCount >= 10 && !_devAssignments.has(playerId)) {
+      return { ok: false, error: 'Maximum 10 dev assignments reached' };
+    }
+    _devAssignments.set(playerId, { playerId, program, assignedSeason: state.season });
+    return { ok: true };
+  },
+
+  async removeDevProgram(playerId: number): Promise<{ ok: boolean }> {
+    _devAssignments.delete(playerId);
+    return { ok: true };
+  },
+
+  async getDevAssignments(): Promise<Record<number, DevAssignment>> {
+    const result: Record<number, DevAssignment> = {};
+    for (const [pid, a] of _devAssignments) result[pid] = a;
+    return result;
+  },
+
+  // ── Scouting ────────────────────────────────────────────────────────────
+  async scoutPlayer(playerId: number): Promise<{ ok: boolean; report?: ScoutingReport; error?: string }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+    if (player.teamId === state.userTeamId) return { ok: false, error: 'Cannot scout your own players' };
+    const staffBonuses = _foStaff.length > 0
+      ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+    const existing = _scoutingReports.get(playerId);
+    const report = generateScoutingReport(player, staffBonuses.scoutingAccuracy, state.season, existing);
+    _scoutingReports.set(playerId, report);
+    return { ok: true, report };
+  },
+
+  async getScoutingReports(): Promise<Record<number, ScoutingReport>> {
+    const result: Record<number, ScoutingReport> = {};
+    for (const [pid, r] of _scoutingReports) result[pid] = r;
+    return result;
+  },
+
+  async getScoutedPlayerProfile(playerId: number): Promise<PlayerProfileData & { scoutingInfo?: { confidence: number; scouted: boolean } }> {
+    const state = requireState();
+    const player = _playerMap.get(playerId);
+    if (!player) throw new Error(`Player ${playerId} not found`);
+    const isUserTeam = player.teamId === state.userTeamId;
+    const report = _scoutingReports.get(playerId);
+    const display = getDisplayGrades(player, isUserTeam, report);
+
+    const s = _playerSeasonStats.get(playerId);
+    const grades: Record<string, number> = {};
+
+    // For user team: show real grades; for others: apply fog
+    if (isUserTeam) {
+      if (player.hitterAttributes) {
+        const h = player.hitterAttributes;
+        grades['CON'] = toScoutingScale(h.contact);
+        grades['PWR'] = toScoutingScale(h.power);
+        grades['EYE'] = toScoutingScale(h.eye);
+        grades['SPD'] = toScoutingScale(h.speed);
+        grades['FLD'] = toScoutingScale(h.fielding);
+        grades['ARM'] = toScoutingScale(h.armStrength);
+      } else if (player.pitcherAttributes) {
+        const p = player.pitcherAttributes;
+        grades['STF'] = toScoutingScale(p.stuff);
+        grades['MOV'] = toScoutingScale(p.movement);
+        grades['CMD'] = toScoutingScale(p.command);
+        grades['STM'] = toScoutingScale(p.stamina);
+      }
+    } else {
+      // Non-user team: show noisy grades based on scouting
+      if (player.hitterAttributes) {
+        const h = player.hitterAttributes;
+        const noise = report ? (15 / (report.confidence + 0.3)) : 30;
+        grades['CON'] = toScoutingScale(Math.round(h.contact + gaussianNoise(playerId * 10) * noise));
+        grades['PWR'] = toScoutingScale(Math.round(h.power + gaussianNoise(playerId * 11) * noise));
+        grades['EYE'] = toScoutingScale(Math.round(h.eye + gaussianNoise(playerId * 12) * noise));
+        grades['SPD'] = toScoutingScale(Math.round(h.speed + gaussianNoise(playerId * 13) * noise));
+        grades['FLD'] = toScoutingScale(Math.round(h.fielding + gaussianNoise(playerId * 14) * noise));
+        grades['ARM'] = toScoutingScale(Math.round(h.armStrength + gaussianNoise(playerId * 15) * noise));
+      } else if (player.pitcherAttributes) {
+        const p = player.pitcherAttributes;
+        const noise = report ? (15 / (report.confidence + 0.3)) : 30;
+        grades['STF'] = toScoutingScale(Math.round(p.stuff + gaussianNoise(playerId * 10) * noise));
+        grades['MOV'] = toScoutingScale(Math.round(p.movement + gaussianNoise(playerId * 11) * noise));
+        grades['CMD'] = toScoutingScale(Math.round(p.command + gaussianNoise(playerId * 12) * noise));
+        grades['STM'] = toScoutingScale(Math.round(p.stamina + gaussianNoise(playerId * 13) * noise));
+      }
+    }
+
+    const seasonStats: null | { season: number; [key: string]: number } = s ? {
+      season: state.season - 1,
+      pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
+      avg: s.ab > 0 ? Number((s.h / s.ab).toFixed(3)) : 0,
+      obp: s.pa > 0 ? Number(((s.h + s.bb + s.hbp) / s.pa).toFixed(3)) : 0,
+      w: s.w, l: s.l, sv: s.sv, era: s.outs > 0 ? Number(((s.er / s.outs) * 27).toFixed(2)) : 0,
+      ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
+    } : null;
+
+    const team = state.teams.find(t => t.teamId === player.teamId);
+    const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
+
+    return {
+      player: {
+        playerId: player.playerId,
+        name: player.name,
+        age: player.age,
+        position: player.position,
+        bats: player.bats,
+        throws: player.throws,
+        overall: display.overall,
+        potential: display.potential,
+        grades,
+        rosterStatus: player.rosterData.rosterStatus,
+        serviceTimeDays: player.rosterData.serviceTimeDays,
+        salary: player.rosterData.salary,
+        contractYearsRemaining: player.rosterData.contractYearsRemaining,
+        isPitcher,
+        teamId: player.teamId,
+        teamAbbr: team?.abbreviation ?? '---',
+        optionYearsRemaining: player.rosterData.optionYearsRemaining,
+        tradeValue: evaluatePlayer(player),
+      },
+      seasonStats,
+      careerStats: _careerHistory.get(playerId) ?? [],
+      scoutingInfo: !isUserTeam ? {
+        confidence: display.confidence ?? 0,
+        scouted: display.scouted,
+      } : undefined,
+    };
+  },
+
+  async getScoutablePlayers(
+    teamId?: number,
+    position?: string,
+  ): Promise<Array<{
+    playerId: number; name: string; position: string; age: number;
+    teamId: number; teamAbbr: string; isPitcher: boolean;
+    observedOverall: number; observedPotential: number;
+    scouted: boolean; confidence: number | null;
+  }>> {
+    const state = requireState();
+    return state.players
+      .filter(p => {
+        if (p.teamId === state.userTeamId) return false;
+        if (p.rosterData.rosterStatus === 'RETIRED') return false;
+        if (teamId !== undefined && p.teamId !== teamId) return false;
+        if (position !== undefined && p.position !== position) return false;
+        return true;
+      })
+      .map(p => {
+        const report = _scoutingReports.get(p.playerId);
+        const display = getDisplayGrades(p, false, report);
+        const team = _teamMap.get(p.teamId);
+        return {
+          playerId: p.playerId,
+          name: p.name,
+          position: p.position,
+          age: p.age,
+          teamId: p.teamId,
+          teamAbbr: team?.abbreviation ?? '---',
+          isPitcher: p.isPitcher,
+          observedOverall: display.overall,
+          observedPotential: display.potential,
+          scouted: display.scouted,
+          confidence: display.confidence,
+        };
+      });
+  },
+
   // ── Save / Load ────────────────────────────────────────────────────────────
   async getFullState(): Promise<LeagueState | null> {
     if (!_state) return null;
@@ -1725,6 +1910,12 @@ const api = {
     for (const [playerId, stats] of _playerSeasonStats) {
       playerSeasonStats[String(playerId)] = stats;
     }
+    // Serialize dev assignments
+    const devAssignments: Record<string, DevAssignment> = {};
+    for (const [pid, a] of _devAssignments) devAssignments[String(pid)] = a;
+    // Serialize scouting reports
+    const scoutingReports: Record<string, ScoutingReport> = {};
+    for (const [pid, r] of _scoutingReports) scoutingReports[String(pid)] = r;
     return {
       ..._state,
       careerHistory,
@@ -1739,6 +1930,8 @@ const api = {
       rotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
       seasonResults: _seasonResults.length > 0 ? _seasonResults : undefined,
       seasonSimState: _seasonSimState ?? undefined,
+      devAssignments: Object.keys(devAssignments).length > 0 ? devAssignments : undefined,
+      scoutingReports: Object.keys(scoutingReports).length > 0 ? scoutingReports : undefined,
     };
   },
 
@@ -1789,6 +1982,20 @@ const api = {
     _seasonResults = state.seasonResults ?? [];
     // Restore in-season state (mid-season save)
     _seasonSimState = state.seasonSimState ?? null;
+    // Restore dev assignments
+    _devAssignments = new Map();
+    if (state.devAssignments) {
+      for (const [key, a] of Object.entries(state.devAssignments)) {
+        _devAssignments.set(Number(key), a as DevAssignment);
+      }
+    }
+    // Restore scouting reports
+    _scoutingReports = new Map();
+    if (state.scoutingReports) {
+      for (const [key, r] of Object.entries(state.scoutingReports)) {
+        _scoutingReports.set(Number(key), r as ScoutingReport);
+      }
+    }
 
     _state = state;
 
@@ -2263,10 +2470,12 @@ const api = {
     }
 
     // ── Offseason development ──────────────────────────────────────────────
+    const devAssignmentsObj2: Record<number, DevAssignment> = {};
+    for (const [pid, a] of _devAssignments) devAssignmentsObj2[pid] = a;
     const offseasonResult = advanceOffseason(state.players, gen, {
       hitter: staffBonuses.hitterDevMultiplier,
       pitcher: staffBonuses.pitcherDevMultiplier,
-    });
+    }, devAssignmentsObj2);
     state.players = offseasonResult.players;
     gen = offseasonResult.gen;
 

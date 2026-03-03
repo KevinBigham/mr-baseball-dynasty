@@ -443,22 +443,53 @@ export default function PlayerProfile() {
   const [error, setError] = useState<string | null>(null);
   const [advStats, setAdvStats] = useState<Record<string, number> | null>(null);
 
+  const [scoutingInfo, setScoutingInfo] = useState<{ confidence: number; scouted: boolean } | null>(null);
+  const [scouting, setScouting] = useState(false);
+
   useEffect(() => {
     if (!selectedPlayerId || !gameStarted) return;
     setLoading(true);
     setError(null);
     setAdvStats(null);
+    setScoutingInfo(null);
     Promise.all([
-      getEngine().getPlayerProfile(selectedPlayerId),
+      getEngine().getScoutedPlayerProfile(selectedPlayerId),
       getEngine().getAdvancedStats(selectedPlayerId),
     ])
       .then(([profileData, adv]) => {
         setData(profileData);
+        if ((profileData as { scoutingInfo?: { confidence: number; scouted: boolean } }).scoutingInfo) {
+          setScoutingInfo((profileData as { scoutingInfo: { confidence: number; scouted: boolean } }).scoutingInfo);
+        }
         if (adv) setAdvStats(adv as unknown as Record<string, number>);
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
   }, [selectedPlayerId, gameStarted]);
+
+  const handleScout = useCallback(async () => {
+    if (!selectedPlayerId) return;
+    setScouting(true);
+    try {
+      const engine = getEngine();
+      const result = await engine.scoutPlayer(selectedPlayerId);
+      if (result.ok) {
+        // Re-fetch profile with updated scouting data
+        const profileData = await engine.getScoutedPlayerProfile(selectedPlayerId);
+        setData(profileData);
+        if ((profileData as { scoutingInfo?: { confidence: number; scouted: boolean } }).scoutingInfo) {
+          setScoutingInfo((profileData as { scoutingInfo: { confidence: number; scouted: boolean } }).scoutingInfo);
+        }
+        useUIStore.getState().addToast('Scouting report updated!', 'success');
+      } else {
+        useUIStore.getState().addToast((result as { error?: string }).error ?? 'Scouting failed', 'error');
+      }
+    } catch {
+      useUIStore.getState().addToast('Scouting failed', 'error');
+    } finally {
+      setScouting(false);
+    }
+  }, [selectedPlayerId]);
 
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
   if (!selectedPlayerId) return (
@@ -586,12 +617,37 @@ export default function PlayerProfile() {
         {isUserTeam && <TradeValueMeter value={player.tradeValue} />}
         {!isUserTeam && (
           <div className="bloomberg-border">
-            <div className="bloomberg-header">TEAM</div>
-            <div className="px-4 py-3">
-              <div className="text-orange-400 font-bold">{player.teamAbbr}</div>
-              <div className="text-gray-500 text-xs mt-1">
-                This player is not on your team
+            <div className="bloomberg-header">SCOUTING INTEL</div>
+            <div className="px-4 py-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-orange-400 font-bold text-xs">{player.teamAbbr}</span>
+                {scoutingInfo?.scouted ? (
+                  <span className="text-green-400 text-xs font-bold px-1.5 py-0.5 border border-green-700 bg-green-900/20">SCOUTED</span>
+                ) : (
+                  <span className="text-gray-500 text-xs font-bold px-1.5 py-0.5 border border-gray-700">UNSCOUTED</span>
+                )}
               </div>
+              {scoutingInfo && (
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-gray-500">CONFIDENCE</span>
+                    <span className="text-gray-400 tabular-nums">{Math.round(scoutingInfo.confidence * 100)}%</span>
+                  </div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all bg-green-500"
+                      style={{ width: `${scoutingInfo.confidence * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={handleScout}
+                disabled={scouting}
+                className="w-full text-xs font-bold py-1.5 border border-orange-700 text-orange-400 hover:bg-orange-900/20 transition-colors disabled:opacity-50"
+              >
+                {scouting ? 'SCOUTING...' : 'SCOUT THIS PLAYER'}
+              </button>
             </div>
           </div>
         )}
@@ -620,7 +676,14 @@ export default function PlayerProfile() {
       {/* ── Scouting grades + attribute bars ─────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bloomberg-border">
-          <div className="bloomberg-header">SCOUTING GRADES (20–80)</div>
+          <div className="bloomberg-header flex items-center gap-2">
+            <span>SCOUTING GRADES (20–80)</span>
+            {scoutingInfo && !isUserTeam && (
+              <span className={`text-xs font-normal ${scoutingInfo.scouted ? 'text-green-400' : 'text-gray-500'}`}>
+                {scoutingInfo.scouted ? `${Math.round(scoutingInfo.confidence * 100)}% CONF` : 'ESTIMATED'}
+              </span>
+            )}
+          </div>
           <div className="flex gap-2 flex-wrap p-3">
             {Object.entries(player.grades).map(([label, val]) => (
               <GradeBox key={label} label={label} value={val} />
