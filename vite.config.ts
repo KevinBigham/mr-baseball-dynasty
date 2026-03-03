@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  base: '/mr-baseball-dynasty/',
   plugins: [
     react(),
     VitePWA({
@@ -20,8 +21,8 @@ export default defineConfig({
         orientation: 'any',
         categories: ['games', 'sports'],
         icons: [
-          { src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
-          { src: '/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: 'icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+          { src: 'icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
     }),
