@@ -14,6 +14,11 @@ import { generateLeaguePlayers } from './player/generation';
 import { buildInitialTeams } from '../data/teams';
 import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTemplate';
 import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
+import {
+  createSeasonSimState, simulateChunk, buildPartialResult,
+  type SeasonSimState, type ChunkResult,
+  SEGMENTS, SEGMENT_COUNT,
+} from './sim/incrementalSimulator';
 import { pythagenpatWinPct } from './math/bayesian';
 import { toScoutingScale } from './player/attributes';
 import { advanceOffseason } from './player/development';
@@ -91,6 +96,10 @@ interface InternalDraftState {
 }
 
 let _draftState: InternalDraftState | null = null;
+
+// ─── In-season sim state (for chunked play) ──────────────────────────────
+
+let _seasonSimState: SeasonSimState | null = null;
 
 // ─── Lineup/Rotation order ───────────────────────────────────────────────
 
@@ -1719,6 +1728,7 @@ const api = {
       lineupOrder: _lineupOrder.length > 0 ? _lineupOrder : undefined,
       rotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
       seasonResults: _seasonResults.length > 0 ? _seasonResults : undefined,
+      seasonSimState: _seasonSimState ?? undefined,
     };
   },
 
@@ -1735,6 +1745,7 @@ const api = {
     _lineupOrder = [];
     _rotationOrder = [];
     _seasonResults = [];
+    _seasonSimState = null;
 
     // Restore career history from serialized state
     if (state.careerHistory) {
@@ -1766,6 +1777,8 @@ const api = {
     _rotationOrder = state.rotationOrder ?? [];
     // Restore season results
     _seasonResults = state.seasonResults ?? [];
+    // Restore in-season state (mid-season save)
+    _seasonSimState = state.seasonSimState ?? null;
 
     _state = state;
 
@@ -1782,6 +1795,255 @@ const api = {
       result[id] = p.name;
     }
     return result;
+  },
+
+  // ── Interactive Season Pacing — Chunked simulation ─────────────────────────
+
+  /**
+   * Initialize a new season for chunked (interactive) play.
+   * Performs all the same setup as simulateSeason() (roster guard, counter reset,
+   * lineup scrub) but does NOT sim any games. Returns segment metadata.
+   */
+  async startInSeason(): Promise<{
+    totalGames: number;
+    segmentCount: number;
+    segments: Array<{ index: number; label: string }>;
+  }> {
+    const state = requireState();
+    const gen = deserializeState(state.prngState);
+
+    // Same setup as simulateSeason() preamble
+    ensureMinimumRosters(state.players, state.teams);
+    _cachedLeagueAverages = null;
+    resetSeasonCounters(state.players);
+    _scrubLineupRotation();
+
+    // Reset team season records to zero for the new season
+    for (const t of state.teams) {
+      t.seasonRecord = { wins: 0, losses: 0, runsScored: 0, runsAllowed: 0 };
+    }
+
+    // Create the incremental sim state
+    _seasonSimState = createSeasonSimState(
+      state.teams,
+      state.schedule.length,
+      state.season,
+      Number(gen.next()[0]),
+    );
+
+    return {
+      totalGames: state.schedule.length,
+      segmentCount: SEGMENT_COUNT,
+      segments: SEGMENTS.map(s => ({ index: s.index, label: s.label })),
+    };
+  },
+
+  /**
+   * Simulate the next month's chunk of games.
+   * Returns the segment result with partial standings, user record, and next event.
+   */
+  async simNextChunk(onProgress?: (pct: number) => void): Promise<ChunkResult> {
+    const state = requireState();
+    if (!_seasonSimState) throw new Error('Call startInSeason() first');
+    if (_seasonSimState.isComplete) throw new Error('Season already complete');
+
+    const chunkResult = simulateChunk(
+      _seasonSimState,
+      state.teams,
+      state.players,
+      state.schedule,
+      {
+        userTeamId: state.userTeamId,
+        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
+        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      },
+      onProgress,
+    );
+
+    // Sync player season stats to worker-level cache (so getStandings/getRoster work)
+    _playerSeasonStats.clear();
+    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
+      _playerSeasonStats.set(Number(key), val);
+    }
+
+    return chunkResult;
+  },
+
+  /**
+   * Fast-forward: sim all remaining chunks, then finalize the season.
+   * Equivalent to calling simNextChunk() in a loop then finalizeSeason().
+   * Returns the full enriched SeasonResult.
+   */
+  async simRemainingChunks(onProgress?: (pct: number) => void): Promise<SeasonResult> {
+    const state = requireState();
+    if (!_seasonSimState) throw new Error('Call startInSeason() first');
+
+    // Sim all remaining chunks
+    while (!_seasonSimState.isComplete) {
+      simulateChunk(
+        _seasonSimState,
+        state.teams,
+        state.players,
+        state.schedule,
+        {
+          userTeamId: state.userTeamId,
+          userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
+          userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+        },
+        onProgress,
+      );
+    }
+
+    // Sync player stats
+    _playerSeasonStats.clear();
+    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
+      _playerSeasonStats.set(Number(key), val);
+    }
+
+    // Finalize
+    return this.finalizeSeason();
+  },
+
+  /**
+   * Finalize the season after all chunks complete.
+   * Runs post-sim processing: injuries, AI roster moves, awards, development,
+   * service time, franchise records, Hall of Fame, PRNG serialization.
+   */
+  async finalizeSeason(): Promise<SeasonResult> {
+    const state = requireState();
+    if (!_seasonSimState) throw new Error('No in-season state');
+
+    const partial = buildPartialResult(_seasonSimState, state.teams);
+
+    // Build the base SeasonResult from partial
+    const result: SeasonResult = {
+      season: partial.season,
+      teamSeasons: partial.teamSeasons,
+      playerSeasons: partial.playerSeasons,
+      boxScores: [],
+      leagueBA: partial.leagueBA,
+      leagueERA: partial.leagueERA,
+      leagueRPG: partial.leagueRPG,
+      teamWinsSD: partial.teamWinsSD,
+    };
+
+    // Accumulate career history
+    for (const ps of result.playerSeasons) {
+      const record = { ...ps, season: state.season };
+      const history = _careerHistory.get(ps.playerId) ?? [];
+      history.push(record);
+      _careerHistory.set(ps.playerId, history);
+    }
+
+    // ── Injuries ────────────────────────────────────────────────────────────
+    let gen = deserializeState(state.prngState);
+    // Advance gen past the seed used for startInSeason
+    [, gen] = gen.next();
+
+    const injurySeed = Number(gen.next()[0]);
+    [, gen] = gen.next();
+
+    for (const p of state.players) {
+      if (p.rosterData.currentInjury) {
+        p.rosterData.currentInjury = undefined;
+        if (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60') {
+          p.rosterData.rosterStatus = 'MLB_ACTIVE';
+        }
+      }
+    }
+
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+
+    const injuryEvents = processSeasonInjuries(
+      state.players, state.schedule.length, injurySeed, state.season,
+      staffBonuses.injuryRateMultiplier,
+      staffBonuses.recoverySpeedMultiplier,
+    );
+
+    // ── AI roster moves ────────────────────────────────────────────────────
+    const rosterMoveSeed = Math.abs(injurySeed * 3 + state.season * 17);
+    _lastAIRosterMoves = processAIRosterMoves(
+      state.players, state.teams, state.userTeamId, rosterMoveSeed,
+    );
+
+    // ── Cache league averages ────────────────────────────────────────────
+    const allSeasonStats = Array.from(_playerSeasonStats.values());
+    _cachedLeagueAverages = computeLeagueAverages(allSeasonStats);
+
+    // ── Awards ──────────────────────────────────────────────────────────────
+    const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
+    const divisionChampions = computeDivisionChampions(state.teams);
+
+    // ── Service time ────────────────────────────────────────────────────────
+    for (let d = 0; d < 172; d++) {
+      advanceServiceTime(state.players, d);
+    }
+
+    // ── Offseason development ──────────────────────────────────────────────
+    const offseasonResult = advanceOffseason(state.players, gen, {
+      hitter: staffBonuses.hitterDevMultiplier,
+      pitcher: staffBonuses.pitcherDevMultiplier,
+    });
+    state.players = offseasonResult.players;
+    gen = offseasonResult.gen;
+
+    // ── Retired players ────────────────────────────────────────────────────
+    const retiredEvents = (offseasonResult.events ?? []).filter(e => e.type === 'retirement');
+    for (const evt of retiredEvents) {
+      const career = _careerHistory.get(evt.playerId);
+      if (career && career.length > 0) {
+        const player = _playerMap.get(evt.playerId);
+        _retiredCareerHistory.set(evt.playerId, {
+          name: evt.playerName,
+          position: player?.position ?? 'UT',
+          seasons: career,
+          retiredSeason: state.season,
+        });
+      }
+    }
+
+    rebuildMaps();
+
+    // ── Franchise records ──────────────────────────────────────────────────
+    const userTeamRecord = result.teamSeasons.find(ts => ts.teamId === state.userTeamId);
+    if (userTeamRecord) {
+      const recBook = _franchiseRecords ?? emptyRecordBook();
+      const recResult = updateFranchiseRecords(
+        recBook, _playerSeasonStats, _careerHistory, _playerMap,
+        { wins: userTeamRecord.record.wins, losses: userTeamRecord.record.losses },
+        state.season, state.userTeamId,
+      );
+      _franchiseRecords = recResult.records;
+    }
+
+    // ── Hall of Fame ────────────────────────────────────────────────────────
+    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
+    const hofCandidates = identifyHOFCandidates(_retiredCareerHistory, state.season, existingInducteeIds);
+    if (hofCandidates.length > 0) {
+      const hofSeed = state.season * 31337;
+      const votingResult = simulateHOFVoting(hofCandidates, hofSeed);
+      _hallOfFame.push(...votingResult.inducted);
+    }
+
+    state.prngState = serializeState(gen);
+    _seasonResults.push(result);
+    state.season++;
+
+    // Clear in-season state (season is done)
+    _seasonSimState = null;
+
+    return {
+      ...result,
+      awards,
+      divisionChampions,
+      developmentEvents: offseasonResult.events,
+      injuryEvents,
+    };
+  },
+
+  /** Get current in-season state (for UI display during pauses). */
+  async getInSeasonState(): Promise<SeasonSimState | null> {
+    return _seasonSimState;
   },
 
   async ping(): Promise<string> {

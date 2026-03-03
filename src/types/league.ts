@@ -49,6 +49,7 @@ export interface LeagueState {
   lineupOrder?: number[];
   rotationOrder?: number[];
   seasonResults?: SeasonResult[];
+  seasonSimState?: import('../engine/sim/incrementalSimulator').SeasonSimState;
 }
 
 export interface SeasonResult {

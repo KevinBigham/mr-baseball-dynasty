@@ -8,7 +8,7 @@ import type { SeasonResult } from '../../types/league';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
-function blankPlayerSeason(playerId: number, teamId: number, season: number): PlayerSeasonStats {
+export function blankPlayerSeason(playerId: number, teamId: number, season: number): PlayerSeasonStats {
   return {
     playerId,
     teamId,
@@ -23,7 +23,7 @@ function blankPlayerSeason(playerId: number, teamId: number, season: number): Pl
   };
 }
 
-function getOrCreate(
+export function getOrCreate(
   map: Map<number, PlayerSeasonStats>,
   playerId: number,
   teamId: number,
@@ -37,7 +37,7 @@ function getOrCreate(
 
 // ─── Season accumulation helpers ──────────────────────────────────────────────
 
-function accumulateBatting(
+export function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
   playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
     doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number }>,
@@ -61,7 +61,7 @@ function accumulateBatting(
   }
 }
 
-function accumulatePitching(
+export function accumulatePitching(
   statsMap: Map<number, PlayerSeasonStats>,
   pitcherGameStats: PitcherGameStats[],
   playerTeamMap: Map<number, number>,
@@ -96,7 +96,7 @@ function accumulatePitching(
 
 // ─── Standard deviation helper ────────────────────────────────────────────────
 
-function stddev(values: number[]): number {
+export function stddev(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;

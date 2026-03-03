@@ -11,6 +11,7 @@ import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import { useSeasonSimulation } from '../../hooks/useSeasonSimulation';
 import { useOffseasonFlow } from '../../hooks/useOffseasonFlow';
+import { useInSeasonFlow } from '../../hooks/useInSeasonFlow';
 import { getOwnerArchetype } from '../../engine/narrative';
 import { generatePreseasonPredictions } from '../../engine/predictions';
 import { detectArcType } from '../../engine/storyboard';
@@ -32,6 +33,7 @@ import LoadingFallback from '../layout/LoadingFallback';
 import AllStarBreak from './AllStarBreak';
 import MidSeasonCheckIn from './MidSeasonCheckIn';
 import TradeDeadline from './TradeDeadline';
+import InSeasonDashboard from './InSeasonDashboard';
 import TutorialOverlay from '../tutorial/TutorialOverlay';
 import { shouldAutoStartTutorial } from '../../engine/tutorial';
 
@@ -60,6 +62,7 @@ export default function Dashboard() {
 
   const sim = useSeasonSimulation();
   const offseason = useOffseasonFlow(sim.clearSimState);
+  const inSeason = useInSeasonFlow();
 
   // Fetch player name map for AllStarBreak display
   const [playerNames, setPlayerNames] = useState<Record<number, string>>({});
@@ -158,15 +161,28 @@ export default function Dashboard() {
             <div className="text-red-400 text-xs">Patience: {ownerPatience}%</div>
           </div>
         )}
-        <button
-          onClick={sim.simulateSeason}
-          disabled={isSimulating}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 disabled:text-gray-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
-        >
-          {isSimulating ? 'SIMULATING…' : `⚾ SIM ${season} SEASON`}
-        </button>
+        {/* Preseason: dual buttons — Play Season (interactive) and Sim Entire Season (instant) */}
+        {gamePhase === 'preseason' && (
+          <>
+            <button
+              onClick={inSeason.startSeason}
+              disabled={isSimulating}
+              className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-700 disabled:text-gray-500 text-black font-bold text-xs px-6 py-2 uppercase tracking-widest transition-colors"
+            >
+              {isSimulating ? 'SIMULATING…' : `PLAY ${season} SEASON`}
+            </button>
+            <button
+              onClick={sim.simulateSeason}
+              disabled={isSimulating}
+              className="border border-orange-800 hover:border-orange-500 text-orange-700 hover:text-orange-400 text-xs px-4 py-2 uppercase tracking-wider transition-colors"
+            >
+              SIM ENTIRE SEASON
+            </button>
+          </>
+        )}
 
-        {isSimulating && (
+        {/* During full-season sim: show progress text */}
+        {gamePhase !== 'in_season' && isSimulating && (
           <div className="text-gray-500 text-xs italic px-2 animate-pulse min-w-[180px]">
             {simProgress < 0.10 ? 'Spring Training — camp battles underway...' :
              simProgress < 0.25 ? 'April — Opening Day, a new season begins.' :
@@ -201,7 +217,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Quick Actions ─────────────────────────────────────────── */}
-      {!isSimulating && (
+      {!isSimulating && gamePhase !== 'in_season' && (
         <div className="flex gap-2 flex-wrap">
           {(gamePhase === 'preseason' ? [
             { label: 'VIEW ROSTER', tab: 'roster' as const },
@@ -234,6 +250,11 @@ export default function Dashboard() {
         <OwnerPatiencePanel />
         <MoralePanel />
       </div>
+
+      {/* ── In-Season Dashboard (interactive pacing) ─────────────── */}
+      {gamePhase === 'in_season' && (
+        <InSeasonDashboard flow={inSeason} />
+      )}
 
       {/* ── Phase-specific content (lazy-loaded) ─────────────────── */}
       <Suspense fallback={<LoadingFallback />}>
