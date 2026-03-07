@@ -35,6 +35,9 @@ import MidSeasonCheckIn from './MidSeasonCheckIn';
 import TradeDeadline from './TradeDeadline';
 import InSeasonDashboard from './InSeasonDashboard';
 import TutorialOverlay from '../tutorial/TutorialOverlay';
+import FrontOfficeBriefing from '../home/FrontOfficeBriefing';
+import EndOfDayDigest from '../home/EndOfDayDigest';
+import FirstWeekCoach from '../setup/FirstWeekCoach';
 import { shouldAutoStartTutorial } from '../../engine/tutorial';
 
 const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
@@ -110,6 +113,12 @@ export default function Dashboard() {
         enabled={tutorialActive}
         onDisable={() => setTutorialActive(false)}
       />
+
+      {/* ── Front Office Briefing (cadence spine) ──────────────────── */}
+      <FrontOfficeBriefing />
+
+      {/* ── First-Week Onboarding Coach ─────────────────────────────── */}
+      <FirstWeekCoach />
 
       {/* ── Press Conference modal ─────────────────────────────────── */}
       {showPresser && sim.pressCtx && (
@@ -332,6 +341,9 @@ export default function Dashboard() {
       {mfsnReport && mfsnReport.resolved && (
         <MFSNPanel report={mfsnReport} userTeamId={userTeamId} />
       )}
+
+      {/* ── End-of-Day Digest ──────────────────────────────────────── */}
+      <EndOfDayDigest />
 
       {/* ── Always-visible panels ────────────────────────────────── */}
       <RivalryPanel />
