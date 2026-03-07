@@ -101,11 +101,12 @@ export function useSeasonSimulation() {
       setSeason(result.season + 1);
       setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
 
-      const [standings, hrLeaders, bracket, awardRace] = await Promise.all([
+      const [standings, hrLeaders, bracket, awardRace, staffBonuses] = await Promise.all([
         engine.getStandings(),
         engine.getLeaderboard('hr', 10),
         engine.simulatePlayoffs(),
         engine.getAwardRace(),
+        engine.getStaffBonuses(),
       ]);
       setStandings(standings);
       setLeaderboard(hrLeaders);
@@ -143,7 +144,7 @@ export function useSeasonSimulation() {
         const retirements = (result.developmentEvents ?? []).filter(e => e.type === 'retirement').length;
         const breakouts   = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
         const busts       = (result.developmentEvents ?? []).filter(e => e.type === 'bust').length;
-        adjustTeamMorale(calcMoraleDelta(userWins, isPlayoff, isChampion, breakouts, retirements, busts));
+        adjustTeamMorale(calcMoraleDelta(userWins, isPlayoff, isChampion, breakouts, retirements, busts) + staffBonuses.moraleBonus);
       }
 
       // Resolve breakout watch

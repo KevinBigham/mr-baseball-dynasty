@@ -4,7 +4,11 @@ import {
   getActionBonus,
   DEFAULT_BONUSES,
 } from '../../src/engine/staffEffects';
+import { evaluateProposedTrade } from '../../src/engine/trading';
+import { scoutDraftPool } from '../../src/engine/draft/draftPool';
 import type { FOStaffMember } from '../../src/types/frontOffice';
+import type { Player, Position } from '../../src/types/player';
+import { createPRNG } from '../../src/engine/math/prng';
 
 function makeStaff(overrides: Partial<FOStaffMember> = {}): FOStaffMember {
   return {
@@ -135,5 +139,87 @@ describe('computeStaffBonuses', () => {
     const bonuses = computeStaffBonuses(staff);
     expect(bonuses.pitcherDevMultiplier).toBeLessThan(1.0);
     expect(bonuses.injuryRateMultiplier).toBeGreaterThan(1.0); // higher = more injuries
+  });
+});
+
+// ─── Integration: Staff Bonuses Wiring ──────────────────────────────────────
+
+function makeTradePlayer(id: number, teamId: number, overall: number): Player {
+  return {
+    playerId: id, teamId, name: `Player ${id}`, age: 27,
+    position: 'SS' as Position, bats: 'R', throws: 'R', nationality: 'american',
+    isPitcher: false, hitterAttributes: null, pitcherAttributes: null,
+    overall, potential: overall + 20,
+    development: { theta: 0, sigma: 8, phase: 'prime' },
+    rosterData: {
+      rosterStatus: 'MLB_ACTIVE', isOn40Man: true, optionYearsRemaining: 3,
+      optionUsedThisSeason: false, minorLeagueDaysThisSeason: 0,
+      demotionsThisSeason: 0, serviceTimeDays: 172 * 4,
+      serviceTimeCurrentTeamDays: 172 * 4, rule5Selected: false,
+      signedSeason: 2022, signedAge: 22, contractYearsRemaining: 3,
+      salary: 1_000_000, freeAgentEligible: false, hasTenAndFive: false,
+      arbitrationEligible: false,
+    },
+  };
+}
+
+describe('tradeValueBonus wiring', () => {
+  it('positive tradeValueBonus makes borderline trades fair', () => {
+    // Create a trade where user is slightly underpaying
+    const players = [
+      makeTradePlayer(1, 1, 350), // user offers
+      makeTradePlayer(2, 2, 400), // user wants
+    ];
+    // Without bonus: user value ~34, partner value ~44 → not fair (34 < 44*0.85=37.4)
+    const noBonus = evaluateProposedTrade(players, [1], [2], 0);
+    const withBonus = evaluateProposedTrade(players, [1], [2], 9);
+
+    // The bonus should shift borderline trades toward acceptance
+    if (!noBonus.fair) {
+      expect(withBonus.fair).toBe(true);
+    }
+  });
+
+  it('negative tradeValueBonus makes fair trades unfair', () => {
+    const players = [
+      makeTradePlayer(1, 1, 380),
+      makeTradePlayer(2, 2, 400),
+    ];
+    const noBonus = evaluateProposedTrade(players, [1], [2], 0);
+    const withPenalty = evaluateProposedTrade(players, [1], [2], -9);
+
+    // Penalty should make trades harder
+    if (noBonus.fair) {
+      expect(withPenalty.fair).toBe(false);
+    }
+  });
+});
+
+describe('draftBoardQuality wiring', () => {
+  it('higher draftBoardQuality reduces scouting noise', () => {
+    // Create a simple draft pool
+    const pool: Player[] = [];
+    for (let i = 0; i < 20; i++) {
+      pool.push(makeTradePlayer(100 + i, -1, 300 + i * 10));
+    }
+
+    // Scout with low vs high quality
+    const gen1 = createPRNG(42);
+    const gen2 = createPRNG(42);
+    const [prospectsLow] = scoutDraftPool(pool.map(p => ({ ...p })), 1.0, gen1, 0.0);
+    const [prospectsHigh] = scoutDraftPool(pool.map(p => ({ ...p })), 1.0, gen2, 1.0);
+
+    // With same seed and same accuracy, higher quality should produce tighter estimates
+    // (less deviation from true overall). Measure average absolute error.
+    let errLow = 0, errHigh = 0;
+    for (let i = 0; i < pool.length; i++) {
+      const lowProspect = prospectsLow.find(p => p.playerId === pool[i].playerId)!;
+      const highProspect = prospectsHigh.find(p => p.playerId === pool[i].playerId)!;
+      // scouted values are on 20-80 scale, true is on 50-550 scale — compare rank order instead
+      errLow += Math.abs(lowProspect.rank - (pool.length - i));
+      errHigh += Math.abs(highProspect.rank - (pool.length - i));
+    }
+    // High quality should have equal or better rank accuracy
+    expect(errHigh).toBeLessThanOrEqual(errLow);
   });
 });

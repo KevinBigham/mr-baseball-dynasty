@@ -68,13 +68,17 @@ export function recoverOrphanedDraftPlayers(players: Player[]): number {
 /**
  * Create scouted prospect views with fog-of-war noise.
  * scoutingAccuracy from StaffBonuses: 0.5 (bad) to 1.5 (great), default 1.0.
+ * draftBoardQuality (0-1): further reduces noise (0.5 = default, 1.0 = best).
  */
 export function scoutDraftPool(
   pool: Player[],
   scoutingAccuracy: number,
   gen: RandomGenerator,
+  draftBoardQuality = 0.5,
 ): [DraftProspect[], RandomGenerator] {
-  const noiseSigma = Math.max(10, 45 - scoutingAccuracy * 20);
+  // draftBoardQuality 0→1.0x, 0.5→0.9x, 1.0→0.8x noise reduction
+  const qualityFactor = 1.0 - draftBoardQuality * 0.2;
+  const noiseSigma = Math.max(8, (45 - scoutingAccuracy * 20) * qualityFactor);
   const prospects: DraftProspect[] = [];
 
   for (const p of pool) {

@@ -729,11 +729,18 @@ const api = {
       .sort((a, b) => b.overall - a.overall)
       .slice(0, limit);
 
+    // Apply FA discount from negotiator/GM staff
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+    const faDiscount = 1 - staffBonuses.freeAgencyDiscount; // e.g. 0.85 = 15% off
+
     return fas.map(p => {
       const rp = playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
+      const baseSalary = projectSalary(p);
+      // Round discounted salary to nearest 100K
+      const discountedSalary = Math.round((baseSalary * faDiscount) / 100_000) * 100_000;
       return {
         ...rp,
-        projectedSalary: projectSalary(p),
+        projectedSalary: Math.max(500_000, discountedSalary),
         projectedYears:  projectYears(p),
       };
     });
@@ -840,7 +847,8 @@ const api = {
     partnerPlayerIds: number[],
   ): Promise<TradeResult & { fair?: boolean }> {
     const state = requireState();
-    const evaluation = evaluateProposedTrade(state.players, userPlayerIds, partnerPlayerIds);
+    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+    const evaluation = evaluateProposedTrade(state.players, userPlayerIds, partnerPlayerIds, staffBonuses.tradeValueBonus);
     if (!evaluation.fair) {
       return { ok: false, error: 'Trade rejected — the other team wants more value in return.' };
     }
@@ -1206,7 +1214,7 @@ const api = {
     // Apply scouting fog using staff bonuses
     const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
     let prospects: DraftProspect[];
-    [prospects, gen] = scoutDraftPool(pool, staffBonuses.scoutingAccuracy, gen);
+    [prospects, gen] = scoutDraftPool(pool, staffBonuses.scoutingAccuracy, gen, staffBonuses.draftBoardQuality);
 
     // Generate draft order
     let draftOrder: number[];
@@ -1323,7 +1331,7 @@ const api = {
     // Scout the class with scouting accuracy from staff
     const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
     let prospects: DraftProspect[];
-    [prospects, gen] = scoutDraftPool(annualClass, staffBonuses.scoutingAccuracy, gen);
+    [prospects, gen] = scoutDraftPool(annualClass, staffBonuses.scoutingAccuracy, gen, staffBonuses.draftBoardQuality);
 
     // Draft order: inverse of standings (worst team picks first)
     const standings = state.teams
