@@ -1,0 +1,28 @@
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import type { FeatureLoaderKey } from './featureTypes.ts';
+
+type FeatureLoader = () => Promise<{ default: ComponentType }>;
+
+const FEATURE_LOADERS: Record<FeatureLoaderKey, FeatureLoader> = {
+  dashboard: () => import('../components/dashboard/Dashboard.tsx').then((mod) => ({ default: mod.Dashboard })),
+  standings: () => import('../components/dashboard/StandingsTable.tsx').then((mod) => ({ default: mod.StandingsTable })),
+  roster: () => import('../components/roster/RosterView.tsx').then((mod) => ({ default: mod.RosterView })),
+  leaderboards: () => import('../components/stats/Leaderboards.tsx').then((mod) => ({ default: mod.Leaderboards })),
+  player: () => import('../components/stats/PlayerProfile.tsx').then((mod) => ({ default: mod.PlayerProfile })),
+  playoffs: () => import('../components/playoffs/PlayoffBracketView.tsx').then((mod) => ({ default: mod.PlayoffBracketView })),
+  awards: () => import('../components/awards/AwardsView.tsx').then((mod) => ({ default: mod.AwardsView })),
+  history: () => import('../components/history/HistoryView.tsx').then((mod) => ({ default: mod.HistoryView })),
+  news: () => import('../components/news/NewsFeedView.tsx').then((mod) => ({ default: mod.NewsFeedView })),
+};
+
+const lazyCache = new Map<FeatureLoaderKey, LazyExoticComponent<ComponentType>>();
+
+export function getLazyFeatureComponent(loaderKey: FeatureLoaderKey): LazyExoticComponent<ComponentType> {
+  const cached = lazyCache.get(loaderKey);
+  if (cached) return cached;
+
+  const loader = FEATURE_LOADERS[loaderKey];
+  const lazyComponent = lazy(loader);
+  lazyCache.set(loaderKey, lazyComponent);
+  return lazyComponent;
+}
