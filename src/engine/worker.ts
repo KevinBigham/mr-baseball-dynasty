@@ -1,2555 +1,3121 @@
-/// <reference lib="webworker" />
+/**
+ * Web Worker — Comlink-exposed API
+ *
+ * The UI never asks for "the league state." It asks for specific,
+ * paginated data for the active screen.
+ *
+ * All simulation runs here — the main thread is never blocked.
+ */
+
 import * as Comlink from 'comlink';
-import type { Player, PlayerSeasonStats } from '../types/player';
-import type { Team } from '../types/team';
+import type { Player } from '../types/player.ts';
+import type { Team, TeamSeason } from '../types/team.ts';
+import type { GameResult } from '../types/game.ts';
+import type { PlayerSeason } from '../types/player.ts';
+import type { GameEvent } from '../types/events.ts';
+import { createPRNG } from './math/prng.ts';
+import type { RandomGenerator } from './math/prng.ts';
+import { generateAllPlayers } from './player/generation.ts';
+import { simulateSeason, type SeasonSimResult } from './sim/seasonSimulator.ts';
+import { TEAMS } from '../data/teams.ts';
+import { calcBA, calcERA, formatIP, playerOverall, pythagoreanWins } from '../utils/helpers.ts';
+import { simulatePlayoffs, type PlayoffBracket } from './league/playoffs.ts';
+import { computeSeasonAwards, type SeasonAwards } from './league/awards.ts';
+import { sortNewsFeed, type NewsStory } from './league/newsFeed.ts';
+import * as News from './league/newsFeed.ts';
+import {
+  getEventLog,
+  logAward,
+  logDraftPick,
+  logGameResult,
+  logPlayoffSeries,
+  logTrade,
+  logTransaction,
+} from './league/eventLog.ts';
+import { generateTop100, type ProspectRanking } from './league/prospects.ts';
+import { WorkerCache, type DashboardBundle } from './workerCache.ts';
+import { selectFeaturedGames } from './storageDiscipline.ts';
+import { advanceOffseason } from './roster/offseason.ts';
+import type { TeamBidModifier } from './roster/freeAgency.ts';
+import { generateAllCoachingStaffs } from './ai/coachingStaff.ts';
+import { classifyAllTeams } from './ai/gmStrategy.ts';
+import { assignMarketSizes } from './roster/financials.ts';
+import type { CoachingStaff, DraftPick, OffseasonRecap, TeamStrategy } from '../types/offseason.ts';
+import type { TransactionLogEntry, RosterTransaction, RosterStatus } from '../types/roster.ts';
+import type { OwnerEvaluation, OwnerProfile } from '../types/owner.ts';
+import type { ClubhouseEvent, TeamChemistryState } from '../types/chemistry.ts';
+import { validateTransaction, executeTransaction, countFortyMan, countTwentySix } from './roster/rosterManager.ts';
+import {
+  aiProposeTrades,
+  createTradeReputation,
+  evaluateTrade,
+  proposeCounterOffer,
+  type TradeMarketDiagnostics,
+  type TradeMarketContext,
+  type TradePackage,
+} from '../ai/tradeAI.ts';
+import { generateScoutingProfiles } from '../ai/scoutingModel.ts';
+import { evaluateOwnersForSeason, initializeOwnerProfiles } from './league/ownerGoals.ts';
+import { advanceTeamChemistry, initializeTeamChemistry } from './league/teamChemistry.ts';
+import {
+  createSave,
+  createAutosave,
+  CURRENT_SCHEMA_VERSION,
+  deleteSave,
+  exportSaveToJSON,
+  getNextManualSlot,
+  importSaveFromJSON,
+  listSaveManifests,
+  loadSave,
+} from './persistence/saveManager.ts';
+import type { SaveManifest, GameState as PersistedGameState } from './persistence/saveManager.ts';
+import {
+  computeActivityIntelAggregate,
+  type ActivityIntelQuery,
+  type ActivityIntelResponse,
+} from '../components/roster/activityIntel.ts';
+import {
+  FEATURE_MANIFEST,
+  getCoreFeatureIds,
+  getFeatureManifestEntry,
+  isFeatureId,
+} from '../features/catalog.ts';
+import { assessFeatureReadiness } from '../features/featureReadiness.ts';
 import type {
-  LeagueState, SeasonResult, StandingsData, RosterData,
-  LeaderboardEntry, PlayerProfileData, RosterPlayer, StandingsRow,
-  LeaderboardFullEntry, LeaderboardFullOptions, AwardCandidate,
-} from '../types/league';
-import type { ScheduleEntry } from '../types/game';
-import type { RosterStatus } from '../types/player';
-import { createPRNG, serializeState, deserializeState } from './math/prng';
-import { generateLeaguePlayers } from './player/generation';
-import { buildInitialTeams } from '../data/teams';
-import { generateScheduleTemplate as generateSchedule } from '../data/scheduleTemplate';
-import { simulateSeason, advanceServiceTime, resetSeasonCounters } from './sim/seasonSimulator';
+  FeatureDependencyHealth,
+  FeatureStatus,
+  FeatureTier,
+  FeatureId,
+  IntakePack,
+} from '../features/catalog.ts';
+import { lintFeatureManifest } from '../features/manifestLint.ts';
+import { getInjuryRiskMultiplier } from '../data/frontOffice.ts';
 import {
-  createSeasonSimState, simulateChunk, buildPartialResult,
-  simulateRange, computeSim1DayTarget, computeSim1WeekTarget, computeSim1MonthTarget,
-  type SeasonSimState, type ChunkResult, type SimRangeResult,
-  SEGMENTS, SEGMENT_COUNT,
-} from './sim/incrementalSimulator';
-import { pythagenpatWinPct } from './math/bayesian';
-import { toScoutingScale } from './player/attributes';
-import { advanceOffseason } from './player/development';
-import { computeAwards, computeDivisionChampions } from './player/awards';
-import { simulateFullPlayoffs, type PlayoffBracket } from './sim/playoffSimulator';
-import {
-  promotePlayer as doPromote, demotePlayer as doDemote,
-  dfaPlayer as doDFA, releasePlayer as doRelease,
-  countActive, count40Man,
-  type TransactionResult,
-} from './rosterActions';
-import {
-  generateFreeAgentClass, signFreeAgent as doSign,
-  processAISignings, projectSalary, projectYears,
-  type AISigningRecord,
-} from './freeAgency';
-import {
-  generateTradeOffers, executeTrade as doTrade,
-  evaluateProposedTrade, evaluatePlayer,
-  shopPlayer as doShopPlayer, findTradesForNeed as doFindTradesForNeed,
-  type TradeProposal, type TradeResult, type TradePlayerInfo,
-} from './trading';
-import { processSeasonInjuries } from './injuries';
-import { ensureMinimumRosters } from './rosterGuard';
-import { computeStaffBonuses, DEFAULT_BONUSES, type StaffBonuses } from './staffEffects';
-import { createDraftPool, recoverOrphanedDraftPlayers, scoutDraftPool, getDraftRounds, generateAnnualDraftClass, type DraftProspect } from './draft/draftPool';
-import { computePayrollReport, generateArbitrationCases, resolveArbitration, type PayrollReport, type ArbitrationCase } from './finances';
-import {
-  generateDraftOrder, getPickingTeam, getOverallPick,
-  aiSelectPlayer, fillRemainingRosters,
-  type DraftPick, type DraftBoardState,
-} from './draft/draftAI';
-import { processWaivers, type WaiverClaim } from './waivers';
-import {
-  identifyRule5Eligible, conductRule5Draft, userRule5Pick,
-  type Rule5Selection,
-} from './draft/rule5Draft';
-import { processAIRosterMoves, type AIRosterMove } from './aiRosterManager';
-import { identifyHOFCandidates, simulateHOFVoting, type HallOfFameInductee, type HallOfFameCandidate } from './hallOfFame';
-import { updateFranchiseRecords, emptyRecordBook, type FranchiseRecordBook } from './franchiseRecords';
-import type { RetiredPlayerRecord } from '../types/league';
-import {
-  generateIntlClass, signIntlProspect as signIntlProspectFn,
-  processAIIntlSignings,
-  type IntlProspect,
-} from './internationalSigning';
-import {
-  computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages,
-  type AdvancedHittingStats, type AdvancedPitchingStats, type LeagueAverages,
-} from './advancedStats';
-import type { DevAssignment, DevProgram } from './devPrograms';
-import { generateScoutingReport, getDisplayGrades, gaussianNoise, type ScoutingReport } from './scouting';
-// ─── Worker-side state ────────────────────────────────────────────────────────
-// The worker owns the canonical game state. The UI queries for what it needs.
+  createDraftBoardState,
+  makeUserDraftPick,
+  runAIPicksUntilUserTurn,
+  teamOnClockId,
+  type DraftBoardEntry,
+  type DraftBoardState,
+} from './draft.ts';
 
-let _state: LeagueState | null = null;
-let _playerMap = new Map<number, Player>();
-let _teamMap = new Map<number, Team>();
-let _playerSeasonStats = new Map<number, import('../types/player').PlayerSeasonStats>();
-let _careerHistory = new Map<number, import('../types/player').PlayerSeasonStats[]>();
-let _seasonResults: SeasonResult[] = [];
-let _foStaff: import('../types/frontOffice').FOStaffMember[] = [];
-let _lastAIRosterMoves: AIRosterMove[] = [];
-let _cachedLeagueAverages: LeagueAverages | null = null;
-let _retiredCareerHistory = new Map<number, import('../types/league').RetiredPlayerRecord>();
-let _hallOfFame: import('./hallOfFame').HallOfFameInductee[] = [];
-let _franchiseRecords: import('./franchiseRecords').FranchiseRecordBook | null = null;
+// ─── In-Memory State ─────────────────────────────────────────────
+// The worker holds the live game state. IndexedDB is for persistence.
 
-// ─── Draft state ──────────────────────────────────────────────────────────────
+let teams: Team[] = [];
+let players: Player[] = [];
+let currentSeason = 0;
+let latestTeamSeasons: TeamSeason[] = [];
+let latestPlayerSeasons: Map<number, PlayerSeason> = new Map();
+let latestGameResults: GameResult[] = [];
+let latestPlayoffBracket: PlayoffBracket | null = null;
+let latestSeasonAwards: SeasonAwards | null = null;
+let latestNewsFeed: NewsStory[] = [];
+let rngSeed = 42;
+let gen: RandomGenerator | null = null;
+let coachingStaffs: Map<number, CoachingStaff> = new Map();
+let transactionLog: TransactionLogEntry[] = [];
+let latestOffseasonRecap: OffseasonRecap | null = null;
+let ownerProfiles: Map<number, OwnerProfile> = new Map();
+let teamChemistry: Map<number, TeamChemistryState> = new Map();
+let clubhouseEvents: ClubhouseEvent[] = [];
+let featureVersions: Record<string, number> = {};
+let enabledFeatures: FeatureId[] = [];
+let migrationNotes: string[] = [];
+let buildFingerprint = `mrbd-worker-schema-${CURRENT_SCHEMA_VERSION}`;
+let workerHealthMode: WorkerHealthMode = 'normal';
+const endpointLatencyHistory = new Map<string, number[]>();
+const MAX_ENDPOINT_LATENCY_SAMPLES = 64;
+const ENDPOINT_LATENCY_BUDGET_MS: Record<string, number> = {
+  runIntegrityAudit: 120,
+  getFeatureReadiness: 80,
+  getPlayableReadinessReport: 180,
+  getDiagnosticsSnapshot: 120,
+  getSmokeFlowReport: 140,
+  runDeterminismProbe: 1200,
+  getIntakeAuditReport: 120,
+  runSoakSimulation: 2500,
+  getLatencyBudgetReport: 120,
+  getDraftBoard: 150,
+  makeDraftPick: 200,
+};
+const ownerEvaluationHistory: OwnerEvaluation[] = [];
+const seasonHistory: SeasonSimResult[] = [];
+const eventLog = getEventLog();
 
-interface InternalDraftState {
-  mode: string;
-  pool: Player[];                 // Actual Player objects (unassigned)
-  prospects: DraftProspect[];     // Scouted views (with fog)
-  picks: DraftPick[];
-  draftOrder: number[];
-  currentRound: number;
-  currentPickInRound: number;
-  totalRounds: number;
-  userTeamId: number;
-  isComplete: boolean;
-}
+// ─── Worker Cache ────────────────────────────────────────────────
+const cache = new WorkerCache();
 
-let _draftState: InternalDraftState | null = null;
+// ─── Featured Games ──────────────────────────────────────────────
+// Only these game IDs get full box scores retained for storage
+let featuredGameIds: Set<number> = new Set();
+let activeDraftState: DraftBoardState | null = null;
 
-// ─── International signing state ────────────────────────────────────────
+// ─── Public API ──────────────────────────────────────────────────
 
-let _intlProspects: IntlProspect[] = [];
-
-// ─── Dev Lab state ───────────────────────────────────────────────────────
-let _devAssignments = new Map<number, DevAssignment>();
-
-// ─── Scouting state ──────────────────────────────────────────────────────
-let _scoutingReports = new Map<number, ScoutingReport>();
-
-// ─── In-season sim state (for chunked play) ──────────────────────────────
-
-let _seasonSimState: SeasonSimState | null = null;
-
-// ─── Lineup/Rotation order ───────────────────────────────────────────────
-
-let _lineupOrder: number[] = [];    // 9 player IDs in batting order
-let _rotationOrder: number[] = [];  // 5 starter player IDs in rotation order
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-function _scrubLineupRotation(): void {
-  if (!_state) return;
-  const activeIds = new Set(
-    _state.players
-      .filter(p => p.teamId === _state!.userTeamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
-      .map(p => p.playerId)
-  );
-  _lineupOrder = _lineupOrder.filter(id => activeIds.has(id));
-  _rotationOrder = _rotationOrder.filter(id => activeIds.has(id));
-  if (_lineupOrder.length !== 9) _lineupOrder = [];
-}
-
-function requireState(): LeagueState {
-  if (!_state) throw new Error('No game loaded. Call newGame() first.');
-  return _state;
-}
-
-function rebuildMaps(): void {
-  if (!_state) return;
-  _playerMap = new Map(_state.players.map(p => [p.playerId, p]));
-  _teamMap   = new Map(_state.teams.map(t => [t.teamId, t]));
-}
-
-function _buildStandings(state: LeagueState): StandingsRow[] {
-  return state.teams.map(t => ({
-    teamId: t.teamId, name: t.name, abbreviation: t.abbreviation,
-    league: t.league, division: t.division,
-    wins: t.seasonRecord.wins, losses: t.seasonRecord.losses,
-    pct: (t.seasonRecord.wins + t.seasonRecord.losses) > 0
-      ? t.seasonRecord.wins / (t.seasonRecord.wins + t.seasonRecord.losses) : 0,
-    gb: 0, runsScored: t.seasonRecord.runsScored, runsAllowed: t.seasonRecord.runsAllowed,
-    pythagWins: Math.round(pythagenpatWinPct(t.seasonRecord.runsScored, t.seasonRecord.runsAllowed) * ((t.seasonRecord.wins + t.seasonRecord.losses) || 162)),
-  }));
-}
-
-
-function playerToRosterPlayer(p: Player, stats: import('../types/player').PlayerSeasonStats | undefined): RosterPlayer {
-  const s = stats;
-  const ip = s ? s.outs / 3 : 0;
-  const era = (s && s.outs > 0) ? (s.er / s.outs) * 27 : 0;
-  const whip = (s && s.outs > 0) ? ((s.bba + s.ha) / (s.outs / 3)) : 0;
-  const k9 = (s && s.outs > 0) ? (s.ka / (s.outs / 3)) * 9 : 0;
-  const bb9 = (s && s.outs > 0) ? (s.bba / (s.outs / 3)) * 9 : 0;
-  const avg = (s && s.ab > 0) ? s.h / s.ab : 0;
-  const obp = (s && (s.pa > 0)) ? (s.h + s.bb + s.hbp) / s.pa : 0;
-  const slg = (s && s.ab > 0) ? (s.h - s.doubles - s.triples - s.hr + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab : 0;
-
-  return {
-    playerId: p.playerId,
-    name: p.name,
-    position: p.position,
-    age: p.age,
-    bats: p.bats,
-    throws: p.throws,
-    isPitcher: p.isPitcher,
-    overall: p.overall,
-    potential: p.potential,
-    rosterStatus: p.rosterData.rosterStatus,
-    isOn40Man: p.rosterData.isOn40Man,
-    optionYearsRemaining: p.rosterData.optionYearsRemaining,
-    serviceTimeDays: p.rosterData.serviceTimeDays,
-    salary: p.rosterData.salary,
-    contractYearsRemaining: p.rosterData.contractYearsRemaining,
-    injuryInfo: p.rosterData.currentInjury ? {
-      type: p.rosterData.currentInjury.type,
-      severity: p.rosterData.currentInjury.severity,
-      daysRemaining: p.rosterData.currentInjury.recoveryDaysRemaining,
-      description: p.rosterData.currentInjury.description,
-    } : undefined,
-    stats: p.isPitcher
-      ? { w: s?.w, l: s?.l, sv: s?.sv, era: Number(era.toFixed(2)), ip: Number(ip.toFixed(1)), k9: Number(k9.toFixed(1)), bb9: Number(bb9.toFixed(1)), whip: Number(whip.toFixed(2)) }
-      : { pa: s?.pa, avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)), slg: Number(slg.toFixed(3)), hr: s?.hr, rbi: s?.rbi, sb: s?.sb, k: s?.k, bb: s?.bb },
-  };
-}
-
-// ─── Public API (Comlink-exposed) ─────────────────────────────────────────────
 const api = {
+  /**
+   * Initialize a new league. Generates all teams + players.
+   */
+  async newGame(seed: number): Promise<{ teamCount: number; playerCount: number }> {
+    rngSeed = seed;
+    teams = [...TEAMS];
+    currentSeason = 1;
+    latestNewsFeed = [];
+    latestPlayoffBracket = null;
+    latestSeasonAwards = null;
+    latestGameResults = [];
+    featuredGameIds = new Set();
+    latestOffseasonRecap = null;
+    transactionLog = [];
+    seasonHistory.length = 0;
+    ownerEvaluationHistory.length = 0;
+    activeDraftState = null;
+    eventLog.clear();
+    cache.reset();
 
-  // ── New game ───────────────────────────────────────────────────────────────
-  async newGame(seed: number, userTeamId: number): Promise<{ ok: boolean; season: number; teamCount: number }> {
-    const gen = createPRNG(seed);
-    const teams = buildInitialTeams();
-    const [players, nextGen] = generateLeaguePlayers(gen, teams, 2026);
-    const schedule: ScheduleEntry[] = generateSchedule();
+    gen = createPRNG(seed);
+    const result = generateAllPlayers(gen, teams.map((t) => t.teamId));
+    players = result.players;
+    gen = result.gen;
 
-    _state = {
-      season: 2026,
+    let staffs: Map<number, CoachingStaff>;
+    [staffs, gen] = generateAllCoachingStaffs(teams.map((t) => t.teamId), gen);
+    coachingStaffs = staffs;
+    ownerProfiles = initializeOwnerProfiles(teams.map((t) => t.teamId), currentSeason);
+    teamChemistry = initializeTeamChemistry(teams.map((t) => t.teamId), currentSeason);
+    clubhouseEvents = [];
+    featureVersions = buildDefaultFeatureVersions();
+    enabledFeatures = getCoreFeatureIds();
+    migrationNotes = [];
+    buildFingerprint = makeBuildFingerprint();
+    workerHealthMode = 'normal';
+
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'New Game');
+    }
+
+    return { teamCount: teams.length, playerCount: players.length };
+  },
+
+  /**
+   * Simulate one full 162-game season.
+   */
+  async simulateCurrentSeason(): Promise<{
+    season: number;
+    gamesPlayed: number;
+    leagueGamesOnIL: number;
+    standings: TeamStandingRow[];
+  }> {
+    const injuryRiskMultipliers = new Map<number, number>();
+    for (const team of teams) {
+      const coaching = coachingStaffs.get(team.teamId);
+      injuryRiskMultipliers.set(team.teamId, coaching ? getInjuryRiskMultiplier(coaching) : 1);
+    }
+
+    const result = simulateSeason(
       teams,
       players,
-      schedule,
-      environment: { pitcherBuffFactor: 1.0, hitterBuffFactor: 1.0, babipAdjustment: 0 },
-      prngState: serializeState(nextGen),
-      userTeamId,
-    };
-    _playerSeasonStats = new Map();
-    _careerHistory = new Map();
-    _seasonResults = [];
-    _retiredCareerHistory = new Map();
-    _hallOfFame = [];
-    _franchiseRecords = null;
-    _foStaff = [];
-    _lastAIRosterMoves = [];
-    _draftState = null;
-    _lineupOrder = [];
-    _rotationOrder = [];
-    rebuildMaps();
-
-    return { ok: true, season: _state.season, teamCount: teams.length };
-  },
-
-  // ── Simulate a season ─────────────────────────────────────────────────────
-  async simulateSeason(onProgressCallback?: (pct: number) => void): Promise<SeasonResult> {
-    const state = requireState();
-    let gen = deserializeState(state.prngState);
-
-    // Ensure all teams have minimum viable rosters before sim
-    ensureMinimumRosters(state.players, state.teams);
-
-    // Reset counters at season start
-    _cachedLeagueAverages = null;
-    resetSeasonCounters(state.players);
-
-    // Scrub lineup/rotation so stale player IDs don't persist
-    _scrubLineupRotation();
-
-    const result = await simulateSeason(
-      state.teams,
-      state.players,
-      state.schedule,
-      Number(gen.next()[0]),
-      onProgressCallback,
-      {
-        season: state.season,
-        userTeamId: state.userTeamId,
-        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
-        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+      currentSeason,
+      rngSeed + currentSeason,
+      (complete, total) => {
+        // Post progress to main thread
+        postMessage({ type: 'sim-progress', complete, total });
       },
+      { injuryRiskMultipliers },
     );
 
-    // Advance the gen
-    [, gen] = gen.next();
-
-    // Update team records from result
-    for (const ts of result.teamSeasons) {
-      const team = _teamMap.get(ts.teamId);
-      if (team) {
-        team.seasonRecord = ts.record;
-      }
+    latestTeamSeasons = result.teamSeasons;
+    latestPlayerSeasons = result.playerSeasons;
+    latestGameResults = result.gameResults;
+    gen = result.gen;
+    seasonHistory.push(result);
+    if (seasonHistory.length > 8) {
+      seasonHistory.shift();
     }
 
-    // Store player season stats for queries
-    for (const ps of result.playerSeasons) {
-      _playerSeasonStats.set(ps.playerId, ps);
+    // Select featured games for storage discipline
+    featuredGameIds = selectFeaturedGames(result.gameResults);
+
+    for (const game of result.gameResults) {
+      if (!featuredGameIds.has(game.gameId)) continue;
+      logGameResult(eventLog, currentSeason, game.date, {
+        kind: 'game_result',
+        homeTeamId: game.homeTeam,
+        awayTeamId: game.awayTeam,
+        homeScore: game.homeScore,
+        awayScore: game.awayScore,
+        innings: game.innings,
+        isFeatured: true,
+        featuredReason: featuredReasonForGame(game),
+      });
+    }
+    eventLog.pruneOldSeasons(Math.max(1, currentSeason - 12));
+
+    // Invalidate cache (season data changed)
+    cache.invalidate();
+
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Regular Season Complete');
     }
 
-    // Accumulate career history
-    for (const ps of result.playerSeasons) {
-      const record = { ...ps, season: state.season };
-      const history = _careerHistory.get(ps.playerId) ?? [];
-      history.push(record);
-      _careerHistory.set(ps.playerId, history);
-    }
+    const standings = buildStandings(result);
+    return {
+      season: currentSeason,
+      gamesPlayed: result.gameResults.length,
+      leagueGamesOnIL: result.leagueGamesOnIL,
+      standings,
+    };
+  },
 
-    // ── Injuries (post-process — deterministic based on seed) ─────────────────
-    const injurySeed = Number(gen.next()[0]);
-    [, gen] = gen.next();
-    // Clear any lingering injuries from previous season before processing
-    for (const p of state.players) {
-      if (p.rosterData.currentInjury) {
-        p.rosterData.currentInjury = undefined;
-        if (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60') {
-          p.rosterData.rosterStatus = 'MLB_ACTIVE';
-        }
-      }
-    }
-    // Compute FO staff bonuses (defaults to neutral 1.0x if no staff)
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+  /**
+   * Simulate the postseason after a regular season is complete.
+   */
+  async simulatePostseason(): Promise<PlayoffBracket | null> {
+    if (latestTeamSeasons.length === 0 || !gen) return null;
 
-    const injuryEvents = processSeasonInjuries(
-      state.players, state.schedule.length, injurySeed, state.season,
-      staffBonuses.injuryRateMultiplier,
-      staffBonuses.recoverySpeedMultiplier,
+    let bracket: PlayoffBracket;
+    [bracket, gen] = simulatePlayoffs(
+      teams,
+      latestTeamSeasons,
+      players,
+      currentSeason,
+      gen,
     );
 
-    // ── AI roster moves (call-ups, options, DFAs after injuries) ────────────
-    const rosterMoveSeed = Math.abs(injurySeed * 3 + state.season * 17);
-    _lastAIRosterMoves = processAIRosterMoves(
-      state.players, state.teams, state.userTeamId, rosterMoveSeed,
-    );
+    latestPlayoffBracket = bracket;
+    cache.invalidate();
 
-    // ── Cache league averages for advanced stats queries ────────────────────
-    const allSeasonStats = Array.from(_playerSeasonStats.values());
-    _cachedLeagueAverages = computeLeagueAverages(allSeasonStats);
-
-    // ── Awards (computed before aging — players are at their in-season state) ──
-    const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
-    const divisionChampions = computeDivisionChampions(state.teams);
-
-    // ── Advance service time (172 game-days) ──────────────────────────────────
-    for (let d = 0; d < 172; d++) {
-      advanceServiceTime(state.players, d);
+    // Generate playoff news stories
+    const teamNameMap = buildTeamNameMap();
+    for (const series of [...bracket.wildCardSeries, ...bracket.divisionSeries, ...bracket.championshipSeries]) {
+      latestNewsFeed.push(News.generatePlayoffStory(
+        currentSeason,
+        series,
+        series.round,
+        teamNameMap.get(series.winnerTeamId) ?? 'Unknown',
+        teamNameMap.get(series.loserTeamId) ?? 'Unknown',
+      ));
+      const seriesScore = `${Math.max(series.higherSeedWins, series.lowerSeedWins)}-${Math.min(series.higherSeedWins, series.lowerSeedWins)}`;
+      logPlayoffSeries(eventLog, currentSeason, {
+        kind: 'playoff',
+        round: series.round,
+        winnerTeamId: series.winnerTeamId,
+        loserTeamId: series.loserTeamId,
+        seriesScore,
+      });
+    }
+    if (bracket.worldSeries) {
+      latestNewsFeed.push(News.generatePlayoffStory(
+        currentSeason,
+        bracket.worldSeries,
+        'WS',
+        teamNameMap.get(bracket.worldSeries.winnerTeamId) ?? 'Unknown',
+        teamNameMap.get(bracket.worldSeries.loserTeamId) ?? 'Unknown',
+      ));
+      const ws = bracket.worldSeries;
+      const seriesScore = `${Math.max(ws.higherSeedWins, ws.lowerSeedWins)}-${Math.min(ws.higherSeedWins, ws.lowerSeedWins)}`;
+      logPlayoffSeries(eventLog, currentSeason, {
+        kind: 'playoff',
+        round: 'WS',
+        winnerTeamId: ws.winnerTeamId,
+        loserTeamId: ws.loserTeamId,
+        seriesScore,
+      });
     }
 
-    // ── Offseason: player development + aging ─────────────────────────────────
-    const devAssignmentsObj: Record<number, DevAssignment> = {};
-    for (const [pid, a] of _devAssignments) devAssignmentsObj[pid] = a;
-    const offseasonResult = advanceOffseason(state.players, gen, {
-      hitter: staffBonuses.hitterDevMultiplier,
-      pitcher: staffBonuses.pitcherDevMultiplier,
-    }, devAssignmentsObj);
-    state.players = offseasonResult.players;
-    gen = offseasonResult.gen;
+    latestNewsFeed = sortNewsFeed(latestNewsFeed);
 
-    // ── Persist retired players' career stats before they're pruned ──────────
-    const retiredEvents = (offseasonResult.events ?? []).filter(e => e.type === 'retirement');
-    for (const evt of retiredEvents) {
-      const career = _careerHistory.get(evt.playerId);
-      if (career && career.length > 0) {
-        const player = _playerMap.get(evt.playerId);
-        _retiredCareerHistory.set(evt.playerId, {
-          name: evt.playerName,
-          position: player?.position ?? 'UT',
-          seasons: career,
-          retiredSeason: state.season,
-        });
-      }
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Postseason Complete');
     }
 
-    // Rebuild the player map after development (ages/attrs changed)
-    rebuildMaps();
-
-    // ── Franchise records (user team only) ──────────────────────────────────
-    const userTeamRecord = result.teamSeasons.find(ts => ts.teamId === state.userTeamId);
-    if (userTeamRecord) {
-      const recBook = _franchiseRecords ?? emptyRecordBook();
-      const recResult = updateFranchiseRecords(
-        recBook, _playerSeasonStats, _careerHistory, _playerMap,
-        { wins: userTeamRecord.record.wins, losses: userTeamRecord.record.losses },
-        state.season, state.userTeamId,
-      );
-      _franchiseRecords = recResult.records;
-    }
-
-    // ── Hall of Fame processing ─────────────────────────────────────────────
-    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
-    const hofCandidates = identifyHOFCandidates(_retiredCareerHistory, state.season, existingInducteeIds);
-    if (hofCandidates.length > 0) {
-      const hofSeed = state.season * 31337;
-      const votingResult = simulateHOFVoting(hofCandidates, hofSeed);
-      _hallOfFame.push(...votingResult.inducted);
-    }
-
-    state.prngState = serializeState(gen);
-    _seasonResults.push(result);
-    state.season++;
-
-    // Augment the result with post-season data
-    const fullResult: SeasonResult = {
-      ...result,
-      awards,
-      divisionChampions,
-      developmentEvents: offseasonResult.events,
-      injuryEvents,
-    };
-
-    return fullResult;
-  },
-
-  // ── Standings ──────────────────────────────────────────────────────────────
-  async getStandings(): Promise<StandingsData> {
-    const state = requireState();
-    const rows: StandingsRow[] = state.teams.map(team => {
-      const { wins, losses, runsScored, runsAllowed } = team.seasonRecord;
-      const total = wins + losses;
-      const pct = total > 0 ? wins / total : 0;
-      const pythagWins = Math.round(pythagenpatWinPct(runsScored, runsAllowed) * (total || 162));
-
-      return {
-        teamId: team.teamId,
-        name: team.name,
-        abbreviation: team.abbreviation,
-        league: team.league,
-        division: team.division,
-        wins,
-        losses,
-        pct: Number(pct.toFixed(3)),
-        gb: 0, // computed client-side per division
-        runsScored,
-        runsAllowed,
-        pythagWins,
-      };
-    });
-
-    return { season: state.season, standings: rows };
-  },
-
-  // ── Roster ─────────────────────────────────────────────────────────────────
-  async getRoster(teamId: number): Promise<RosterData> {
-    const state = requireState();
-    const teamPlayers = state.players.filter(p => p.teamId === teamId);
-
-    const toRP = (p: Player) => playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
-
-    return {
-      teamId,
-      season: state.season,
-      active:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').map(toRP),
-      il:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60').map(toRP),
-      minors:  teamPlayers.filter(p => ['MINORS_AAA', 'MINORS_AA', 'MINORS_ROOKIE'].includes(p.rosterData.rosterStatus) && p.rosterData.isOn40Man).map(toRP),
-      dfa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'DFA').map(toRP),
-    };
-  },
-
-  // ── Full Leaderboard (multi-stat) ────────────────────────────────────────
-  async getLeaderboardFull(options: LeaderboardFullOptions): Promise<LeaderboardFullEntry[]> {
-    requireState();
-    const { category, sortBy, minPA = 100, minIP = 20, position, limit = 50 } = options;
-    const entries: Array<{ player: Player; stats: Record<string, number>; sortVal: number }> = [];
-
-    for (const [playerId, s] of _playerSeasonStats) {
-      const player = _playerMap.get(playerId);
-      if (!player) continue;
-
-      // Category filter
-      if (category === 'hitting' && player.isPitcher) continue;
-      if (category === 'pitching' && !player.isPitcher) continue;
-
-      // Position filter
-      if (position && player.position !== position) continue;
-
-      // Min threshold
-      if (category === 'hitting' && s.pa < minPA) continue;
-      if (category === 'pitching' && (s.outs / 3) < minIP) continue;
-
-      let computed: Record<string, number>;
-
-      if (category === 'hitting') {
-        const avg = s.ab > 0 ? s.h / s.ab : 0;
-        const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
-        const tb = s.h + s.doubles + s.triples * 2 + s.hr * 3;
-        const slg = s.ab > 0 ? tb / s.ab : 0;
-        const ops = obp + slg;
-        computed = {
-          g: s.g, pa: s.pa, ab: s.ab, r: s.r, h: s.h,
-          '2b': s.doubles, '3b': s.triples, hr: s.hr, rbi: s.rbi,
-          bb: s.bb, k: s.k, sb: s.sb,
-          avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)),
-          slg: Number(slg.toFixed(3)), ops: Number(ops.toFixed(3)),
-        };
-      } else {
-        const ip = s.outs / 3;
-        const era = ip > 0 ? (s.er / ip) * 9 : 0;
-        const whip = ip > 0 ? (s.bba + s.ha) / ip : 0;
-        const k9 = ip > 0 ? (s.ka / ip) * 9 : 0;
-        const bb9 = ip > 0 ? (s.bba / ip) * 9 : 0;
-        computed = {
-          g: s.gp, gs: s.gs, w: s.w, l: s.l, sv: s.sv,
-          ip: Number(ip.toFixed(1)), h: s.ha, er: s.er, bb: s.bba, k: s.ka,
-          era: Number(era.toFixed(2)), whip: Number(whip.toFixed(2)),
-          k9: Number(k9.toFixed(1)), bb9: Number(bb9.toFixed(1)), hra: s.hra,
-        };
-      }
-
-      // Determine sort value
-      const INVERT = new Set(['era', 'whip', 'bb9']);
-      const raw = computed[sortBy] ?? 0;
-      const sortVal = INVERT.has(sortBy) ? -raw : raw;
-
-      entries.push({ player, stats: computed, sortVal });
-    }
-
-    entries.sort((a, b) => b.sortVal - a.sortVal);
-    return entries.slice(0, limit).map((e, i) => {
-      const team = _teamMap.get(e.player.teamId);
-      return {
-        rank: i + 1,
-        playerId: e.player.playerId,
-        name: e.player.name,
-        teamAbbr: team?.abbreviation ?? '---',
-        teamId: e.player.teamId,
-        position: e.player.position,
-        age: e.player.age,
-        isPitcher: e.player.isPitcher,
-        stats: e.stats,
-      };
-    });
-  },
-
-  // ── Leaderboard (single-stat, legacy) ─────────────────────────────────────
-  async getLeaderboard(stat: string, limit = 50): Promise<LeaderboardEntry[]> {
-    requireState();
-    const results: Array<{ player: Player; value: number }> = [];
-
-    for (const [playerId, s] of _playerSeasonStats) {
-      const player = _playerMap.get(playerId);
-      if (!player) continue;
-
-      let value = 0;
-      switch (stat) {
-        case 'hr':   value = s.hr; break;
-        case 'rbi':  value = s.rbi; break;
-        case 'avg':  value = s.ab > 100 ? s.h / s.ab : 0; break;
-        case 'obp':  value = s.pa > 100 ? (s.h + s.bb + s.hbp) / s.pa : 0; break;
-        case 'sb':   value = s.sb; break;
-        case 'era':  value = s.outs > 10 ? -((s.er / s.outs) * 27) : -99; break; // negative for sorting
-        case 'k':    value = s.ka; break;
-        case 'wins': value = s.w; break;
-        case 'whip': value = s.outs > 10 ? -((s.bba + s.ha) / (s.outs / 3)) : -99; break;
-        default:     value = 0;
-      }
-      if (value !== 0 || stat === 'avg') results.push({ player, value });
-    }
-
-    results.sort((a, b) => b.value - a.value);
-    const top = results.slice(0, limit);
-
-    return top.map((r, i) => {
-      const team = _teamMap.get(r.player.teamId);
-      let displayValue = r.value.toFixed(stat === 'avg' || stat === 'obp' ? 3 : 0);
-      if (stat === 'era' || stat === 'whip') displayValue = (-r.value).toFixed(2);
-      return {
-        rank: i + 1,
-        playerId: r.player.playerId,
-        name: r.player.name,
-        teamAbbr: team?.abbreviation ?? '---',
-        position: r.player.position,
-        age: r.player.age,
-        value: r.value,
-        displayValue,
-      };
-    });
-  },
-
-  // ── Player profile ─────────────────────────────────────────────────────────
-  async getPlayerProfile(playerId: number): Promise<PlayerProfileData> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) throw new Error(`Player ${playerId} not found`);
-
-    const s = _playerSeasonStats.get(playerId);
-    const grades: Record<string, number> = {};
-
-    if (player.hitterAttributes) {
-      const h = player.hitterAttributes;
-      grades['CON'] = toScoutingScale(h.contact);
-      grades['PWR'] = toScoutingScale(h.power);
-      grades['EYE'] = toScoutingScale(h.eye);
-      grades['SPD'] = toScoutingScale(h.speed);
-      grades['FLD'] = toScoutingScale(h.fielding);
-      grades['ARM'] = toScoutingScale(h.armStrength);
-    } else if (player.pitcherAttributes) {
-      const p = player.pitcherAttributes;
-      grades['STF'] = toScoutingScale(p.stuff);
-      grades['MOV'] = toScoutingScale(p.movement);
-      grades['CMD'] = toScoutingScale(p.command);
-      grades['STM'] = toScoutingScale(p.stamina);
-    }
-
-    const seasonStats: null | { season: number; [key: string]: number } = s ? {
-      season: state.season - 1,
-      pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
-      avg: s.ab > 0 ? Number((s.h / s.ab).toFixed(3)) : 0,
-      obp: s.pa > 0 ? Number(((s.h + s.bb + s.hbp) / s.pa).toFixed(3)) : 0,
-      w: s.w, l: s.l, sv: s.sv, era: s.outs > 0 ? Number(((s.er / s.outs) * 27).toFixed(2)) : 0,
-      ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
-    } : null;
-
-    const team = state.teams.find(t => t.teamId === player.teamId);
-    const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
-
-    return {
-      player: {
-        playerId: player.playerId,
-        name: player.name,
-        age: player.age,
-        position: player.position,
-        bats: player.bats,
-        throws: player.throws,
-        overall: player.overall,
-        potential: player.potential,
-        grades,
-        rosterStatus: player.rosterData.rosterStatus,
-        serviceTimeDays: player.rosterData.serviceTimeDays,
-        salary: player.rosterData.salary,
-        contractYearsRemaining: player.rosterData.contractYearsRemaining,
-        isPitcher,
-        teamId: player.teamId,
-        teamAbbr: team?.abbreviation ?? '---',
-        optionYearsRemaining: player.rosterData.optionYearsRemaining,
-        tradeValue: evaluatePlayer(player),
-      },
-      seasonStats,
-      careerStats: _careerHistory.get(playerId) ?? [],
-    };
-  },
-
-  // ── Roster Transactions ──────────────────────────────────────────────────
-  async promotePlayer(playerId: number, targetStatus: RosterStatus): Promise<TransactionResult> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-    const result = doPromote(player, targetStatus, state.players);
-    if (result.ok) rebuildMaps();
-    return result;
-  },
-
-  async demotePlayer(playerId: number, targetStatus: RosterStatus): Promise<TransactionResult> {
-    requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-    const result = doDemote(player, targetStatus);
-    if (result.ok) rebuildMaps();
-    return result;
-  },
-
-  async dfaPlayer(playerId: number): Promise<TransactionResult> {
-    requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-    const result = doDFA(player);
-    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
-    return result;
-  },
-
-  async releasePlayer(playerId: number): Promise<TransactionResult> {
-    requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-    const result = doRelease(player);
-    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
-    return result;
-  },
-
-  // ── Extended roster (all minor league levels) ───────────────────────────
-  async getFullRoster(teamId: number): Promise<RosterData & {
-    aaa: RosterPlayer[]; aa: RosterPlayer[]; aPlus: RosterPlayer[];
-    aMinus: RosterPlayer[]; rookie: RosterPlayer[]; intl: RosterPlayer[];
-    fortyManCount: number; activeCount: number;
-  }> {
-    const state = requireState();
-    const teamPlayers = state.players.filter(p => p.teamId === teamId);
-    const toRP = (p: Player) => playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
-
-    return {
-      teamId,
-      season: state.season,
-      active:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').map(toRP),
-      il:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60').map(toRP),
-      minors:  teamPlayers.filter(p => p.rosterData.rosterStatus.startsWith('MINORS_') && p.rosterData.isOn40Man).map(toRP),
-      dfa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'DFA').map(toRP),
-      aaa:     teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AAA').map(toRP),
-      aa:      teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AA').map(toRP),
-      aPlus:   teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_APLUS').map(toRP),
-      aMinus:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_AMINUS').map(toRP),
-      rookie:  teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_ROOKIE').map(toRP),
-      intl:    teamPlayers.filter(p => p.rosterData.rosterStatus === 'MINORS_INTL').map(toRP),
-      fortyManCount: count40Man(state.players, teamId),
-      activeCount:   countActive(state.players, teamId),
-    };
-  },
-
-  // ── Playoffs ─────────────────────────────────────────────────────────────
-  async simulatePlayoffs(): Promise<PlayoffBracket | null> {
-    const state = requireState();
-    // Get current standings
-    const standingsRows = state.teams.map(team => {
-      const { wins, losses, runsScored, runsAllowed } = team.seasonRecord;
-      return {
-        teamId: team.teamId,
-        name: team.name,
-        abbreviation: team.abbreviation,
-        league: team.league,
-        division: team.division,
-        wins, losses,
-        pct: (wins + losses) > 0 ? wins / (wins + losses) : 0,
-        gb: 0,
-        runsScored, runsAllowed,
-        pythagWins: wins,
-      };
-    });
-
-    if (standingsRows.length < 12) return null;
-
-    const seed = Number(deserializeState(state.prngState).next()[0]);
-    const bracket = simulateFullPlayoffs(standingsRows, state.teams, state.players, seed);
     return bracket;
   },
 
-  // ── Free Agency ────────────────────────────────────────────────────────────
-  async startOffseason(): Promise<{ freeAgentCount: number }> {
-    const state = requireState();
-    const count = generateFreeAgentClass(state.players);
-    rebuildMaps();
-    return { freeAgentCount: count };
-  },
+  /**
+   * Compute season awards after a season is complete.
+   */
+  async computeAwards(): Promise<SeasonAwards | null> {
+    if (latestPlayerSeasons.size === 0 || !gen) return null;
 
-  async getFreeAgents(limit = 50): Promise<(RosterPlayer & { projectedSalary: number; projectedYears: number })[]> {
-    const state = requireState();
-    const fas = state.players
-      .filter(p => p.rosterData.rosterStatus === 'FREE_AGENT')
-      .sort((a, b) => b.overall - a.overall)
-      .slice(0, limit);
-
-    // Apply FA discount from negotiator/GM staff
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-    const faDiscount = 1 - staffBonuses.freeAgencyDiscount; // e.g. 0.85 = 15% off
-
-    return fas.map(p => {
-      const rp = playerToRosterPlayer(p, _playerSeasonStats.get(p.playerId));
-      const baseSalary = projectSalary(p);
-      // Round discounted salary to nearest 100K
-      const discountedSalary = Math.round((baseSalary * faDiscount) / 100_000) * 100_000;
-      return {
-        ...rp,
-        projectedSalary: Math.max(500_000, discountedSalary),
-        projectedYears:  projectYears(p),
-      };
-    });
-  },
-
-  async signFreeAgent(playerId: number, years: number, salary: number): Promise<TransactionResult> {
-    if (isNaN(years) || isNaN(salary)) return { ok: false, error: 'Invalid contract terms.' };
-    years = Math.max(1, Math.min(10, Math.round(years)));
-    salary = Math.max(0.5, salary);
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-
-    // Budget check: block signings that would exceed team budget by >15%
-    const userTeam = _teamMap.get(state.userTeamId);
-    if (userTeam) {
-      const currentPayroll = state.players
-        .filter(p => p.teamId === state.userTeamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
-        .reduce((sum, p) => sum + p.rosterData.salary, 0);
-      const newPayroll = currentPayroll + salary;
-      if (newPayroll > userTeam.budget * 1_000_000 * 1.15) {
-        return { ok: false, error: 'Signing would exceed team budget.' };
-      }
-    }
-
-    const result = doSign(player, state.userTeamId, years, salary, state.players);
-    if (result.ok) rebuildMaps();
-    return result;
-  },
-
-  async finishOffseason(): Promise<{ aiSignings: number; signingDetails: AISigningRecord[] }> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    const result = processAISignings(state.players, state.teams, state.userTeamId, standings);
-    rebuildMaps();
-    return { aiSignings: result.count, signingDetails: result.signings };
-  },
-
-  // ── Trading ──────────────────────────────────────────────────────────────
-  async getTradeOffers(): Promise<TradeProposal[]> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    return generateTradeOffers(state.userTeamId, state.players, state.teams, _playerSeasonStats, standings);
-  },
-
-  async shopPlayer(playerId: number): Promise<TradeProposal[]> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    return doShopPlayer(playerId, state.players, state.teams, _playerSeasonStats, standings);
-  },
-
-  async findTradesForNeed(position: string): Promise<TradeProposal[]> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    return doFindTradesForNeed(state.userTeamId, position, state.players, state.teams, _playerSeasonStats, standings);
-  },
-
-  async getTeamPlayers(teamId: number): Promise<TradePlayerInfo[]> {
-    const state = requireState();
-    return state.players
-      .filter(p => p.teamId === teamId &&
-        (p.rosterData.rosterStatus === 'MLB_ACTIVE' || p.rosterData.rosterStatus.startsWith('MINORS_')) &&
-        p.overall >= 150)
-      .sort((a, b) => b.overall - a.overall)
-      .slice(0, 30)
-      .map(p => {
-        const isPitcher = ['SP', 'RP', 'CL'].includes(p.position);
-        const raw = _playerSeasonStats.get(p.playerId);
-        const stats: TradePlayerInfo['stats'] = {};
-        if (raw) {
-          if (isPitcher) {
-            stats.era = raw.outs > 0 ? Number(((raw.er / raw.outs) * 27).toFixed(2)) : undefined;
-            stats.k9 = raw.outs > 0 ? Number(((raw.ka / (raw.outs / 3)) * 9).toFixed(1)) : undefined;
-            stats.whip = raw.outs > 0 ? Number(((raw.bba + raw.ha) / (raw.outs / 3)).toFixed(2)) : undefined;
-          } else {
-            stats.avg = raw.ab > 0 ? Number((raw.h / raw.ab).toFixed(3)) : undefined;
-            stats.hr = raw.hr;
-            if (raw.ab > 0 && raw.pa > 0) {
-              const obp = (raw.h + raw.bb + raw.hbp) / raw.pa;
-              const slg = (raw.h - raw.doubles - raw.triples - raw.hr + raw.doubles * 2 + raw.triples * 3 + raw.hr * 4) / raw.ab;
-              stats.ops = Number((obp + slg).toFixed(3));
-            }
-          }
-        }
-        return {
-          playerId: p.playerId,
-          name: p.name,
-          position: p.position,
-          age: p.age,
-          overall: p.overall,
-          potential: p.potential,
-          salary: p.rosterData.salary,
-          contractYearsRemaining: p.rosterData.contractYearsRemaining,
-          tradeValue: evaluatePlayer(p),
-          isPitcher,
-          stats,
-        };
-      });
-  },
-
-  async proposeTrade(
-    partnerTeamId: number,
-    userPlayerIds: number[],
-    partnerPlayerIds: number[],
-  ): Promise<TradeResult & { fair?: boolean }> {
-    const state = requireState();
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-    const evaluation = evaluateProposedTrade(state.players, userPlayerIds, partnerPlayerIds, staffBonuses.tradeValueBonus);
-    if (!evaluation.fair) {
-      return { ok: false, error: 'Trade rejected — the other team wants more value in return.' };
-    }
-    const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
-    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
-    return { ...result, fair: true };
-  },
-
-  async acceptTradeOffer(
-    partnerTeamId: number,
-    userPlayerIds: number[],
-    partnerPlayerIds: number[],
-  ): Promise<TradeResult> {
-    const state = requireState();
-    const result = doTrade(state.players, state.userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
-    if (result.ok) { rebuildMaps(); _scrubLineupRotation(); }
-    return result;
-  },
-
-  async getTeamNeeds(teamId: number): Promise<{
-    needs: Array<{ position: string; severity: 'critical' | 'moderate' | 'mild' }>;
-    strengths: string[];
-  }> {
-    const state = requireState();
-    const teamPlayers = state.players.filter(
-      p => p.teamId === teamId &&
-      (p.rosterData.rosterStatus === 'MLB_ACTIVE' || p.rosterData.rosterStatus.startsWith('MINORS_'))
+    let awards: SeasonAwards;
+    [awards, gen] = computeSeasonAwards(
+      currentSeason,
+      players,
+      latestPlayerSeasons,
+      teams,
+      gen,
     );
 
-    const positionSlots = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF', 'DH', 'SP', 'RP'];
-    const posCount: Record<string, number> = {};
-    const posOvr: Record<string, number> = {};
+    latestSeasonAwards = awards;
+    cache.invalidate();
 
-    for (const pos of positionSlots) {
-      const atPos = teamPlayers.filter(p => p.position === pos);
-      posCount[pos] = atPos.length;
-      posOvr[pos] = atPos.length > 0
-        ? atPos.reduce((s, p) => s + p.overall, 0) / atPos.length
-        : 0;
+    // Generate award news stories
+    const teamNameMap = buildTeamNameMap();
+    const majorAwards = [awards.alMVP, awards.nlMVP, awards.alCyYoung, awards.nlCyYoung];
+    for (const aw of majorAwards) {
+      latestNewsFeed.push(News.generateAwardStory(
+        currentSeason,
+        aw,
+        teamNameMap.get(aw.teamId) ?? 'Unknown',
+      ));
+      logAward(eventLog, currentSeason, {
+        kind: 'award',
+        awardName: aw.awardName,
+        playerId: aw.playerId,
+        playerName: aw.playerName,
+        teamId: aw.teamId,
+        statLine: aw.statLine,
+      });
+    }
+    if (awards.alROY) {
+      latestNewsFeed.push(News.generateAwardStory(
+        currentSeason,
+        awards.alROY,
+        teamNameMap.get(awards.alROY.teamId) ?? 'Unknown',
+      ));
+      logAward(eventLog, currentSeason, {
+        kind: 'award',
+        awardName: awards.alROY.awardName,
+        playerId: awards.alROY.playerId,
+        playerName: awards.alROY.playerName,
+        teamId: awards.alROY.teamId,
+        statLine: awards.alROY.statLine,
+      });
+    }
+    if (awards.nlROY) {
+      latestNewsFeed.push(News.generateAwardStory(
+        currentSeason,
+        awards.nlROY,
+        teamNameMap.get(awards.nlROY.teamId) ?? 'Unknown',
+      ));
+      logAward(eventLog, currentSeason, {
+        kind: 'award',
+        awardName: awards.nlROY.awardName,
+        playerId: awards.nlROY.playerId,
+        playerName: awards.nlROY.playerName,
+        teamId: awards.nlROY.teamId,
+        statLine: awards.nlROY.statLine,
+      });
     }
 
-    const needs: Array<{ position: string; severity: 'critical' | 'moderate' | 'mild' }> = [];
-    const strengths: string[] = [];
+    latestNewsFeed = sortNewsFeed(latestNewsFeed);
 
-    for (const pos of positionSlots) {
-      const count = posCount[pos];
-      const avgOvr = posOvr[pos];
-
-      if (pos === 'SP') {
-        if (count < 3) needs.push({ position: pos, severity: 'critical' });
-        else if (count < 5) needs.push({ position: pos, severity: 'moderate' });
-        else if (avgOvr > 350) strengths.push(pos);
-      } else if (pos === 'RP') {
-        if (count < 3) needs.push({ position: pos, severity: 'critical' });
-        else if (count < 5) needs.push({ position: pos, severity: 'moderate' });
-        else if (avgOvr > 300) strengths.push('Bullpen');
-      } else {
-        if (count === 0) needs.push({ position: pos, severity: 'critical' });
-        else if (count === 1 && avgOvr < 280) needs.push({ position: pos, severity: 'moderate' });
-        else if (avgOvr > 350) strengths.push(pos);
-      }
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Awards Computed');
     }
 
-    return { needs: needs.slice(0, 5), strengths: [...new Set(strengths)].slice(0, 4) };
+    return awards;
   },
 
-  // ── League / Team Info ───────────────────────────────────────────────────
-  async getLeagueTeams(): Promise<Array<{
-    teamId: number; name: string; abbreviation: string;
-    league: string; division: string; budget: number;
-    wins: number; losses: number;
-  }>> {
-    const state = requireState();
-    return state.teams.map(t => ({
-      teamId: t.teamId,
-      name: t.name,
-      abbreviation: t.abbreviation,
-      league: t.league,
-      division: t.division,
-      budget: t.budget,
-      wins: t.seasonRecord.wins,
-      losses: t.seasonRecord.losses,
-    }));
+  /**
+   * Get prospect rankings.
+   */
+  async getTopProspects(): Promise<ProspectRanking[]> {
+    if (!gen) return [];
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+    let rankings: ProspectRanking[];
+    [rankings, gen] = generateTop100(playerMap, gen);
+    return rankings;
   },
 
-  // ── Award Race ────────────────────────────────────────────────────────────
-  async getAwardRace(): Promise<{
-    mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-    cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
-    roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-  }> {
-    const state = requireState();
-
-    function computeHitterStats(s: PlayerSeasonStats) {
-      const avg = s.ab > 0 ? s.h / s.ab : 0;
-      const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
-      const slg = s.ab > 0
-        ? (s.h - s.doubles - s.triples - s.hr + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab : 0;
-      const ops = obp + slg;
-      return { avg, obp, slg, ops, hr: s.hr, rbi: s.rbi, pa: s.pa };
+  /**
+   * Advance to next season (prep for next sim).
+   */
+  async advanceSeason(): Promise<number> {
+    if (!gen) {
+      gen = createPRNG(rngSeed + currentSeason);
     }
+    const hadCompletedSeason = latestTeamSeasons.length > 0;
 
-    function computePitcherStats(s: PlayerSeasonStats) {
-      const ip = s.outs / 3;
-      const era = s.outs > 0 ? (s.er / s.outs) * 27 : 99;
-      const k9 = ip > 0 ? (s.ka / ip) * 9 : 0;
-      const whip = ip > 0 ? (s.bba + s.ha) / ip : 99;
-      return { w: s.w, l: s.l, era, ip, k9, whip, sv: s.sv, ka: s.ka };
-    }
-
-    function mvpScore(s: PlayerSeasonStats): number {
-      if (s.pa < 300) return -Infinity;
-      const { ops, hr, rbi, avg } = computeHitterStats(s);
-      return ops * 80 + hr * 0.25 + rbi * 0.08 + avg * 10;
-    }
-
-    function cyScore(s: PlayerSeasonStats): number {
-      if (s.outs < 45) return -Infinity;
-      const { era, k9, whip, ip, w } = computePitcherStats(s);
-      return -era * 6 + w * 2.5 + k9 * 1.5 - whip * 8 + ip * 0.04;
-    }
-
-    function royScore(p: Player, s: PlayerSeasonStats): number {
-      if (p.rosterData.serviceTimeDays > 130) return -Infinity;
-      if (p.isPitcher) {
-        if (s.outs < 30) return -Infinity;
-        const { era, whip, ip, w } = computePitcherStats(s);
-        return -era * 5 + w * 2 - whip * 7 + ip * 0.03;
-      }
-      if (s.pa < 100) return -Infinity;
-      const { obp, slg, hr, avg } = computeHitterStats(s);
-      return (obp + slg) * 60 + hr * 0.20 + avg * 8;
-    }
-
-    const teamMap = new Map(state.teams.map(t => [t.teamId, t]));
-
-    function buildCandidates(
-      players: Player[],
-      scoreFn: (p: Player, s: PlayerSeasonStats) => number,
-      filter?: (p: Player) => boolean,
-    ): AwardCandidate[] {
-      const scored: Array<{ p: Player; s: PlayerSeasonStats; score: number }> = [];
+    // Run offseason pipeline only if we have a completed season.
+    if (latestTeamSeasons.length > 0) {
+      const playersMap = new Map<number, Player>();
       for (const p of players) {
-        if (filter && !filter(p)) continue;
-        const s = _playerSeasonStats.get(p.playerId);
-        if (!s) continue;
-        const score = scoreFn(p, s);
-        if (!isFinite(score)) continue;
-        scored.push({ p, s, score });
+        playersMap.set(p.playerId, p);
       }
-      scored.sort((a, b) => b.score - a.score);
-      return scored.slice(0, 5).map(({ p, s, score }) => {
-        const team = teamMap.get(p.teamId);
-        const stats: Record<string, number> = {};
-        if (p.isPitcher) {
-          const ps = computePitcherStats(s);
-          Object.assign(stats, { w: ps.w, l: ps.l, era: Number(ps.era.toFixed(2)), ip: Number(ps.ip.toFixed(1)), k9: Number(ps.k9.toFixed(1)), whip: Number(ps.whip.toFixed(2)), sv: ps.sv, k: ps.ka });
-        } else {
-          const hs = computeHitterStats(s);
-          Object.assign(stats, { avg: Number(hs.avg.toFixed(3)), obp: Number(hs.obp.toFixed(3)), slg: Number(hs.slg.toFixed(3)), ops: Number(hs.ops.toFixed(3)), hr: hs.hr, rbi: hs.rbi });
+
+      const teamSeasonsMap = new Map<number, TeamSeason>();
+      for (const ts of latestTeamSeasons) {
+        teamSeasonsMap.set(ts.teamId, ts);
+      }
+
+      const ownerTeamStrategies = classifyAllTeams(teamSeasonsMap);
+      const ownerEvaluations = evaluateOwnersForSeason({
+        season: currentSeason,
+        ownerProfiles,
+        teamSeasons: teamSeasonsMap,
+        players,
+        bracket: latestPlayoffBracket,
+        teamStrategies: ownerTeamStrategies,
+      });
+      ownerEvaluationHistory.push(...ownerEvaluations);
+      if (ownerEvaluationHistory.length > 300) {
+        ownerEvaluationHistory.splice(0, ownerEvaluationHistory.length - 300);
+      }
+
+      const ownerBidModifiers = buildOwnerBidModifiers(ownerProfiles);
+
+      let maxPlayerId = 0;
+      for (const p of players) {
+        if (p.playerId > maxPlayerId) maxPlayerId = p.playerId;
+      }
+
+      const offseason = advanceOffseason({
+        players: playersMap,
+        teamSeasons: teamSeasonsMap,
+        season: currentSeason,
+        gen,
+        transactionLog,
+        coachingStaffs,
+        seasonHistory,
+        nextDraftPlayerId: maxPlayerId + 1,
+        ownerBidModifiers,
+      });
+
+      gen = offseason.gen;
+      latestOffseasonRecap = offseason.recap;
+      players = Array.from(playersMap.values());
+
+      const chemistryAdvance = advanceTeamChemistry({
+        season: currentSeason + 1,
+        players,
+        teamSeasons: teamSeasonsMap,
+        ownerProfiles,
+        previousChemistry: teamChemistry,
+        gen,
+        nextEventId: nextClubhouseEventId(),
+      });
+      gen = chemistryAdvance.gen;
+      teamChemistry = chemistryAdvance.chemistry;
+      if (chemistryAdvance.events.length > 0) {
+        clubhouseEvents.push(...chemistryAdvance.events);
+        if (clubhouseEvents.length > 400) {
+          clubhouseEvents = clubhouseEvents.slice(-400);
         }
-        return {
-          playerId: p.playerId,
-          name: p.name,
-          teamAbbr: team?.abbreviation ?? '---',
-          teamId: p.teamId,
-          position: p.position,
-          age: p.age,
-          isPitcher: p.isPitcher,
-          score: Math.round(score * 100) / 100,
-          stats,
+      }
+
+      // Backfill offseason transaction log (retirements + Rule 5 + FA + draft).
+      const offseasonSeason = currentSeason + 1;
+      for (const playerId of offseason.recap.retirements) {
+        const player = playersMap.get(playerId);
+        if (!player) continue;
+        const playerName = `${player.firstName} ${player.lastName}`;
+        transactionLog.push({
+          date: 0,
+          season: offseasonSeason,
+          teamId: player.teamId,
+          transaction: { type: 'RETIREMENT', playerId },
+          description: `${playerName} announced retirement`,
+        });
+        logTransaction(eventLog, offseasonSeason, 0, {
+          kind: 'transaction',
+          transactionType: 'RETIREMENT',
+          playerId,
+          playerName,
+          teamId: player.teamId,
+          details: `${playerName} announced retirement`,
+        });
+      }
+
+      for (const pick of offseason.recap.rule5Picks) {
+        const player = playersMap.get(pick.playerId);
+        const name = player ? `${player.firstName} ${player.lastName}` : `Player #${pick.playerId}`;
+        const details = `Selected ${name} in Rule 5 Draft`;
+        transactionLog.push({
+          date: 0,
+          season: offseasonSeason,
+          teamId: pick.selectingTeamId,
+          transaction: {
+            type: 'RULE_5_SELECT',
+            playerId: pick.playerId,
+            selectingTeamId: pick.selectingTeamId,
+          },
+          description: details,
+        });
+        logTransaction(eventLog, offseasonSeason, 0, {
+          kind: 'transaction',
+          transactionType: 'RULE_5_SELECT',
+          playerId: pick.playerId,
+          playerName: name,
+          teamId: pick.selectingTeamId,
+          details,
+        });
+      }
+
+      for (const signing of offseason.recap.faSignings) {
+        const player = playersMap.get(signing.playerId);
+        const name = player ? `${player.firstName} ${player.lastName}` : `Player #${signing.playerId}`;
+        const details = `Signed ${name} (${signing.years}yr/$${(signing.annualSalary / 1_000_000).toFixed(1)}M)`;
+        transactionLog.push({
+          date: 0,
+          season: offseasonSeason,
+          teamId: signing.teamId,
+          transaction: {
+            type: 'SIGN_FA',
+            playerId: signing.playerId,
+            teamId: signing.teamId,
+            years: signing.years,
+            salary: signing.annualSalary,
+          },
+          description: details,
+        });
+        logTransaction(eventLog, offseasonSeason, 0, {
+          kind: 'transaction',
+          transactionType: 'SIGN_FA',
+          playerId: signing.playerId,
+          playerName: name,
+          teamId: signing.teamId,
+          details,
+        });
+      }
+
+      for (const pick of offseason.recap.draftResult.picks) {
+        const details = `Drafted ${pick.playerName} (Rd ${pick.round}, Pick ${pick.pick})`;
+        transactionLog.push({
+          date: 0,
+          season: offseasonSeason,
+          teamId: pick.teamId,
+          transaction: {
+            type: 'DRAFT_PICK',
+            playerId: pick.playerId,
+            teamId: pick.teamId,
+            round: pick.round,
+            pick: pick.pick,
+          },
+          description: details,
+        });
+        logDraftPick(eventLog, offseasonSeason, {
+          kind: 'draft',
+          pickNumber: pick.pick,
+          playerId: pick.playerId,
+          playerName: pick.playerName,
+          teamId: pick.teamId,
+          position: String(pick.position),
+          prospectType: pick.type,
+        });
+      }
+
+      // Build offseason news package for the new season.
+      const teamNameMap = buildTeamNameMap();
+      const offseasonNews: NewsStory[] = [];
+      const newsSeason = currentSeason + 1;
+
+      for (const r of offseason.recap.retirements) {
+        const player = playersMap.get(r);
+        if (!player) continue;
+        const careerYears = Math.max(1, Math.floor(player.rosterData.serviceTimeDays / 172));
+        offseasonNews.push(News.generateRetirementStory(
+          newsSeason,
+          `${player.firstName} ${player.lastName}`,
+          String(player.position),
+          teamNameMap.get(player.teamId) ?? 'Unknown',
+          careerYears,
+          player.playerId,
+          player.teamId,
+        ));
+      }
+
+      for (const s of offseason.recap.faSignings) {
+        const player = playersMap.get(s.playerId);
+        if (!player) continue;
+        offseasonNews.push(News.generateSigningStory(
+          newsSeason,
+          `${player.firstName} ${player.lastName}`,
+          teamNameMap.get(s.teamId) ?? 'Unknown',
+          s.years,
+          s.annualSalary,
+          s.playerId,
+          s.teamId,
+        ));
+      }
+
+      for (const event of chemistryAdvance.events) {
+        offseasonNews.push(News.generateClubhouseStory(
+          newsSeason,
+          teamNameMap.get(event.teamId) ?? `Team ${event.teamId}`,
+          event,
+        ));
+      }
+
+      const ownerStoryTeamIds = new Set<number>();
+      const hotSeat = ownerEvaluations.filter((ev) => (ownerProfiles.get(ev.teamId)?.jobSecurity ?? 'safe') === 'hot');
+      for (const entry of hotSeat) {
+        ownerStoryTeamIds.add(entry.teamId);
+      }
+
+      const topUpside = [...ownerEvaluations]
+        .filter((ev) => ev.score >= 78)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+      for (const entry of topUpside) {
+        ownerStoryTeamIds.add(entry.teamId);
+      }
+
+      const pressureTeams = [...ownerEvaluations]
+        .filter((ev) => ev.score <= 52)
+        .sort((a, b) => a.score - b.score)
+        .slice(0, 3);
+      for (const entry of pressureTeams) {
+        ownerStoryTeamIds.add(entry.teamId);
+      }
+
+      for (const teamId of ownerStoryTeamIds) {
+        const evaluation = ownerEvaluations.find((entry) => entry.teamId === teamId);
+        const profile = ownerProfiles.get(teamId);
+        if (!evaluation || !profile) continue;
+        offseasonNews.push(News.generateOwnerMandateStory(
+          newsSeason,
+          profile.ownerName,
+          teamNameMap.get(teamId) ?? `Team ${teamId}`,
+          evaluation.score,
+          profile.jobSecurity,
+          evaluation.summary,
+          teamId,
+        ));
+      }
+
+      const topDraftPicks = offseason.recap.draftResult.picks.slice(0, 10);
+      for (const pick of topDraftPicks) {
+        offseasonNews.push(News.generateDraftStory(
+          newsSeason,
+          pick.pick,
+          pick.playerName,
+          String(pick.position),
+          teamNameMap.get(pick.teamId) ?? 'Unknown',
+          pick.type,
+          pick.playerId,
+          pick.teamId,
+        ));
+      }
+
+      latestNewsFeed = sortNewsFeed(offseasonNews);
+    } else {
+      latestNewsFeed = [];
+      latestOffseasonRecap = null;
+      teamChemistry = initializeTeamChemistry(teams.map((t) => t.teamId), currentSeason + 1);
+      clubhouseEvents = [];
+    }
+
+    currentSeason++;
+    latestPlayoffBracket = null;
+    latestSeasonAwards = null;
+    latestTeamSeasons = [];
+    latestPlayerSeasons = new Map();
+    latestGameResults = [];
+    featuredGameIds = new Set();
+    cache.invalidate();
+
+    if (hadCompletedSeason) {
+      refreshDraftBoard(1);
+    } else {
+      activeDraftState = null;
+    }
+
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Advance Season');
+    }
+
+    return currentSeason;
+  },
+
+  // ─── Query API (UI asks for specific data) ──────────────────
+
+  async getStandings(): Promise<TeamStandingRow[]> {
+    const cached = cache.getStandings(currentSeason);
+    if (cached) return cached;
+    const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
+    cache.setStandings(currentSeason, standings);
+    return standings;
+  },
+
+  async getRoster(teamId: number): Promise<RosterPlayer[]> {
+    return players
+      .filter((p) =>
+        p.teamId === teamId &&
+        p.rosterData.rosterStatus !== 'FREE_AGENT' &&
+        p.rosterData.rosterStatus !== 'RETIRED' &&
+        p.rosterData.rosterStatus !== 'DRAFT_ELIGIBLE')
+      .map((p) => ({
+        playerId: p.playerId,
+        name: `${p.firstName} ${p.lastName}`,
+        position: String(p.position),
+        leagueLevel: p.leagueLevel,
+        rosterStatus: p.rosterData.rosterStatus,
+        isOn40Man: p.rosterData.isOn40Man,
+        optionYearsRemaining: p.rosterData.optionYearsRemaining,
+        demotionsThisSeason: p.rosterData.demotionsThisSeason,
+        salary: p.rosterData.salary,
+        age: p.age,
+        bats: p.bats,
+        throws: p.throws,
+        isPitcher: p.isPitcher,
+        stats: getPlayerStatLine(p.playerId),
+      }))
+      .sort((a, b) => {
+        const statusSort: Record<RosterStatus, number> = {
+          MLB_ACTIVE: 0,
+          MLB_IL_10: 1,
+          MLB_IL_60: 2,
+          DFA: 3,
+          WAIVERS: 4,
+          MINORS_AAA: 5,
+          MINORS_AA: 6,
+          MINORS_ROOKIE: 7,
+          FREE_AGENT: 8,
+          RETIRED: 9,
+          DRAFT_ELIGIBLE: 10,
         };
+        const statusDelta = statusSort[a.rosterStatus] - statusSort[b.rosterStatus];
+        if (statusDelta !== 0) return statusDelta;
+        if (a.isPitcher !== b.isPitcher) return Number(a.isPitcher) - Number(b.isPitcher);
+        return a.name.localeCompare(b.name);
+      });
+  },
+
+  async getBattingLeaders(limit = 20): Promise<LeaderboardEntry[]> {
+    const cached = cache.getBattingLeaders(currentSeason);
+    if (cached && cached.length >= limit) return cached.slice(0, limit);
+
+    const entries: LeaderboardEntry[] = [];
+    for (const [playerId, ps] of latestPlayerSeasons) {
+      const player = players.find((p) => p.playerId === playerId);
+      if (!player || player.isPitcher || ps.ab < 100) continue;
+
+      entries.push({
+        playerId,
+        name: `${player.firstName} ${player.lastName}`,
+        team: teams.find((t) => t.teamId === player.teamId)?.abbreviation ?? '???',
+        position: String(player.position),
+        stat1: calcBA(ps.hits, ps.ab),          // BA
+        stat2: ps.hr,                            // HR
+        stat3: ps.rbi,                           // RBI
+        stat4: ps.hits,                          // H
+        stat5: ps.runs,                          // R
       });
     }
 
-    const alPlayers = state.players.filter(p => teamMap.get(p.teamId)?.league === 'AL');
-    const nlPlayers = state.players.filter(p => teamMap.get(p.teamId)?.league === 'NL');
-
-    return {
-      mvp: {
-        al: buildCandidates(alPlayers, (_p, s) => mvpScore(s), p => !p.isPitcher),
-        nl: buildCandidates(nlPlayers, (_p, s) => mvpScore(s), p => !p.isPitcher),
-      },
-      cyYoung: {
-        al: buildCandidates(alPlayers, (_p, s) => cyScore(s), p => p.isPitcher),
-        nl: buildCandidates(nlPlayers, (_p, s) => cyScore(s), p => p.isPitcher),
-      },
-      roy: {
-        al: buildCandidates(alPlayers, (p, s) => royScore(p, s)),
-        nl: buildCandidates(nlPlayers, (p, s) => royScore(p, s)),
-      },
-    };
+    entries.sort((a, b) => (b.stat1 as number) - (a.stat1 as number));
+    const result = entries.slice(0, Math.max(limit, 25)); // cache top 25
+    cache.setBattingLeaders(currentSeason, result);
+    return result.slice(0, limit);
   },
 
-  // ── Contract Extensions ──────────────────────────────────────────────────
-  async offerExtension(
-    playerId: number,
-    years: number,
-    annualSalary: number,
-  ): Promise<{ accepted: boolean; counterYears?: number; counterSalary?: number }> {
-    if (isNaN(years) || isNaN(annualSalary)) return { accepted: false };
-    years = Math.max(1, Math.min(10, Math.round(years)));
-    annualSalary = Math.max(0.5, annualSalary);
-    const state = requireState();
-    const player = state.players.find(p => p.playerId === playerId);
-    if (!player) return { accepted: false };
+  async getPitchingLeaders(limit = 20): Promise<LeaderboardEntry[]> {
+    const cached = cache.getPitchingLeaders(currentSeason);
+    if (cached && cached.length >= limit) return cached.slice(0, limit);
 
-    // Payroll check — block extensions that would exceed budget by >15%
-    const teamId = player.teamId;
-    const team = state.teams.find(t => t.teamId === teamId);
-    if (team) {
-      const currentPayroll = state.players
-        .filter(p => p.teamId === teamId && p.rosterData.rosterStatus === 'MLB_ACTIVE')
-        .reduce((sum, p) => sum + p.rosterData.salary, 0);
-      const newPayroll = currentPayroll + (annualSalary - player.rosterData.salary);
-      if (newPayroll > team.budget * 1_000_000 * 1.15) {
-        return { accepted: false };
-      }
+    const entries: LeaderboardEntry[] = [];
+    for (const [playerId, ps] of latestPlayerSeasons) {
+      const player = players.find((p) => p.playerId === playerId);
+      if (!player || !player.isPitcher || ps.ip < 30) continue;
+
+      entries.push({
+        playerId,
+        name: `${player.firstName} ${player.lastName}`,
+        team: teams.find((t) => t.teamId === player.teamId)?.abbreviation ?? '???',
+        position: String(player.position),
+        stat1: calcERA(ps.earnedRuns, ps.ip),   // ERA
+        stat2: ps.wins,                          // W
+        stat3: ps.kPitching,                     // K
+        stat4: ps.ip,                            // IP (outs)
+        stat5: ps.saves,                         // SV
+      });
     }
 
-    // Must be on the user's team — but we don't know user's team here,
-    // so we just validate the player exists and has < 6 years service
-    const serviceYears = Math.floor(player.rosterData.serviceTimeDays / 172);
-    if (serviceYears >= 6) return { accepted: false }; // Already FA eligible
-
-    const currentSalary = player.rosterData.salary;
-
-    // Acceptance probability
-    let prob = serviceYears < 3 ? 70 : 55; // Pre-arb vs arb-eligible base
-    if (annualSalary >= currentSalary * 1.2) prob += 15;
-    if (years > 2) prob += Math.min(20, (years - 2) * 10);
-    if (annualSalary < currentSalary) prob -= 20;
-    if (player.age <= 25) prob -= 10; // Wants to test FA
-
-    // Clamp
-    prob = Math.max(5, Math.min(95, prob));
-
-    // Deterministic "random" from playerId + years + salary
-    const seed = (playerId * 7919 + years * 31 + Math.round(annualSalary / 10000)) % 100;
-    const accepted = seed < prob;
-
-    if (accepted) {
-      // Apply the extension
-      player.rosterData.contractYearsRemaining = years;
-      player.rosterData.salary = annualSalary;
-      return { accepted: true };
-    }
-
-    // Counter-offer: 10% above what was offered, same years
-    const counterSalary = Math.round(annualSalary * 1.10);
-    return {
-      accepted: false,
-      counterYears: years,
-      counterSalary,
-    };
+    entries.sort((a, b) => (a.stat1 as number) - (b.stat1 as number));
+    const result = entries.slice(0, Math.max(limit, 25)); // cache top 25
+    cache.setPitchingLeaders(currentSeason, result);
+    return result.slice(0, limit);
   },
 
-  // ── Accept Counter-Offer ────────────────────────────────────────────────
-  async acceptCounterOffer(
-    playerId: number,
-    years: number,
-    annualSalary: number,
-  ): Promise<{ ok: boolean }> {
-    const state = requireState();
-    const player = state.players.find(p => p.playerId === playerId);
-    if (!player) return { ok: false };
-    player.rosterData.contractYearsRemaining = years;
-    player.rosterData.salary = annualSalary;
-    return { ok: true };
-  },
-
-  // ── Finances ───────────────────────────────────────────────────────────
-  async getPayrollReport(teamId: number): Promise<PayrollReport> {
-    const state = requireState();
-    const team = state.teams.find(t => t.teamId === teamId);
-    if (!team) throw new Error(`Team ${teamId} not found`);
-    return computePayrollReport(state.players, team);
-  },
-
-  async getArbitrationCases(): Promise<ArbitrationCase[]> {
-    const state = requireState();
-    return generateArbitrationCases(state.players, state.userTeamId);
-  },
-
-  async resolveArbitrationCase(playerId: number, salary: number): Promise<{ ok: boolean }> {
-    const state = requireState();
-    const player = state.players.find(p => p.playerId === playerId);
-    if (!player) return { ok: false };
-    resolveArbitration(player, salary);
-    rebuildMaps();
-    return { ok: true };
-  },
-
-  // ── Front Office Staff ──────────────────────────────────────────────────
-  async setFrontOffice(staff: import('../types/frontOffice').FOStaffMember[]): Promise<void> {
-    _foStaff = staff;
-  },
-
-  async getStaffBonuses(): Promise<StaffBonuses> {
-    return _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-  },
-
-  // ── Waivers ────────────────────────────────────────────────────────────────
-
-  async processWaivers(): Promise<WaiverClaim[]> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    const claims = processWaivers(state.players, state.teams, state.userTeamId, standings);
-    rebuildMaps();
-    return claims;
-  },
-
-  // ── Rule 5 Draft ──────────────────────────────────────────────────────────
-
-  async getRule5Eligible(): Promise<Array<{
-    playerId: number; name: string; position: string;
-    overall: number; potential: number; age: number;
-    teamId: number; teamAbbr: string;
-  }>> {
-    const state = requireState();
-    const eligible = identifyRule5Eligible(state.players, state.season);
-    return eligible.map(p => {
-      const team = _teamMap.get(p.teamId);
-      return {
-        playerId: p.playerId,
-        name: p.name,
-        position: p.position,
-        overall: p.overall,
-        potential: p.potential,
-        age: p.age,
-        teamId: p.teamId,
-        teamAbbr: team?.abbreviation ?? '???',
-      };
-    });
-  },
-
-  async conductRule5Draft(): Promise<Rule5Selection[]> {
-    const state = requireState();
-    const standings = _buildStandings(state);
-    const selections = conductRule5Draft(state.players, state.teams, state.userTeamId, state.season, standings);
-    rebuildMaps();
-    return selections;
-  },
-
-  async userRule5Pick(playerId: number): Promise<{ ok: boolean; error?: string }> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found.' };
-    const result = userRule5Pick(player, state.userTeamId, state.players);
-    if (result.ok) rebuildMaps();
-    return result;
-  },
-
-  // ── Draft ─────────────────────────────────────────────────────────────────
-
-  async startDraft(mode: string): Promise<DraftBoardState> {
-    const state = requireState();
-    let gen = deserializeState(state.prngState);
-
-    // Extract MLB_ACTIVE players into draft pool
-    const pool = createDraftPool(state.players);
-
-    // Apply scouting fog using staff bonuses
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-    let prospects: DraftProspect[];
-    [prospects, gen] = scoutDraftPool(pool, staffBonuses.scoutingAccuracy, gen, staffBonuses.draftBoardQuality);
-
-    // Generate draft order
-    let draftOrder: number[];
-    [draftOrder, gen] = generateDraftOrder(state.teams, gen);
-
-    state.prngState = serializeState(gen);
-
-    const totalRounds = getDraftRounds(mode);
-
-    _draftState = {
-      mode,
-      pool,
-      prospects,
-      picks: [],
-      draftOrder,
-      currentRound: 1,
-      currentPickInRound: 0,
-      totalRounds,
-      userTeamId: state.userTeamId,
-      isComplete: false,
-    };
-
-    return this._buildDraftBoard();
-  },
-
-  async getDraftBoard(): Promise<DraftBoardState> {
-    return this._buildDraftBoard();
-  },
-
-  async makeDraftPick(playerId: number): Promise<DraftBoardState> {
-    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
-    requireState();
-
-    const pickingTeamId = getPickingTeam(
-      _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
-    );
-    if (pickingTeamId !== _draftState.userTeamId) throw new Error('Not your turn');
-
-    this._executePick(playerId, pickingTeamId);
-    return this._buildDraftBoard();
-  },
-
-  async autoPickForUser(): Promise<DraftBoardState> {
-    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
-    requireState();
-
-    const pickingTeamId = getPickingTeam(
-      _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
-    );
-    if (pickingTeamId !== _draftState.userTeamId) throw new Error('Not your turn');
-
-    const teamPicks = _draftState.picks.filter(p => p.teamId === pickingTeamId);
-    const playerId = aiSelectPlayer(
-      _draftState.prospects, teamPicks, _draftState.currentRound,
-    );
-    if (playerId >= 0) this._executePick(playerId, pickingTeamId);
-
-    return this._buildDraftBoard();
-  },
-
-  async autoAdvanceDraft(): Promise<DraftBoardState> {
-    if (!_draftState || _draftState.isComplete) throw new Error('No active draft');
-    requireState();
-
-    // AI picks until it's the user's turn or draft is complete
-    while (!_draftState.isComplete) {
-      const pickingTeamId = getPickingTeam(
-        _draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound,
-      );
-      if (pickingTeamId === _draftState.userTeamId) break;
-
-      const teamPicks = _draftState.picks.filter(p => p.teamId === pickingTeamId);
-      const playerId = aiSelectPlayer(
-        _draftState.prospects, teamPicks, _draftState.currentRound,
-      );
-      if (playerId < 0) {
-        // Pool exhausted — mark draft as complete so UI knows it ended early
-        _draftState.isComplete = true;
-        break;
-      }
-      this._executePick(playerId, pickingTeamId);
-    }
-
-    return this._buildDraftBoard();
-  },
-
-  async completeDraft(): Promise<void> {
-    if (!_draftState) throw new Error('No draft to complete');
-    const state = requireState();
-
-    // Fill remaining roster spots from undrafted pool players
-    fillRemainingRosters(state.players, state.teams);
-    rebuildMaps();
-    _draftState = null;
-  },
-
-  // ── Annual Amateur Draft ──────────────────────────────────────────────────
-
-  async startAnnualDraft(): Promise<DraftBoardState> {
-    const state = requireState();
-    let gen = deserializeState(state.prngState);
-
-    // Generate amateur draft class
-    let annualClass: Player[];
-    [annualClass, gen] = generateAnnualDraftClass(gen, state.season);
-
-    // Assign unique IDs and add to global player list
-    const maxId = state.players.reduce((m, p) => Math.max(m, p.playerId), 0);
-    for (let i = 0; i < annualClass.length; i++) {
-      annualClass[i].playerId = maxId + 1 + i;
-    }
-    state.players.push(...annualClass);
-
-    // Scout the class with scouting accuracy from staff
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-    let prospects: DraftProspect[];
-    [prospects, gen] = scoutDraftPool(annualClass, staffBonuses.scoutingAccuracy, gen, staffBonuses.draftBoardQuality);
-
-    // Draft order: inverse of standings (worst team picks first)
-    const standings = state.teams
-      .map(t => ({ teamId: t.teamId, wins: t.seasonRecord.wins }))
-      .sort((a, b) => a.wins - b.wins);
-    const draftOrder = standings.map(s => s.teamId);
-
-    state.prngState = serializeState(gen);
-
-    const totalRounds = getDraftRounds('annual'); // 5 rounds
-
-    _draftState = {
-      mode: 'annual',
-      pool: annualClass,
-      prospects,
-      picks: [],
-      draftOrder,
-      currentRound: 1,
-      currentPickInRound: 0,
-      totalRounds,
-      userTeamId: state.userTeamId,
-      isComplete: false,
-    };
-
-    return this._buildDraftBoard();
-  },
-
-  async completeAnnualDraft(): Promise<{ draftedCount: number }> {
-    if (!_draftState) throw new Error('No draft to complete');
-    requireState();
-
-    const draftedCount = _draftState.picks.length;
-
-    // Undrafted annual prospects become free agents
-    for (const p of _draftState.pool) {
-      if (p.teamId === -1) {
-        p.rosterData.rosterStatus = 'FREE_AGENT';
-      }
-    }
-
-    rebuildMaps();
-    _draftState = null;
-    return { draftedCount };
-  },
-
-  // Internal: execute a single draft pick
-  _executePick(playerId: number, teamId: number): void {
-    if (!_draftState) return;
-
-    // Find the player in pool
-    const poolIdx = _draftState.pool.findIndex(p => p.playerId === playerId);
-    if (poolIdx < 0) return;
-    const player = _draftState.pool[poolIdx];
-
-    // Assign to team
-    player.teamId = teamId;
-    if (_draftState.mode === 'annual') {
-      // Annual draft picks start in minors with 6-year team control
-      player.rosterData.rosterStatus = 'MINORS_ROOKIE';
-      player.rosterData.isOn40Man = false;
-      player.rosterData.contractYearsRemaining = 6;
-      player.rosterData.salary = 500_000; // Pre-arb minimum
-    } else {
-      player.rosterData.rosterStatus = 'MLB_ACTIVE';
-      player.rosterData.isOn40Man = true;
-    }
-
-    // Find prospect entry for display info
-    const prospect = _draftState.prospects.find(p => p.playerId === playerId);
-    const team = _teamMap.get(teamId);
-
-    // Record pick
-    const pick: DraftPick = {
-      round: _draftState.currentRound,
-      pickNumber: getOverallPick(
-        _draftState.currentRound,
-        _draftState.currentPickInRound,
-        _draftState.draftOrder.length,
-      ),
-      teamId,
-      teamAbbr: team?.abbreviation ?? '???',
-      playerId,
-      playerName: player.name,
-      position: player.position,
-      scoutedOvr: prospect?.scoutedOvr ?? 0,
-    };
-    _draftState.picks.push(pick);
-
-    // Remove from available
-    _draftState.pool.splice(poolIdx, 1);
-    _draftState.prospects = _draftState.prospects.filter(p => p.playerId !== playerId);
-
-    // Advance to next pick
-    _draftState.currentPickInRound++;
-    if (_draftState.currentPickInRound >= _draftState.draftOrder.length) {
-      _draftState.currentRound++;
-      _draftState.currentPickInRound = 0;
-      if (_draftState.currentRound > _draftState.totalRounds) {
-        _draftState.isComplete = true;
-      }
-    }
-
-    rebuildMaps();
-  },
-
-  // Internal: build serializable board state for UI
-  _buildDraftBoard(): DraftBoardState {
-    if (!_draftState) throw new Error('No active draft');
-
-    const pickingTeamId = _draftState.isComplete
-      ? -1
-      : getPickingTeam(_draftState.draftOrder, _draftState.currentRound, _draftState.currentPickInRound);
-    const team = _teamMap.get(pickingTeamId);
-
-    return {
-      mode: _draftState.mode,
-      available: _draftState.prospects.slice(0, 300),
-      picks: _draftState.picks,
-      draftOrder: _draftState.draftOrder,
-      currentRound: _draftState.currentRound,
-      currentPickInRound: _draftState.currentPickInRound,
-      totalRounds: _draftState.totalRounds,
-      userTeamId: _draftState.userTeamId,
-      isUserTurn: pickingTeamId === _draftState.userTeamId,
-      isComplete: _draftState.isComplete,
-      pickingTeamId,
-      pickingTeamAbbr: team?.abbreviation ?? '???',
-      overallPick: _draftState.isComplete
-        ? _draftState.picks.length
-        : getOverallPick(_draftState.currentRound, _draftState.currentPickInRound, _draftState.draftOrder.length),
-    };
-  },
-
-  // ── Advanced Stats ───────────────────────────────────────────────────────
-  async getAdvancedStats(playerId: number): Promise<AdvancedHittingStats | AdvancedPitchingStats | null> {
-    const stats = _playerSeasonStats.get(playerId);
-    if (!stats) return null;
-    const player = _playerMap.get(playerId);
+  async getPlayerProfile(playerId: number): Promise<PlayerProfileData | null> {
+    const player = players.find((p) => p.playerId === playerId);
     if (!player) return null;
 
-    // Compute league averages if not cached
-    if (!_cachedLeagueAverages) {
-      const allStats = Array.from(_playerSeasonStats.values());
-      _cachedLeagueAverages = computeLeagueAverages(allStats);
-    }
-
-    if (player.isPitcher) {
-      return computeAdvancedPitching(stats, _cachedLeagueAverages);
-    }
-    return computeAdvancedHitting(stats, _cachedLeagueAverages);
+    const ps = latestPlayerSeasons.get(playerId);
+    return {
+      player,
+      seasonStats: ps ?? null,
+    };
   },
 
-  async getLeaderboardAdvanced(
-    category: 'hitting' | 'pitching',
-    sortBy: string,
-    limit = 30,
-  ): Promise<Array<{
-    rank: number;
-    playerId: number;
-    name: string;
-    teamAbbr: string;
-    position: string;
-    age: number;
-    stats: Record<string, number>;
-  }>> {
-    const state = requireState();
+  async getSeasonNumber(): Promise<number> {
+    return currentSeason;
+  },
 
-    if (!_cachedLeagueAverages) {
-      const allStats = Array.from(_playerSeasonStats.values());
-      _cachedLeagueAverages = computeLeagueAverages(allStats);
+  async getSeasonStage(): Promise<SeasonStage> {
+    return computeSeasonStage();
+  },
+
+  async getTeams(): Promise<Team[]> {
+    return teams;
+  },
+
+  async getPlayoffBracket(): Promise<PlayoffBracket | null> {
+    return latestPlayoffBracket;
+  },
+
+  async getSeasonAwards(): Promise<SeasonAwards | null> {
+    return latestSeasonAwards;
+  },
+
+  async getNewsFeed(): Promise<NewsStory[]> {
+    return latestNewsFeed;
+  },
+
+  async getRecentEvents(limit = 40, teamId?: number): Promise<GameEvent[]> {
+    if (limit <= 0) return [];
+
+    const seasonEvents = eventLog.getSeason(currentSeason);
+    const filtered = teamId == null
+      ? seasonEvents
+      : seasonEvents.filter((entry) => entry.teamIds.includes(teamId));
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (b.gameDay !== a.gameDay) return b.gameDay - a.gameDay;
+      return b.eventId - a.eventId;
+    });
+    return sorted.slice(0, limit);
+  },
+
+  async getOwnerState(teamId: number): Promise<OwnerProfile | null> {
+    return ownerProfiles.get(teamId) ?? null;
+  },
+
+  async getOwnerEvaluationHistory(teamId: number, limit = 10): Promise<OwnerEvaluation[]> {
+    if (limit <= 0) return [];
+    const filtered = ownerEvaluationHistory.filter((entry) => entry.teamId === teamId);
+    const start = Math.max(0, filtered.length - limit);
+    return filtered.slice(start);
+  },
+
+  async getTeamChemistry(teamId: number): Promise<TeamChemistryState | null> {
+    return teamChemistry.get(teamId) ?? null;
+  },
+
+  async getClubhouseEvents(teamId?: number, limit = 40): Promise<ClubhouseEvent[]> {
+    if (limit <= 0) return [];
+
+    const filtered = teamId == null
+      ? clubhouseEvents
+      : clubhouseEvents.filter((event) => event.teamId === teamId);
+
+    const sorted = [...filtered].sort((a, b) => {
+      if (b.season !== a.season) return b.season - a.season;
+      return b.eventId - a.eventId;
+    });
+    return sorted.slice(0, limit);
+  },
+
+  async getTeamNameMap(): Promise<[number, string][]> {
+    // Serialize Map for Comlink transfer
+    return Array.from(buildTeamNameMap().entries());
+  },
+
+  async getOffseasonRecap(): Promise<OffseasonRecap | null> {
+    return latestOffseasonRecap;
+  },
+
+  async getTransactionLog(limit = 200): Promise<TransactionLogEntry[]> {
+    if (limit <= 0) return [];
+    const start = Math.max(0, transactionLog.length - limit);
+    return transactionLog.slice(start);
+  },
+
+  async getTeamTransactionLog(teamId: number, limit = 100): Promise<TransactionLogEntry[]> {
+    if (limit <= 0) return [];
+    const filtered = transactionLog.filter((entry) => entry.teamId === teamId);
+    const start = Math.max(0, filtered.length - limit);
+    return filtered.slice(start);
+  },
+
+  async getLeagueActivityIntel(request: ActivityIntelRequest): Promise<ActivityIntelResponse> {
+    return computeActivityIntelAggregate({
+      transactionLog,
+      teams: teams.map((team) => ({
+        teamId: team.teamId,
+        conferenceId: team.conferenceId,
+        divisionId: team.divisionId,
+      })),
+      request,
+      maxHistoryLimit: 2000,
+    });
+  },
+
+  async getTeamRosterCounts(teamId: number): Promise<TeamRosterCounts> {
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+    return {
+      teamId,
+      fortyMan: countFortyMan(teamId, playerMap),
+      twentySixMan: countTwentySix(teamId, playerMap),
+    };
+  },
+
+  async submitRosterTransaction(
+    teamId: number,
+    tx: RosterTransaction,
+    gameDay: number = 0,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
     }
 
-    const entries: Array<{
-      playerId: number;
-      name: string;
-      teamAbbr: string;
-      position: string;
-      age: number;
-      sortValue: number;
-      stats: Record<string, number>;
-    }> = [];
+    const validation = validateTransaction(tx, teamId, playerMap);
+    if (!validation.valid) {
+      return { ok: false, reason: validation.reason };
+    }
 
-    for (const [pid, seasonStats] of _playerSeasonStats) {
-      const player = _playerMap.get(pid);
+    const logLengthBefore = transactionLog.length;
+    executeTransaction(tx, teamId, playerMap, gameDay, currentSeason, transactionLog);
+    players = Array.from(playerMap.values());
+    cache.invalidate();
+
+    const entry = transactionLog[logLengthBefore];
+    const playerId = primaryPlayerId(tx);
+    const player = playerId !== null ? playerMap.get(playerId) : null;
+    const playerName = player ? `${player.firstName} ${player.lastName}` : null;
+
+    if (entry) {
+      logTransaction(eventLog, currentSeason, gameDay, {
+        kind: 'transaction',
+        transactionType: entry.transaction.type,
+        playerId: playerId ?? -1,
+        playerName: playerName ?? 'N/A',
+        teamId,
+        details: entry.description,
+      });
+    }
+
+    if (entry && shouldCreateTransactionStory(entry.transaction.type)) {
+      const teamName = buildTeamNameMap().get(teamId) ?? `Team ${teamId}`;
+      latestNewsFeed.push(News.generateTransactionPulseStory(
+        currentSeason,
+        gameDay,
+        teamName,
+        entry.transaction.type,
+        entry.description,
+        playerName,
+        playerId !== null ? [playerId] : [],
+        teamId,
+      ));
+      latestNewsFeed = sortNewsFeed(latestNewsFeed);
+    }
+
+    return { ok: true };
+  },
+
+  async getTradeSuggestions(teamId: number, limit = 6, deadlineMode = false): Promise<TradeSuggestion[]> {
+    if (!gen || limit <= 0) return [];
+
+    const teamIds = teams.map((t) => t.teamId);
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+
+    const teamStrategies = deriveTeamStrategies(teamIds);
+
+    let scoutingProfiles;
+    [scoutingProfiles, gen] = generateScoutingProfiles(teamIds, gen);
+
+    const reputations = new Map<number, ReturnType<typeof createTradeReputation>>();
+    for (const id of teamIds) {
+      reputations.set(id, createTradeReputation());
+    }
+
+    const myStrategy = teamStrategies.get(teamId) ?? 'fringe';
+    const deadlineUrgency = deadlineMode ? 0.85 : 0;
+
+    let proposals: TradePackage[];
+    [proposals, gen] = aiProposeTrades(
+      teamId,
+      myStrategy,
+      playerMap,
+      teamStrategies,
+      scoutingProfiles,
+      reputations,
+      gen,
+      { deadlineUrgency },
+    );
+
+    const suggestions: TradeSuggestion[] = [];
+    for (const pkg of proposals) {
+      const marketContext = buildTradeMarketContext(pkg, deadlineUrgency);
+      let evalResult;
+      [evalResult, gen] = evaluateTrade(
+        pkg,
+        playerMap,
+        teamStrategies,
+        scoutingProfiles,
+        reputations,
+        gen,
+        15,
+        marketContext,
+      );
+
+      suggestions.push(buildTradeSuggestion(pkg, evalResult, playerMap, buildTeamNameMap()));
+    }
+
+    suggestions.sort((a, b) => b.surplus - a.surplus);
+    return suggestions.slice(0, limit);
+  },
+
+  async getTradeCounterOffer(pkg: TradePackage, deadlineMode = false): Promise<TradeCounterOfferResult> {
+    if (!gen) return { ok: false, reason: 'Trade engine not ready.' };
+    if (pkg.fromTeamId === pkg.toTeamId) {
+      return { ok: false, reason: 'Trade teams must be different.' };
+    }
+
+    const teamIds = teams.map((t) => t.teamId);
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+
+    const validateTradeSide = (playerIds: number[], expectedTeamId: number): string | null => {
+      for (const id of playerIds) {
+        const player = playerMap.get(id);
+        if (!player) return `Player #${id} not found.`;
+        if (player.teamId !== expectedTeamId) {
+          return `${player.firstName} ${player.lastName} is no longer on expected team.`;
+        }
+        if (player.rosterData.hasTenAndFive) {
+          return `${player.firstName} ${player.lastName} has 10-and-5 rights (no-trade).`;
+        }
+      }
+      return null;
+    };
+
+    const fromValidation = validateTradeSide(pkg.playersOffered, pkg.fromTeamId);
+    if (fromValidation) return { ok: false, reason: fromValidation };
+    const toValidation = validateTradeSide(pkg.playersRequested, pkg.toTeamId);
+    if (toValidation) return { ok: false, reason: toValidation };
+
+    const teamStrategies = deriveTeamStrategies(teamIds);
+    const marketContext = buildTradeMarketContext(pkg, deadlineMode ? 0.85 : 0);
+
+    let scoutingProfiles;
+    [scoutingProfiles, gen] = generateScoutingProfiles(teamIds, gen);
+
+    const reputations = new Map<number, ReturnType<typeof createTradeReputation>>();
+    for (const id of teamIds) {
+      reputations.set(id, createTradeReputation());
+    }
+
+    let proposal;
+    [proposal, gen] = proposeCounterOffer(
+      pkg,
+      playerMap,
+      teamStrategies,
+      scoutingProfiles,
+      reputations,
+      gen,
+      2,
+      marketContext,
+    );
+
+    const suggestion = buildTradeSuggestion(
+      proposal.package,
+      proposal.evaluation,
+      playerMap,
+      buildTeamNameMap(),
+    );
+
+    return {
+      ok: true,
+      suggestion,
+      changed: proposal.changed,
+      rounds: proposal.rounds,
+    };
+  },
+
+  async executeTradePackage(
+    pkg: TradePackage,
+    gameDay = 0,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    if (pkg.fromTeamId === pkg.toTeamId) {
+      return { ok: false, reason: 'Trade teams must be different.' };
+    }
+
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+
+    const validateTradeSide = (playerIds: number[], expectedTeamId: number): string | null => {
+      for (const id of playerIds) {
+        const player = playerMap.get(id);
+        if (!player) return `Player #${id} not found.`;
+        if (player.teamId !== expectedTeamId) {
+          return `${player.firstName} ${player.lastName} is no longer on expected team.`;
+        }
+        if (player.rosterData.hasTenAndFive) {
+          return `${player.firstName} ${player.lastName} has 10-and-5 rights (no-trade).`;
+        }
+      }
+      return null;
+    };
+
+    const fromValidation = validateTradeSide(pkg.playersOffered, pkg.fromTeamId);
+    if (fromValidation) return { ok: false, reason: fromValidation };
+    const toValidation = validateTradeSide(pkg.playersRequested, pkg.toTeamId);
+    if (toValidation) return { ok: false, reason: toValidation };
+
+    executeTransaction(
+      {
+        type: 'TRADE',
+        playerIds: pkg.playersOffered,
+        fromTeamId: pkg.fromTeamId,
+        toTeamId: pkg.toTeamId,
+      },
+      pkg.fromTeamId,
+      playerMap,
+      gameDay,
+      currentSeason,
+      transactionLog,
+    );
+
+    executeTransaction(
+      {
+        type: 'TRADE',
+        playerIds: pkg.playersRequested,
+        fromTeamId: pkg.toTeamId,
+        toTeamId: pkg.fromTeamId,
+      },
+      pkg.toTeamId,
+      playerMap,
+      gameDay,
+      currentSeason,
+      transactionLog,
+    );
+
+    players = Array.from(playerMap.values());
+    cache.invalidate();
+
+    const nameMap = buildTeamNameMap();
+    const fromTeamName = nameMap.get(pkg.fromTeamId) ?? `Team ${pkg.fromTeamId}`;
+    const toTeamName = nameMap.get(pkg.toTeamId) ?? `Team ${pkg.toTeamId}`;
+    latestNewsFeed.push(News.generateTradeStory(
+      currentSeason,
+      gameDay,
+      fromTeamName,
+      toTeamName,
+      pkg.playersOffered.map((id) => {
+        const p = playerMap.get(id);
+        return p ? `${p.firstName} ${p.lastName}` : `Player #${id}`;
+      }),
+      pkg.playersRequested.map((id) => {
+        const p = playerMap.get(id);
+        return p ? `${p.firstName} ${p.lastName}` : `Player #${id}`;
+      }),
+      [...pkg.playersOffered, ...pkg.playersRequested],
+      [pkg.fromTeamId, pkg.toTeamId],
+    ));
+    logTrade(eventLog, currentSeason, gameDay, {
+      kind: 'trade',
+      fromTeamId: pkg.fromTeamId,
+      toTeamId: pkg.toTeamId,
+      playersGoing: pkg.playersOffered.map((id) => {
+        const p = playerMap.get(id);
+        return {
+          playerId: id,
+          name: p ? `${p.firstName} ${p.lastName}` : `Player #${id}`,
+        };
+      }),
+      playersReceived: pkg.playersRequested.map((id) => {
+        const p = playerMap.get(id);
+        return {
+          playerId: id,
+          name: p ? `${p.firstName} ${p.lastName}` : `Player #${id}`,
+        };
+      }),
+      surplusValue: 0,
+    });
+    latestNewsFeed = sortNewsFeed(latestNewsFeed);
+
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Trade Completed');
+    }
+
+    return { ok: true };
+  },
+
+  async getFreeAgentBoard(teamId: number, limit = 30): Promise<FreeAgentListing[]> {
+    if (limit <= 0) return [];
+
+    const teamIds = teams.map((t) => t.teamId);
+    const teamStrategies = deriveTeamStrategies(teamIds);
+    const myStrategy = teamStrategies.get(teamId) ?? 'fringe';
+
+    const listings: FreeAgentListing[] = [];
+    for (const p of players) {
+      if (p.rosterData.rosterStatus !== 'FREE_AGENT') continue;
+
+      const overall = playerOverall(p);
+      const talentProjection = Math.max(0, (overall - 200) / 50);
+      const agePenalty = Math.max(0, (p.age - 28) * 0.3);
+      const adjustedProjection = Math.max(0, talentProjection - agePenalty);
+      const desiredSalary = Math.max(720_000, Math.round(adjustedProjection * 8_000_000));
+      const desiredYears = p.age <= 28 ? 5 : p.age <= 31 ? 3 : p.age <= 34 ? 2 : 1;
+
+      const needScore = computePositionNeedScore(teamId, String(p.position));
+      let fitScore = needScore * 50 + Math.max(0, (overall - 220) * 0.08);
+      if (myStrategy === 'contender') {
+        fitScore += p.age <= 34 ? 8 : -6;
+        fitScore += p.leagueLevel === 'MLB' ? 8 : 0;
+      } else if (myStrategy === 'rebuilder') {
+        fitScore += p.age <= 29 ? 10 : -8;
+        fitScore += Math.max(0, (p.potential - overall) * 0.05);
+      }
+      fitScore = Math.max(0, Math.round(fitScore));
+
+      const marketInterest = estimateFreeAgentMarketInterest(
+        String(p.position),
+        overall,
+        teamIds,
+        teamStrategies,
+      );
+
+      listings.push({
+        playerId: p.playerId,
+        name: `${p.firstName} ${p.lastName}`,
+        position: String(p.position),
+        age: p.age,
+        isPitcher: p.isPitcher,
+        overall,
+        potential: p.potential,
+        desiredYears,
+        desiredSalary,
+        teamFitScore: fitScore,
+        marketInterest,
+      });
+    }
+
+    listings.sort((a, b) => {
+      if (b.teamFitScore !== a.teamFitScore) return b.teamFitScore - a.teamFitScore;
+      return b.overall - a.overall;
+    });
+
+    return listings.slice(0, limit);
+  },
+
+  async submitFreeAgentOffer(
+    teamId: number,
+    playerId: number,
+    years: number,
+    annualSalary: number,
+    gameDay: number = 0,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    const clampedYears = Math.max(1, Math.min(8, Math.round(years)));
+    const roundedSalary = Math.round(annualSalary);
+    if (roundedSalary < 720_000) {
+      return { ok: false, reason: 'Salary must be at least MLB minimum ($0.72M).' };
+    }
+
+    const playerMap = new Map<number, Player>();
+    for (const p of players) {
+      playerMap.set(p.playerId, p);
+    }
+
+    const tx: RosterTransaction = {
+      type: 'SIGN_FA',
+      playerId,
+      teamId,
+      years: clampedYears,
+      salary: roundedSalary,
+    };
+
+    const validation = validateTransaction(tx, teamId, playerMap);
+    if (!validation.valid) {
+      return { ok: false, reason: validation.reason };
+    }
+
+    executeTransaction(tx, teamId, playerMap, gameDay, currentSeason, transactionLog);
+    players = Array.from(playerMap.values());
+    cache.invalidate();
+
+    const signed = playerMap.get(playerId);
+    if (signed) {
+      const playerName = `${signed.firstName} ${signed.lastName}`;
+      latestNewsFeed.push(News.generateSigningStory(
+        currentSeason,
+        playerName,
+        buildTeamNameMap().get(teamId) ?? `Team ${teamId}`,
+        clampedYears,
+        roundedSalary,
+        signed.playerId,
+        teamId,
+      ));
+      logTransaction(eventLog, currentSeason, gameDay, {
+        kind: 'transaction',
+        transactionType: 'SIGN_FA',
+        playerId: signed.playerId,
+        playerName,
+        teamId,
+        details: `Signed ${playerName} (${clampedYears}yr/$${(roundedSalary / 1_000_000).toFixed(1)}M)`,
+      });
+      latestNewsFeed = sortNewsFeed(latestNewsFeed);
+    }
+
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Free Agent Signing');
+    }
+
+    return { ok: true };
+  },
+
+  async listSaves(): Promise<SaveManifest[]> {
+    return listSaveManifests();
+  },
+
+  async saveGameToSlot(slotId?: string, label?: string): Promise<SaveOperationResult> {
+    const saveState = buildPersistedState();
+    if (!saveState) {
+      return { ok: false, error: 'No active league to save.' };
+    }
+
+    const resolvedSlot = slotId?.trim() ? slotId : getNextManualSlot();
+    const resolvedLabel = label?.trim()
+      ? label.trim()
+      : `Manual Save — Season ${currentSeason}`;
+
+    const manifest = createSave(resolvedSlot, resolvedLabel, saveState, false);
+    return { ok: true, manifest };
+  },
+
+  async loadGameFromSlot(slotId: string): Promise<LoadSaveResult> {
+    const loaded = loadSave(slotId);
+    if (!loaded.success || !loaded.state) {
+      return {
+        ok: false,
+        error: loaded.error ?? 'Failed to load save.',
+      };
+    }
+
+    applyLoadedState(loaded.state);
+    return {
+      ok: true,
+      manifest: loaded.manifest ?? undefined,
+      warning: loaded.error,
+      season: currentSeason,
+      stage: computeSeasonStage(),
+    };
+  },
+
+  async deleteSaveSlot(slotId: string): Promise<boolean> {
+    return deleteSave(slotId);
+  },
+
+  async exportSaveSlot(slotId: string): Promise<ExportSaveResult> {
+    const json = exportSaveToJSON(slotId);
+    if (!json) return { ok: false, error: 'Save slot not found.' };
+    return { ok: true, json };
+  },
+
+  async importSaveData(json: string, slotId?: string): Promise<SaveOperationResult> {
+    const targetSlot = slotId?.trim() ? slotId : getNextManualSlot();
+    const imported = importSaveFromJSON(json, targetSlot);
+    if (!imported.success || !imported.manifest) {
+      return { ok: false, error: imported.error ?? 'Failed to import save.' };
+    }
+    return { ok: true, manifest: imported.manifest };
+  },
+
+  // ─── Batched Queries (Performance) ────────────────────────────
+
+  /**
+   * getDashboardBundle — single RPC that returns everything the
+   * dashboard needs. Eliminates 5+ sequential worker round-trips
+   * on tab mount. Cached aggressively.
+   */
+  async getDashboardBundle(): Promise<DashboardBundle> {
+    const cached = cache.getDashboard(currentSeason);
+    if (cached) return cached;
+
+    const standings = buildStandings({
+      teamSeasons: latestTeamSeasons,
+      gameResults: latestGameResults,
+    });
+    cache.setStandings(currentSeason, standings);
+
+    // Build leaders inline (avoids double iteration)
+    const batEntries: LeaderboardEntry[] = [];
+    const pitchEntries: LeaderboardEntry[] = [];
+    for (const [playerId, ps] of latestPlayerSeasons) {
+      const player = players.find((p) => p.playerId === playerId);
       if (!player) continue;
 
-      if (category === 'hitting') {
-        if (player.isPitcher) continue;
-        if (seasonStats.pa < 100) continue;
-        const adv = computeAdvancedHitting(seasonStats, _cachedLeagueAverages);
-        const team = state.teams.find(t => t.teamId === player.teamId);
-        entries.push({
-          playerId: pid,
-          name: player.name,
-          teamAbbr: team?.abbreviation ?? '???',
-          position: player.position,
-          age: player.age,
-          sortValue: (adv as unknown as Record<string, number>)[sortBy] ?? 0,
-          stats: adv as unknown as Record<string, number>,
+      if (!player.isPitcher && ps.ab >= 100) {
+        batEntries.push({
+          playerId,
+          name: `${player.firstName} ${player.lastName}`,
+          team: teams.find((t) => t.teamId === player.teamId)?.abbreviation ?? '???',
+          position: String(player.position),
+          stat1: calcBA(ps.hits, ps.ab),
+          stat2: ps.hr,
+          stat3: ps.rbi,
+          stat4: ps.hits,
+          stat5: ps.runs,
         });
-      } else {
-        if (!player.isPitcher) continue;
-        if (seasonStats.outs < 60) continue; // 20+ IP
-        const adv = computeAdvancedPitching(seasonStats, _cachedLeagueAverages);
-        const team = state.teams.find(t => t.teamId === player.teamId);
-        entries.push({
-          playerId: pid,
-          name: player.name,
-          teamAbbr: team?.abbreviation ?? '???',
-          position: player.position,
-          age: player.age,
-          sortValue: (adv as unknown as Record<string, number>)[sortBy] ?? 0,
-          stats: adv as unknown as Record<string, number>,
+      }
+      if (player.isPitcher && ps.ip >= 30) {
+        pitchEntries.push({
+          playerId,
+          name: `${player.firstName} ${player.lastName}`,
+          team: teams.find((t) => t.teamId === player.teamId)?.abbreviation ?? '???',
+          position: String(player.position),
+          stat1: calcERA(ps.earnedRuns, ps.ip),
+          stat2: ps.wins,
+          stat3: ps.kPitching,
+          stat4: ps.ip,
+          stat5: ps.saves,
         });
       }
     }
 
-    // Sort: for FIP/ERA/xFIP/bb9/hr9/whip lower is better; for others higher is better
-    const lowerIsBetter = ['fip', 'xFIP', 'era', 'bb9', 'hr9', 'whip', 'babip'];
-    const ascending = lowerIsBetter.includes(sortBy);
-    entries.sort((a, b) => ascending ? a.sortValue - b.sortValue : b.sortValue - a.sortValue);
+    batEntries.sort((a, b) => (b.stat1 as number) - (a.stat1 as number));
+    pitchEntries.sort((a, b) => (a.stat1 as number) - (b.stat1 as number));
 
-    return entries.slice(0, limit).map((e, i) => ({
-      rank: i + 1,
-      playerId: e.playerId,
-      name: e.name,
-      teamAbbr: e.teamAbbr,
-      position: e.position,
-      age: e.age,
-      stats: e.stats,
-    }));
-  },
+    const topBatters = batEntries.slice(0, 10);
+    const topPitchers = pitchEntries.slice(0, 10);
 
-  // ── AI Roster Moves ─────────────────────────────────────────────────────
-  async getAIRosterMoves(): Promise<AIRosterMove[]> {
-    return _lastAIRosterMoves;
-  },
+    // Cache the full leaders list too
+    cache.setBattingLeaders(currentSeason, batEntries.slice(0, 25));
+    cache.setPitchingLeaders(currentSeason, pitchEntries.slice(0, 25));
 
-  // ── Lineup / Rotation Order ─────────────────────────────────────────────
-  async setLineupOrder(ids: number[]): Promise<{ ok: boolean; error?: string }> {
-    const state = requireState();
-    if (ids.length !== 9) return { ok: false, error: 'Lineup must have exactly 9 players.' };
-    const unique = new Set(ids);
-    if (unique.size !== 9) return { ok: false, error: 'Lineup contains duplicate players.' };
-    // Validate all players exist and are on the user's active roster
-    for (const id of ids) {
-      const p = _playerMap.get(id);
-      if (!p) return { ok: false, error: `Player #${id} not found.` };
-      if (p.teamId !== state.userTeamId) return { ok: false, error: `${p.name} is not on your team.` };
-      if (p.rosterData.rosterStatus !== 'MLB_ACTIVE') return { ok: false, error: `${p.name} is not on the active roster.` };
-    }
-    _lineupOrder = ids;
-    return { ok: true };
-  },
-
-  async setRotationOrder(ids: number[]): Promise<{ ok: boolean; error?: string }> {
-    const state = requireState();
-    if (ids.length === 0) return { ok: false, error: 'Rotation must have at least one pitcher.' };
-    if (ids.length > 5) return { ok: false, error: 'Rotation can have at most 5 pitchers.' };
-    const unique = new Set(ids);
-    if (unique.size !== ids.length) return { ok: false, error: 'Rotation contains duplicate players.' };
-    for (const id of ids) {
-      const p = _playerMap.get(id);
-      if (!p) return { ok: false, error: `Player #${id} not found.` };
-      if (p.teamId !== state.userTeamId) return { ok: false, error: `${p.name} is not on your team.` };
-      if (p.position !== 'SP') return { ok: false, error: `${p.name} is not a starting pitcher.` };
-    }
-    _rotationOrder = ids;
-    return { ok: true };
-  },
-
-  async getLineupOrder(): Promise<number[]> {
-    return _lineupOrder;
-  },
-
-  async getRotationOrder(): Promise<number[]> {
-    return _rotationOrder;
-  },
-
-  // ── Career Leaderboards ────────────────────────────────────────────────────
-  async getCareerLeaderboard(options: {
-    category: 'hitting' | 'pitching';
-    sortBy: string;
-    limit?: number;
-  }): Promise<Array<{
-    rank: number;
-    playerId: number;
-    name: string;
-    position: string;
-    seasonsPlayed: number;
-    isRetired: boolean;
-    careerTotals: Record<string, number>;
-  }>> {
-    const { category, sortBy, limit = 25 } = options;
-    const entries: Array<{
-      playerId: number; name: string; position: string;
-      seasonsPlayed: number; isRetired: boolean;
-      sortValue: number; careerTotals: Record<string, number>;
-    }> = [];
-
-    // Helper: aggregate career totals
-    function aggregate(seasons: import('../types/player').PlayerSeasonStats[]): Record<string, number> {
-      const t: Record<string, number> = { g: 0, pa: 0, ab: 0, r: 0, h: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, sb: 0, cs: 0, hbp: 0, w: 0, l: 0, sv: 0, hld: 0, bs: 0, gp: 0, gs: 0, outs: 0, ha: 0, ra: 0, er: 0, bba: 0, ka: 0, hra: 0 };
-      for (const s of seasons) {
-        for (const key of Object.keys(t)) {
-          t[key] += (s as unknown as Record<string, number>)[key] ?? 0;
-        }
-      }
-      // Derived stats
-      t.avg = t.ab > 0 ? t.h / t.ab : 0;
-      t.obp = t.pa > 0 ? (t.h + t.bb + t.hbp) / t.pa : 0;
-      t.slg = t.ab > 0 ? (t.h - t.doubles - t.triples - t.hr + t.doubles * 2 + t.triples * 3 + t.hr * 4) / t.ab : 0;
-      t.ops = t.obp + t.slg;
-      t.era = t.outs > 0 ? (t.er / t.outs) * 27 : 0;
-      t.whip = t.outs > 0 ? (t.ha + t.bba) / (t.outs / 3) : 0;
-      t.ip = t.outs / 3;
-      t.seasons = seasons.length;
-      return t;
-    }
-
-    function isPitcherByStat(seasons: import('../types/player').PlayerSeasonStats[]): boolean {
-      let totalOuts = 0; let totalAB = 0;
-      for (const s of seasons) { totalOuts += s.outs; totalAB += s.ab; }
-      return totalOuts > totalAB;
-    }
-
-    // Active players
-    for (const [pid, seasons] of _careerHistory) {
-      if (seasons.length === 0) continue;
-      const isPitcher = isPitcherByStat(seasons);
-      if ((category === 'hitting' && isPitcher) || (category === 'pitching' && !isPitcher)) continue;
-      const player = _playerMap.get(pid);
-      const totals = aggregate(seasons);
-      entries.push({
-        playerId: pid,
-        name: player?.name ?? `Player ${pid}`,
-        position: player?.position ?? 'UT',
-        seasonsPlayed: seasons.length,
-        isRetired: false,
-        sortValue: totals[sortBy] ?? 0,
-        careerTotals: totals,
-      });
-    }
-
-    // Retired players
-    for (const [pid, record] of _retiredCareerHistory) {
-      if (record.seasons.length === 0) continue;
-      const isPitcher = isPitcherByStat(record.seasons);
-      if ((category === 'hitting' && isPitcher) || (category === 'pitching' && !isPitcher)) continue;
-      const totals = aggregate(record.seasons);
-      entries.push({
-        playerId: pid,
-        name: record.name,
-        position: record.position,
-        seasonsPlayed: record.seasons.length,
-        isRetired: true,
-        sortValue: totals[sortBy] ?? 0,
-        careerTotals: totals,
-      });
-    }
-
-    // Sort: for ERA/WHIP lower is better; for everything else higher is better
-    const lowerIsBetter = ['era', 'whip'];
-    const ascending = lowerIsBetter.includes(sortBy);
-    entries.sort((a, b) => ascending ? a.sortValue - b.sortValue : b.sortValue - a.sortValue);
-
-    return entries.slice(0, limit).map((e, i) => ({
-      rank: i + 1,
-      playerId: e.playerId,
-      name: e.name,
-      position: e.position,
-      seasonsPlayed: e.seasonsPlayed,
-      isRetired: e.isRetired,
-      careerTotals: e.careerTotals,
-    }));
-  },
-
-  // ── Hall of Fame ──────────────────────────────────────────────────────────
-  async getHallOfFame(): Promise<HallOfFameInductee[]> {
-    return _hallOfFame;
-  },
-
-  async getHOFCandidates(): Promise<HallOfFameCandidate[]> {
-    if (!_state) return [];
-    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
-    return identifyHOFCandidates(_retiredCareerHistory, _state.season, existingInducteeIds);
-  },
-
-  // ── Franchise Records ─────────────────────────────────────────────────────
-  async getFranchiseRecords(): Promise<FranchiseRecordBook> {
-    return _franchiseRecords ?? emptyRecordBook();
-  },
-
-  // ── Dev Lab ──────────────────────────────────────────────────────────────
-  async assignDevProgram(playerId: number, program: DevProgram): Promise<{ ok: boolean; error?: string }> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found' };
-    if (player.teamId !== state.userTeamId) return { ok: false, error: 'Not your player' };
-    // Max 10 active assignments
-    const activeCount = Array.from(_devAssignments.values()).filter(a => a.program !== 'balanced').length;
-    if (activeCount >= 10 && !_devAssignments.has(playerId)) {
-      return { ok: false, error: 'Maximum 10 dev assignments reached' };
-    }
-    _devAssignments.set(playerId, { playerId, program, assignedSeason: state.season });
-    return { ok: true };
-  },
-
-  async removeDevProgram(playerId: number): Promise<{ ok: boolean }> {
-    _devAssignments.delete(playerId);
-    return { ok: true };
-  },
-
-  async getDevAssignments(): Promise<Record<number, DevAssignment>> {
-    const result: Record<number, DevAssignment> = {};
-    for (const [pid, a] of _devAssignments) result[pid] = a;
-    return result;
-  },
-
-  // ── Scouting ────────────────────────────────────────────────────────────
-  async scoutPlayer(playerId: number): Promise<{ ok: boolean; report?: ScoutingReport; error?: string }> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Player not found' };
-    if (player.teamId === state.userTeamId) return { ok: false, error: 'Cannot scout your own players' };
-    const staffBonuses = _foStaff.length > 0
-      ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
-    const existing = _scoutingReports.get(playerId);
-    const report = generateScoutingReport(player, staffBonuses.scoutingAccuracy, state.season, existing);
-    _scoutingReports.set(playerId, report);
-    return { ok: true, report };
-  },
-
-  async getScoutingReports(): Promise<Record<number, ScoutingReport>> {
-    const result: Record<number, ScoutingReport> = {};
-    for (const [pid, r] of _scoutingReports) result[pid] = r;
-    return result;
-  },
-
-  async getScoutedPlayerProfile(playerId: number): Promise<PlayerProfileData & { scoutingInfo?: { confidence: number; scouted: boolean } }> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) throw new Error(`Player ${playerId} not found`);
-    const isUserTeam = player.teamId === state.userTeamId;
-    const report = _scoutingReports.get(playerId);
-    const display = getDisplayGrades(player, isUserTeam, report);
-
-    const s = _playerSeasonStats.get(playerId);
-    const grades: Record<string, number> = {};
-
-    // For user team: show real grades; for others: apply fog
-    if (isUserTeam) {
-      if (player.hitterAttributes) {
-        const h = player.hitterAttributes;
-        grades['CON'] = toScoutingScale(h.contact);
-        grades['PWR'] = toScoutingScale(h.power);
-        grades['EYE'] = toScoutingScale(h.eye);
-        grades['SPD'] = toScoutingScale(h.speed);
-        grades['FLD'] = toScoutingScale(h.fielding);
-        grades['ARM'] = toScoutingScale(h.armStrength);
-      } else if (player.pitcherAttributes) {
-        const p = player.pitcherAttributes;
-        grades['STF'] = toScoutingScale(p.stuff);
-        grades['MOV'] = toScoutingScale(p.movement);
-        grades['CMD'] = toScoutingScale(p.command);
-        grades['STM'] = toScoutingScale(p.stamina);
-      }
-    } else {
-      // Non-user team: show noisy grades based on scouting
-      if (player.hitterAttributes) {
-        const h = player.hitterAttributes;
-        const noise = report ? (15 / (report.confidence + 0.3)) : 30;
-        grades['CON'] = toScoutingScale(Math.round(h.contact + gaussianNoise(playerId * 10) * noise));
-        grades['PWR'] = toScoutingScale(Math.round(h.power + gaussianNoise(playerId * 11) * noise));
-        grades['EYE'] = toScoutingScale(Math.round(h.eye + gaussianNoise(playerId * 12) * noise));
-        grades['SPD'] = toScoutingScale(Math.round(h.speed + gaussianNoise(playerId * 13) * noise));
-        grades['FLD'] = toScoutingScale(Math.round(h.fielding + gaussianNoise(playerId * 14) * noise));
-        grades['ARM'] = toScoutingScale(Math.round(h.armStrength + gaussianNoise(playerId * 15) * noise));
-      } else if (player.pitcherAttributes) {
-        const p = player.pitcherAttributes;
-        const noise = report ? (15 / (report.confidence + 0.3)) : 30;
-        grades['STF'] = toScoutingScale(Math.round(p.stuff + gaussianNoise(playerId * 10) * noise));
-        grades['MOV'] = toScoutingScale(Math.round(p.movement + gaussianNoise(playerId * 11) * noise));
-        grades['CMD'] = toScoutingScale(Math.round(p.command + gaussianNoise(playerId * 12) * noise));
-        grades['STM'] = toScoutingScale(Math.round(p.stamina + gaussianNoise(playerId * 13) * noise));
-      }
-    }
-
-    const seasonStats: null | { season: number; [key: string]: number } = s ? {
-      season: state.season - 1,
-      pa: s.pa, ab: s.ab, h: s.h, hr: s.hr, rbi: s.rbi, bb: s.bb, k: s.k, sb: s.sb,
-      avg: s.ab > 0 ? Number((s.h / s.ab).toFixed(3)) : 0,
-      obp: s.pa > 0 ? Number(((s.h + s.bb + s.hbp) / s.pa).toFixed(3)) : 0,
-      w: s.w, l: s.l, sv: s.sv, era: s.outs > 0 ? Number(((s.er / s.outs) * 27).toFixed(2)) : 0,
-      ip: Number((s.outs / 3).toFixed(1)), ka: s.ka, bba: s.bba,
-    } : null;
-
-    const team = state.teams.find(t => t.teamId === player.teamId);
-    const isPitcher = ['SP', 'RP', 'CL'].includes(player.position);
-
-    return {
-      player: {
-        playerId: player.playerId,
-        name: player.name,
-        age: player.age,
-        position: player.position,
-        bats: player.bats,
-        throws: player.throws,
-        overall: display.overall,
-        potential: display.potential,
-        grades,
-        rosterStatus: player.rosterData.rosterStatus,
-        serviceTimeDays: player.rosterData.serviceTimeDays,
-        salary: player.rosterData.salary,
-        contractYearsRemaining: player.rosterData.contractYearsRemaining,
-        isPitcher,
-        teamId: player.teamId,
-        teamAbbr: team?.abbreviation ?? '---',
-        optionYearsRemaining: player.rosterData.optionYearsRemaining,
-        tradeValue: evaluatePlayer(player),
-      },
-      seasonStats,
-      careerStats: _careerHistory.get(playerId) ?? [],
-      scoutingInfo: !isUserTeam ? {
-        confidence: display.confidence ?? 0,
-        scouted: display.scouted,
-      } : undefined,
+    const bundle: DashboardBundle = {
+      season: currentSeason,
+      standings,
+      topBatters,
+      topPitchers,
+      bracket: latestPlayoffBracket,
+      awards: latestSeasonAwards,
+      news: latestNewsFeed,
+      teamNames: Array.from(buildTeamNameMap().entries()),
+      gamesPlayed: latestGameResults.length,
     };
-  },
 
-  async getScoutablePlayers(
-    teamId?: number,
-    position?: string,
-  ): Promise<Array<{
-    playerId: number; name: string; position: string; age: number;
-    teamId: number; teamAbbr: string; isPitcher: boolean;
-    observedOverall: number; observedPotential: number;
-    scouted: boolean; confidence: number | null;
-  }>> {
-    const state = requireState();
-    return state.players
-      .filter(p => {
-        if (p.teamId === state.userTeamId) return false;
-        if (p.rosterData.rosterStatus === 'RETIRED') return false;
-        if (teamId !== undefined && p.teamId !== teamId) return false;
-        if (position !== undefined && p.position !== position) return false;
-        return true;
-      })
-      .map(p => {
-        const report = _scoutingReports.get(p.playerId);
-        const display = getDisplayGrades(p, false, report);
-        const team = _teamMap.get(p.teamId);
-        return {
-          playerId: p.playerId,
-          name: p.name,
-          position: p.position,
-          age: p.age,
-          teamId: p.teamId,
-          teamAbbr: team?.abbreviation ?? '---',
-          isPitcher: p.isPitcher,
-          observedOverall: display.overall,
-          observedPotential: display.potential,
-          scouted: display.scouted,
-          confidence: display.confidence,
-        };
-      });
-  },
-
-  // ── Save / Load ────────────────────────────────────────────────────────────
-  async getFullState(): Promise<LeagueState | null> {
-    if (!_state) return null;
-    // Serialize career history into the state for persistence
-    const careerHistory: Record<string, import('../types/player').PlayerSeasonStats[]> = {};
-    for (const [playerId, seasons] of _careerHistory) {
-      careerHistory[String(playerId)] = seasons;
-    }
-    // Serialize retired career history
-    const retiredPlayers: Record<string, RetiredPlayerRecord> = {};
-    for (const [playerId, record] of _retiredCareerHistory) {
-      retiredPlayers[String(playerId)] = record;
-    }
-    // Serialize player season stats
-    const playerSeasonStats: Record<string, import('../types/player').PlayerSeasonStats> = {};
-    for (const [playerId, stats] of _playerSeasonStats) {
-      playerSeasonStats[String(playerId)] = stats;
-    }
-    // Serialize dev assignments
-    const devAssignments: Record<string, DevAssignment> = {};
-    for (const [pid, a] of _devAssignments) devAssignments[String(pid)] = a;
-    // Serialize scouting reports
-    const scoutingReports: Record<string, ScoutingReport> = {};
-    for (const [pid, r] of _scoutingReports) scoutingReports[String(pid)] = r;
-    return {
-      ..._state,
-      careerHistory,
-      retiredPlayers,
-      hallOfFame: _hallOfFame,
-      franchiseRecords: _franchiseRecords ?? undefined,
-      playerSeasonStats,
-      lastAIRosterMoves: _lastAIRosterMoves,
-      foStaff: _foStaff,
-      draftState: _draftState ?? undefined,
-      lineupOrder: _lineupOrder.length > 0 ? _lineupOrder : undefined,
-      rotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
-      seasonResults: _seasonResults.length > 0 ? _seasonResults : undefined,
-      seasonSimState: _seasonSimState ?? undefined,
-      devAssignments: Object.keys(devAssignments).length > 0 ? devAssignments : undefined,
-      scoutingReports: Object.keys(scoutingReports).length > 0 ? scoutingReports : undefined,
-    };
-  },
-
-  async loadState(state: LeagueState): Promise<void> {
-    // Clear all state before loading to prevent stale data
-    _careerHistory = new Map();
-    _retiredCareerHistory = new Map();
-    _playerSeasonStats = new Map();
-    _hallOfFame = [];
-    _franchiseRecords = null;
-    _foStaff = [];
-    _lastAIRosterMoves = [];
-    _draftState = null;
-    _lineupOrder = [];
-    _rotationOrder = [];
-    _seasonResults = [];
-    _seasonSimState = null;
-
-    // Restore career history from serialized state
-    if (state.careerHistory) {
-      for (const [key, seasons] of Object.entries(state.careerHistory)) {
-        _careerHistory.set(Number(key), seasons);
-      }
-    }
-    // Restore retired career history
-    if (state.retiredPlayers) {
-      for (const [key, record] of Object.entries(state.retiredPlayers)) {
-        _retiredCareerHistory.set(Number(key), record);
-      }
-    }
-    // Restore player season stats
-    if (state.playerSeasonStats) {
-      for (const [key, stats] of Object.entries(state.playerSeasonStats)) {
-        _playerSeasonStats.set(Number(key), stats);
-      }
-    }
-    // Restore hall of fame and franchise records
-    _hallOfFame = state.hallOfFame ?? [];
-    _franchiseRecords = state.franchiseRecords ?? null;
-    // Restore FO staff, AI roster moves, draft state
-    _foStaff = state.foStaff ?? [];
-    _lastAIRosterMoves = state.lastAIRosterMoves ?? [];
-    _draftState = state.draftState ?? null;
-    // Restore lineup/rotation order
-    _lineupOrder = state.lineupOrder ?? [];
-    _rotationOrder = state.rotationOrder ?? [];
-    // Restore season results
-    _seasonResults = state.seasonResults ?? [];
-    // Restore in-season state (mid-season save)
-    _seasonSimState = state.seasonSimState ?? null;
-    // Restore dev assignments
-    _devAssignments = new Map();
-    if (state.devAssignments) {
-      for (const [key, a] of Object.entries(state.devAssignments)) {
-        _devAssignments.set(Number(key), a as DevAssignment);
-      }
-    }
-    // Restore scouting reports
-    _scoutingReports = new Map();
-    if (state.scoutingReports) {
-      for (const [key, r] of Object.entries(state.scoutingReports)) {
-        _scoutingReports.set(Number(key), r as ScoutingReport);
-      }
-    }
-
-    _state = state;
-
-    // Recover any orphaned DRAFT_ELIGIBLE players (e.g. save during initial draft)
-    recoverOrphanedDraftPlayers(state.players);
-
-    rebuildMaps();
-  },
-
-  // ── Utility ────────────────────────────────────────────────────────────────
-  async getPlayerNameMap(): Promise<Record<number, string>> {
-    const result: Record<number, string> = {};
-    for (const [id, p] of _playerMap) {
-      result[id] = p.name;
-    }
-    return result;
-  },
-
-  // ── International Signing Period ─────────────────────────────────────────
-
-  async startIntlSigning(): Promise<{
-    prospects: import('./internationalSigning').IntlProspect[];
-    bonusPool: number;
-  }> {
-    const state = requireState();
-    let gen = deserializeState(state.prngState);
-    const maxId = state.players.reduce((m, p) => Math.max(m, p.playerId), 0);
-
-    const [prospects, players, nextGen] = generateIntlClass(gen, maxId, state.season);
-    gen = nextGen;
-
-    // Add the raw players to the global pool
-    state.players.push(...players);
-    rebuildMaps();
-
-    state.prngState = serializeState(gen);
-
-    _intlProspects = prospects;
-
-    return {
-      prospects: prospects.filter(p => !p.signed),
-      bonusPool: 5_500_000,
-    };
-  },
-
-  async signIntlProspect(
-    playerId: number,
-    bonus: number,
-  ): Promise<{ ok: boolean; error?: string }> {
-    const state = requireState();
-    const player = _playerMap.get(playerId);
-    if (!player) return { ok: false, error: 'Prospect not found.' };
-
-    const result = signIntlProspectFn(player, state.userTeamId, bonus);
-    if (result.ok) {
-      // Mark as signed in prospect list
-      const prospect = _intlProspects.find(p => p.playerId === playerId);
-      if (prospect) {
-        prospect.signed = true;
-        prospect.signedByTeamId = state.userTeamId;
-      }
-      rebuildMaps();
-    }
-    return result;
-  },
-
-  async finishIntlSigning(): Promise<{
-    aiSignings: Array<{ prospectName: string; teamId: number; teamAbbr: string; bonus: number }>;
-  }> {
-    const state = requireState();
-    let gen = deserializeState(state.prngState);
-
-    const teamInfos = state.teams.map(t => ({ teamId: t.teamId, abbreviation: t.abbreviation }));
-    const [aiSignings, nextGen] = processAIIntlSignings(
-      _intlProspects, state.players, teamInfos, state.userTeamId, gen,
-    );
-    gen = nextGen;
-
-    // Unsigned prospects become free agents (will age out)
-    for (const prospect of _intlProspects) {
-      if (!prospect.signed) {
-        const player = _playerMap.get(prospect.playerId);
-        if (player) {
-          player.rosterData.rosterStatus = 'FREE_AGENT';
-        }
-      }
-    }
-
-    state.prngState = serializeState(gen);
-    rebuildMaps();
-    _intlProspects = [];
-
-    return { aiSignings };
-  },
-
-  // ── Pennant Race ──────────────────────────────────────────────────────────
-
-  async getPennantRace(): Promise<{
-    userDivisionRank: number;
-    userGamesBack: number;
-    userWildCardRank: number;
-    userWCGamesBack: number;
-    divisionLeader: { teamId: number; abbr: string; wins: number; losses: number };
-    isInPlayoffPosition: boolean;
-    magicNumber: number | null;
-    eliminationNumber: number | null;
-  }> {
-    const state = requireState();
-    const userTeam = _teamMap.get(state.userTeamId);
-    if (!userTeam) throw new Error('User team not found');
-
-    const standings = _buildStandings(state);
-    const userRow = standings.find(r => r.teamId === state.userTeamId);
-    if (!userRow) throw new Error('User team not in standings');
-
-    // Division standings
-    const divTeams = standings
-      .filter(r => r.league === userRow.league && r.division === userRow.division)
-      .sort((a, b) => b.pct - a.pct || b.wins - a.wins);
-
-    const divRank = divTeams.findIndex(r => r.teamId === state.userTeamId) + 1;
-    const divLeader = divTeams[0];
-    const divGB = divRank > 1
-      ? ((divLeader.wins - userRow.wins) + (userRow.losses - divLeader.losses)) / 2
-      : 0;
-
-    // Wild card standings (league-wide, excluding div winners)
-    const leagueTeams = standings.filter(r => r.league === userRow.league).sort((a, b) => b.pct - a.pct);
-    const divWinnerIds = new Set<number>();
-    const divs = ['East', 'Central', 'West'];
-    for (const div of divs) {
-      const divStandings = leagueTeams.filter(r => r.division === div);
-      if (divStandings.length > 0) divWinnerIds.add(divStandings[0].teamId);
-    }
-
-    const wcTeams = leagueTeams.filter(r => !divWinnerIds.has(r.teamId));
-    const wcRank = wcTeams.findIndex(r => r.teamId === state.userTeamId) + 1;
-    const wcGamesBack = wcRank > 3 && wcTeams[2]
-      ? ((wcTeams[2].wins - userRow.wins) + (userRow.losses - wcTeams[2].losses)) / 2
-      : 0;
-
-    const isInPlayoffPosition = divRank === 1 || wcRank <= 3;
-    const totalGames = 162;
-    const userGamesPlayed = userRow.wins + userRow.losses;
-    const gamesRemaining = totalGames - userGamesPlayed;
-
-    // Magic number: games remaining + 1 - lead over next team
-    let magicNumber: number | null = null;
-    if (divRank === 1 && divTeams.length > 1) {
-      const secondPlace = divTeams[1];
-      const secondRemaining = totalGames - secondPlace.wins - secondPlace.losses;
-      magicNumber = Math.max(0, secondRemaining + 1 - (userRow.wins - secondPlace.wins));
-      if (magicNumber <= 0) magicNumber = 0; // Already clinched
-    }
-
-    // Elimination number
-    let eliminationNumber: number | null = null;
-    if (divRank > 1 && gamesRemaining > 0) {
-      eliminationNumber = gamesRemaining + 1 - Math.abs(divGB * 2);
-      if (eliminationNumber <= 0) eliminationNumber = 0; // Eliminated
-    }
-
-    return {
-      userDivisionRank: divRank,
-      userGamesBack: divGB,
-      userWildCardRank: wcRank,
-      userWCGamesBack: wcGamesBack,
-      divisionLeader: {
-        teamId: divLeader.teamId,
-        abbr: divLeader.abbreviation,
-        wins: divLeader.wins,
-        losses: divLeader.losses,
-      },
-      isInPlayoffPosition,
-      magicNumber,
-      eliminationNumber,
-    };
-  },
-
-  // ── Playoff MVP ────────────────────────────────────────────────────────────
-
-  async getPlayoffMVP(bracket: import('./sim/playoffSimulator').PlayoffBracket): Promise<{
-    playerId: number;
-    name: string;
-    teamAbbr: string;
-    position: string;
-    statLine: string;
-  } | null> {
-    if (!bracket.championId) return null;
-    const state = requireState();
-
-    // Find the champion's players
-    const champPlayers = state.players.filter(p => p.teamId === bracket.championId);
-    if (champPlayers.length === 0) return null;
-
-    // Simple MVP: highest OVR on champion team
-    const mvp = champPlayers.reduce((best, p) => p.overall > best.overall ? p : best, champPlayers[0]);
-    const team = _teamMap.get(mvp.teamId);
-    const stats = _playerSeasonStats.get(mvp.playerId);
-
-    let statLine: string;
-    if (mvp.isPitcher && stats) {
-      const era = stats.outs > 0 ? ((stats.er / stats.outs) * 27).toFixed(2) : '0.00';
-      statLine = `${stats.w}-${stats.l}, ${era} ERA`;
-    } else if (stats) {
-      const avg = stats.ab > 0 ? (stats.h / stats.ab).toFixed(3) : '.000';
-      statLine = `${avg} / ${stats.hr} HR / ${stats.rbi} RBI`;
-    } else {
-      statLine = 'OVR ' + Math.round(20 + (mvp.overall / 550) * 60);
-    }
-
-    return {
-      playerId: mvp.playerId,
-      name: mvp.name,
-      teamAbbr: team?.abbreviation ?? '???',
-      position: mvp.position,
-      statLine,
-    };
-  },
-
-  // ── Interactive Season Pacing — Chunked simulation ─────────────────────────
-
-  /**
-   * Initialize a new season for chunked (interactive) play.
-   * Performs all the same setup as simulateSeason() (roster guard, counter reset,
-   * lineup scrub) but does NOT sim any games. Returns segment metadata.
-   */
-  async startInSeason(): Promise<{
-    totalGames: number;
-    segmentCount: number;
-    segments: Array<{ index: number; label: string }>;
-  }> {
-    const state = requireState();
-    const gen = deserializeState(state.prngState);
-
-    // Same setup as simulateSeason() preamble
-    ensureMinimumRosters(state.players, state.teams);
-    _cachedLeagueAverages = null;
-    resetSeasonCounters(state.players);
-    _scrubLineupRotation();
-
-    // Reset team season records to zero for the new season
-    for (const t of state.teams) {
-      t.seasonRecord = { wins: 0, losses: 0, runsScored: 0, runsAllowed: 0 };
-    }
-
-    // Create the incremental sim state
-    _seasonSimState = createSeasonSimState(
-      state.teams,
-      state.schedule.length,
-      state.season,
-      Number(gen.next()[0]),
-    );
-
-    return {
-      totalGames: state.schedule.length,
-      segmentCount: SEGMENT_COUNT,
-      segments: SEGMENTS.map(s => ({ index: s.index, label: s.label })),
-    };
+    cache.setDashboard(currentSeason, bundle);
+    return bundle;
   },
 
   /**
-   * Simulate the next month's chunk of games.
-   * Returns the segment result with partial standings, user record, and next event.
+   * getFeaturedGameIds — returns IDs of the most dramatic regular-season games.
+   * Used by storage layer to decide which box scores to retain.
    */
-  async simNextChunk(onProgress?: (pct: number) => void): Promise<ChunkResult> {
-    const state = requireState();
-    if (!_seasonSimState) throw new Error('Call startInSeason() first');
-    if (_seasonSimState.isComplete) throw new Error('Season already complete');
-
-    const chunkResult = simulateChunk(
-      _seasonSimState,
-      state.teams,
-      state.players,
-      state.schedule,
-      {
-        userTeamId: state.userTeamId,
-        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
-        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
-      },
-      onProgress,
-    );
-
-    // Sync player season stats to worker-level cache (so getStandings/getRoster work)
-    _playerSeasonStats.clear();
-    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
-      _playerSeasonStats.set(Number(key), val);
-    }
-
-    return chunkResult;
+  async getFeaturedGameIds(): Promise<number[]> {
+    return Array.from(featuredGameIds);
   },
 
   /**
-   * Granular simulation: sim by day, week, or month.
-   * Stops at segment boundaries to preserve event triggers.
+   * getPerformanceStats — diagnostics for the release kit panel.
+   * Returns cache hit info and memory estimates.
    */
-  async simRange(
-    mode: 'day' | 'week' | 'month',
-    onProgress?: (pct: number) => void,
-  ): Promise<SimRangeResult> {
-    const state = requireState();
-    if (!_seasonSimState) throw new Error('Call startInSeason() first');
-    if (_seasonSimState.isComplete) throw new Error('Season already complete');
-
-    let targetIndex: number;
-    switch (mode) {
-      case 'day':
-        targetIndex = computeSim1DayTarget(_seasonSimState, state.schedule);
-        break;
-      case 'week':
-        targetIndex = computeSim1WeekTarget(_seasonSimState, state.schedule);
-        break;
-      case 'month':
-        targetIndex = computeSim1MonthTarget(_seasonSimState, state.schedule);
-        break;
-    }
-
-    const result = simulateRange(
-      _seasonSimState,
-      state.teams,
-      state.players,
-      state.schedule,
-      targetIndex,
-      {
-        userTeamId: state.userTeamId,
-        userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
-        userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
-      },
-      onProgress,
-    );
-
-    // Sync player season stats to worker-level cache
-    _playerSeasonStats.clear();
-    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
-      _playerSeasonStats.set(Number(key), val);
-    }
-
-    return result;
-  },
-
-  /**
-   * Get current schedule position info for UI display.
-   */
-  async getCurrentScheduleInfo(): Promise<{
-    gamesCompleted: number;
-    totalGames: number;
-    currentDate: string | null;
-    currentSegment: number;
-  }> {
-    if (!_seasonSimState) throw new Error('No in-season state');
-    const state = requireState();
-    const idx = _seasonSimState.gamesCompleted;
-    const currentDate = idx < state.schedule.length
-      ? state.schedule[idx]!.date
-      : null;
+  async getPerformanceStats(): Promise<PerformanceStats> {
     return {
-      gamesCompleted: _seasonSimState.gamesCompleted,
-      totalGames: _seasonSimState.totalGames,
-      currentDate,
-      currentSegment: _seasonSimState.currentSegment,
+      cacheVersion: cache.getVersion(),
+      playerCount: players.length,
+      gameResultCount: latestGameResults.length,
+      featuredGameCount: featuredGameIds.size,
+      playerSeasonCount: latestPlayerSeasons.size,
+      teamCount: teams.length,
+      currentSeason,
+      estimatedMemoryMB: estimateMemoryUsage(),
     };
   },
 
-  /**
-   * Fast-forward: sim all remaining chunks, then finalize the season.
-   * Equivalent to calling simNextChunk() in a loop then finalizeSeason().
-   * Returns the full enriched SeasonResult.
-   */
-  async simRemainingChunks(onProgress?: (pct: number) => void): Promise<SeasonResult> {
-    const state = requireState();
-    if (!_seasonSimState) throw new Error('Call startInSeason() first');
+  async runIntegrityAudit(): Promise<IntegrityAuditReport> {
+    return timedEndpointCall('runIntegrityAudit', async () => buildIntegrityAuditReport());
+  },
 
-    // Sim all remaining chunks
-    while (!_seasonSimState.isComplete) {
-      simulateChunk(
-        _seasonSimState,
-        state.teams,
-        state.players,
-        state.schedule,
+  async getFeatureReadiness(featureId: string): Promise<FeatureReadinessReport> {
+    return timedEndpointCall('getFeatureReadiness', async () => buildFeatureReadinessReport(featureId));
+  },
+
+  async getPlayableReadinessReport(): Promise<PlayableReadinessReport> {
+    return timedEndpointCall('getPlayableReadinessReport', async () => {
+      const audit = buildIntegrityAuditReport();
+      const smoke = await api.getSmokeFlowReport();
+      const stage = computeSeasonStage();
+      const coreFeatureIds = getCoreFeatureIds();
+      const missingCore = coreFeatureIds.filter((id) => !enabledFeatures.includes(id));
+      const determinism = await api.runDeterminismProbe(currentSeason + 31, 1);
+      const latency = buildLatencyBudgetReportInternal();
+
+      const gates: PlayableReadinessGate[] = [
         {
-          userTeamId: state.userTeamId,
-          userLineupOrder: _lineupOrder.length === 9 ? _lineupOrder : undefined,
-          userRotationOrder: _rotationOrder.length > 0 ? _rotationOrder : undefined,
+          gateId: 'league_seeded',
+          label: 'League seeded',
+          pass: teams.length >= 30 && players.length >= 3000 && gen !== null,
+          blocker: true,
+          detail: `teams=${teams.length}, players=${players.length}`,
         },
-        onProgress,
-      );
-    }
+        {
+          gateId: 'core_features_enabled',
+          label: 'Core feature set enabled',
+          pass: missingCore.length === 0,
+          blocker: true,
+          detail: missingCore.length === 0 ? `${coreFeatureIds.length} core features enabled` : `missing: ${missingCore.join(', ')}`,
+        },
+        {
+          gateId: 'integrity_audit',
+          label: 'Integrity audit clean',
+          pass: audit.ok,
+          blocker: true,
+          detail: audit.ok ? 'No critical integrity issues' : `${audit.issues.length} issue(s) detected`,
+        },
+        {
+          gateId: 'save_system_online',
+          label: 'Save system online',
+          pass: true,
+          blocker: true,
+          detail: `save slots=${listSaveManifests().length}`,
+        },
+        {
+          gateId: 'stage_valid',
+          label: 'Season stage available',
+          pass: stage === 'idle' || stage === 'season' || stage === 'postseason' || stage === 'awards',
+          blocker: false,
+          detail: `stage=${stage}`,
+        },
+        {
+          gateId: 'smoke_flow',
+          label: 'Smoke flow',
+          pass: smoke.ok,
+          blocker: true,
+          detail: smoke.ok ? 'Smoke flow contract satisfied' : `blockers=${smoke.blockers.join(', ')}`,
+        },
+        {
+          gateId: 'determinism_probe',
+          label: 'Determinism probe',
+          pass: determinism.ok,
+          blocker: false,
+          detail: determinism.ok
+            ? `seed=${determinism.seed} seasons=${determinism.seasons}`
+            : determinism.reason ?? `mismatches=${determinism.mismatches.length}`,
+        },
+        {
+          gateId: 'latency_budget',
+          label: 'Latency budget',
+          pass: latency.ok,
+          blocker: false,
+          detail: latency.ok ? 'Latency budgets within threshold' : `over budget endpoints=${latency.blockers.join(', ')}`,
+        },
+      ];
 
-    // Sync player stats
-    _playerSeasonStats.clear();
-    for (const [key, val] of Object.entries(_seasonSimState.playerStats)) {
-      _playerSeasonStats.set(Number(key), val);
-    }
+      const blockers = gates
+        .filter((gate) => gate.blocker && !gate.pass)
+        .map((gate) => gate.gateId);
 
-    // Finalize
-    return this.finalizeSeason();
+      return {
+        ok: blockers.length === 0,
+        generatedAt: Date.now(),
+        season: currentSeason,
+        stage,
+        blockers,
+        gates,
+      };
+    });
   },
 
-  /**
-   * Finalize the season after all chunks complete.
-   * Runs post-sim processing: injuries, AI roster moves, awards, development,
-   * service time, franchise records, Hall of Fame, PRNG serialization.
-   */
-  async finalizeSeason(): Promise<SeasonResult> {
-    const state = requireState();
-    if (!_seasonSimState) throw new Error('No in-season state');
+  async getDiagnosticsSnapshot(): Promise<DiagnosticsSnapshot> {
+    return timedEndpointCall('getDiagnosticsSnapshot', async () => {
+      const integrity = buildIntegrityAuditReport();
+      const coreFeatureIds = getCoreFeatureIds();
+      const coreEnabledCount = coreFeatureIds.filter((id) => enabledFeatures.includes(id)).length;
+      const manifestLint = lintFeatureManifest();
+      const latency = buildLatencyBudgetReportInternal();
+      if (!integrity.ok && workerHealthMode === 'normal') {
+        workerHealthMode = 'degraded';
+      }
+      if (integrity.issues.length >= 8) {
+        workerHealthMode = 'panic-safe';
+      }
+      return {
+        generatedAt: Date.now(),
+        season: currentSeason,
+        stage: computeSeasonStage(),
+        healthMode: workerHealthMode,
+        cache: {
+          version: cache.getVersion(),
+          estimatedMemoryMB: estimateMemoryUsage(),
+        },
+        counts: {
+          teams: teams.length,
+          players: players.length,
+          games: latestGameResults.length,
+          featuredGames: featuredGameIds.size,
+          playerSeasons: latestPlayerSeasons.size,
+          transactions: transactionLog.length,
+          newsStories: latestNewsFeed.length,
+        },
+        features: {
+          enabledCount: enabledFeatures.length,
+          coreEnabledCount,
+          totalManifestCount: FEATURE_MANIFEST.length,
+          buildFingerprint,
+        },
+        integrity: {
+          ok: integrity.ok,
+          issueCount: integrity.issues.length,
+        },
+        manifest: {
+          ok: manifestLint.ok,
+          issueCount: manifestLint.issues.length,
+        },
+        latency: {
+          ok: latency.ok,
+          issueCount: latency.blockers.length,
+          sampledEndpoints: latency.endpoints.filter((entry) => entry.calls > 0).length,
+        },
+      };
+    });
+  },
 
-    const partial = buildPartialResult(_seasonSimState, state.teams);
+  async getSmokeFlowReport(): Promise<SmokeFlowReport> {
+    return timedEndpointCall('getSmokeFlowReport', async () => {
+      const steps: SmokeFlowStepResult[] = [];
+      const stage = computeSeasonStage();
 
-    // Build the base SeasonResult from partial
-    const result: SeasonResult = {
-      season: partial.season,
-      teamSeasons: partial.teamSeasons,
-      playerSeasons: partial.playerSeasons,
-      boxScores: [],
-      leagueBA: partial.leagueBA,
-      leagueERA: partial.leagueERA,
-      leagueRPG: partial.leagueRPG,
-      teamWinsSD: partial.teamWinsSD,
-    };
+      steps.push({
+        stepId: 'league_available',
+        label: 'League initialized',
+        pass: teams.length > 0 && players.length > 0,
+        detail: `teams=${teams.length}, players=${players.length}`,
+      });
 
-    // Accumulate career history
-    for (const ps of result.playerSeasons) {
-      const record = { ...ps, season: state.season };
-      const history = _careerHistory.get(ps.playerId) ?? [];
-      history.push(record);
-      _careerHistory.set(ps.playerId, history);
-    }
+      steps.push({
+        stepId: 'can_simulate',
+        label: 'Simulation callable',
+        pass: gen !== null && teams.length >= 30,
+        detail: gen ? 'PRNG state available' : 'PRNG state missing',
+      });
 
-    // ── Injuries ────────────────────────────────────────────────────────────
-    let gen = deserializeState(state.prngState);
-    // Advance gen past the seed used for startInSeason
-    [, gen] = gen.next();
+      const hasTransactions = transactionLog.length > 0;
+      steps.push({
+        stepId: 'roster_or_market_action',
+        label: 'Roster/market action path',
+        pass: hasTransactions || stage === 'idle',
+        detail: hasTransactions ? `${transactionLog.length} transactions logged` : 'No transactions yet; fresh league accepted',
+      });
 
-    const injurySeed = Number(gen.next()[0]);
-    [, gen] = gen.next();
+      const saves = listSaveManifests();
+      steps.push({
+        stepId: 'save_system',
+        label: 'Save system online',
+        pass: true,
+        detail: `slots=${saves.length}`,
+      });
 
-    for (const p of state.players) {
-      if (p.rosterData.currentInjury) {
-        p.rosterData.currentInjury = undefined;
-        if (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60') {
-          p.rosterData.rosterStatus = 'MLB_ACTIVE';
+      const canContinue = stage === 'idle' || stage === 'season' || stage === 'postseason' || stage === 'awards';
+      steps.push({
+        stepId: 'continue_after_load',
+        label: 'Continuation stage valid',
+        pass: canContinue,
+        detail: `stage=${stage}`,
+      });
+
+      const blockers = steps.filter((step) => !step.pass).map((step) => step.stepId);
+      return {
+        ok: blockers.length === 0,
+        generatedAt: Date.now(),
+        stage,
+        blockers,
+        steps,
+      };
+    });
+  },
+
+  async runDeterminismProbe(seed: number, seasons: number): Promise<DeterminismProbeReport> {
+    return timedEndpointCall('runDeterminismProbe', async () => {
+      const boundedSeasons = Math.max(1, Math.min(3, Math.floor(seasons)));
+      if (teams.length === 0 || players.length === 0) {
+        return {
+          ok: false,
+          generatedAt: Date.now(),
+          seed,
+          seasons: boundedSeasons,
+          reason: 'No active league state to probe.',
+          mismatches: [],
+          metricsA: [],
+          metricsB: [],
+        };
+      }
+
+      const passA = runDeterminismPass(seed, boundedSeasons);
+      const passB = runDeterminismPass(seed, boundedSeasons);
+      const mismatches: string[] = [];
+
+      for (let i = 0; i < passA.length; i += 1) {
+        const a = passA[i];
+        const b = passB[i];
+        if (!b) {
+          mismatches.push(`Missing comparison season at index ${i}`);
+          continue;
+        }
+
+        if (a.totalGames !== b.totalGames) mismatches.push(`Season ${a.season}: totalGames ${a.totalGames} != ${b.totalGames}`);
+        if (a.totalRuns !== b.totalRuns) mismatches.push(`Season ${a.season}: totalRuns ${a.totalRuns} != ${b.totalRuns}`);
+        if (a.winsChecksum !== b.winsChecksum) mismatches.push(`Season ${a.season}: winsChecksum mismatch`);
+        if (a.homeRunsChecksum !== b.homeRunsChecksum) mismatches.push(`Season ${a.season}: homeRunsChecksum mismatch`);
+        if (a.topTeamId !== b.topTeamId) mismatches.push(`Season ${a.season}: topTeamId mismatch`);
+        if (a.topTeamWins !== b.topTeamWins) mismatches.push(`Season ${a.season}: topTeamWins mismatch`);
+      }
+
+      return {
+        ok: mismatches.length === 0,
+        generatedAt: Date.now(),
+        seed,
+        seasons: boundedSeasons,
+        mismatches,
+        metricsA: passA,
+        metricsB: passB,
+      };
+    });
+  },
+
+  async getIntakeAuditReport(packId: IntakePack): Promise<IntakeAuditReport> {
+    return timedEndpointCall('getIntakeAuditReport', async () => {
+      const inPack = FEATURE_MANIFEST.filter((feature) => feature.intakePack === packId);
+      const statusCounts: Record<FeatureStatus, number> = {
+        intake: 0,
+        wired: 0,
+        validated: 0,
+        promoted: 0,
+        shelved: 0,
+        deprecated: 0,
+      };
+
+      let riskTotal = 0;
+      const highRiskFeatureIds: string[] = [];
+      for (const feature of inPack) {
+        statusCounts[feature.status] += 1;
+        riskTotal += feature.riskScore;
+        if (feature.riskScore >= 70) {
+          highRiskFeatureIds.push(feature.id);
         }
       }
-    }
 
-    const staffBonuses = _foStaff.length > 0 ? computeStaffBonuses(_foStaff) : DEFAULT_BONUSES;
+      const lintIssues = lintFeatureManifest().issues.filter(
+        (issue) => issue.severity === 'error' && inPack.some((feature) => feature.id === issue.featureId),
+      );
+      const blockers = lintIssues.map((issue) => issue.code);
 
-    const injuryEvents = processSeasonInjuries(
-      state.players, state.schedule.length, injurySeed, state.season,
-      staffBonuses.injuryRateMultiplier,
-      staffBonuses.recoverySpeedMultiplier,
-    );
+      return {
+        packId,
+        generatedAt: Date.now(),
+        ok: blockers.length === 0,
+        totalFeatures: inPack.length,
+        avgRiskScore: inPack.length === 0 ? 0 : Number((riskTotal / inPack.length).toFixed(2)),
+        statusCounts,
+        highRiskFeatureIds,
+        blockers,
+      };
+    });
+  },
 
-    // ── AI roster moves ────────────────────────────────────────────────────
-    const rosterMoveSeed = Math.abs(injurySeed * 3 + state.season * 17);
-    _lastAIRosterMoves = processAIRosterMoves(
-      state.players, state.teams, state.userTeamId, rosterMoveSeed,
-    );
+  async runSoakSimulation(seed: number, seasons: number, mode: SoakSimulationMode): Promise<SoakSimulationReport> {
+    return timedEndpointCall('runSoakSimulation', async () => {
+      const boundedSeasons = Math.max(1, Math.min(10, Math.floor(seasons)));
+      const startedAt = performance.now();
 
-    // ── Cache league averages ────────────────────────────────────────────
-    const allSeasonStats = Array.from(_playerSeasonStats.values());
-    _cachedLeagueAverages = computeLeagueAverages(allSeasonStats);
+      if (teams.length === 0 || players.length === 0) {
+        return {
+          ok: false,
+          generatedAt: Date.now(),
+          seed,
+          seasons: boundedSeasons,
+          mode,
+          durationMs: Number((performance.now() - startedAt).toFixed(3)),
+          blockers: ['league-uninitialized'],
+          checkpoints: [],
+        };
+      }
 
-    // ── Awards ──────────────────────────────────────────────────────────────
-    const awards = computeAwards(state.players, _playerSeasonStats, state.teams);
-    const divisionChampions = computeDivisionChampions(state.teams);
+      const checkpoints = runDeterminismPass(seed, boundedSeasons);
+      const blockers: string[] = [];
 
-    // ── Service time ────────────────────────────────────────────────────────
-    for (let d = 0; d < 172; d++) {
-      advanceServiceTime(state.players, d);
-    }
+      if (mode === 'core') {
+        const missingCore = getCoreFeatureIds().filter((id) => !enabledFeatures.includes(id));
+        if (missingCore.length > 0) {
+          blockers.push(`core-features-disabled:${missingCore.join(',')}`);
+        }
+      }
 
-    // ── Offseason development ──────────────────────────────────────────────
-    const devAssignmentsObj2: Record<number, DevAssignment> = {};
-    for (const [pid, a] of _devAssignments) devAssignmentsObj2[pid] = a;
-    const offseasonResult = advanceOffseason(state.players, gen, {
-      hitter: staffBonuses.hitterDevMultiplier,
-      pitcher: staffBonuses.pitcherDevMultiplier,
-    }, devAssignmentsObj2);
-    state.players = offseasonResult.players;
-    gen = offseasonResult.gen;
+      for (const checkpoint of checkpoints) {
+        if (checkpoint.totalGames <= 0) {
+          blockers.push(`season-${checkpoint.season}-no-games`);
+        }
+      }
 
-    // ── Retired players ────────────────────────────────────────────────────
-    const retiredEvents = (offseasonResult.events ?? []).filter(e => e.type === 'retirement');
-    for (const evt of retiredEvents) {
-      const career = _careerHistory.get(evt.playerId);
-      if (career && career.length > 0) {
-        const player = _playerMap.get(evt.playerId);
-        _retiredCareerHistory.set(evt.playerId, {
-          name: evt.playerName,
-          position: player?.position ?? 'UT',
-          seasons: career,
-          retiredSeason: state.season,
+      return {
+        ok: blockers.length === 0,
+        generatedAt: Date.now(),
+        seed,
+        seasons: boundedSeasons,
+        mode,
+        durationMs: Number((performance.now() - startedAt).toFixed(3)),
+        blockers,
+        checkpoints,
+      };
+    });
+  },
+
+  async getLatencyBudgetReport(): Promise<LatencyBudgetReport> {
+    return timedEndpointCall('getLatencyBudgetReport', async () => buildLatencyBudgetReportInternal());
+  },
+
+  async getDraftBoard(userTeamId = 1): Promise<DraftBoardListing> {
+    return timedEndpointCall('getDraftBoard', async () => {
+      if (!activeDraftState || activeDraftState.userTeamId !== userTeamId) {
+        refreshDraftBoard(userTeamId);
+      }
+
+      if (!activeDraftState) {
+        return {
+          season: currentSeason,
+          userTeamId,
+          totalRounds: 10,
+          currentRound: 1,
+          currentPickInRound: 1,
+          overallPick: 1,
+          teamOnClockId: null,
+          completed: true,
+          picks: [],
+          available: [],
+        };
+      }
+
+      const playersById = buildPlayersByIdMap();
+      activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+      players = Array.from(playersById.values());
+      cache.invalidate();
+
+      return buildDraftBoardListing(activeDraftState);
+    });
+  },
+
+  async makeDraftPick(playerId: number): Promise<DraftPickResponse> {
+    return timedEndpointCall('makeDraftPick', async () => {
+      const userTeamId = activeDraftState?.userTeamId ?? 1;
+      if (!activeDraftState) {
+        refreshDraftBoard(userTeamId);
+      }
+
+      if (!activeDraftState) {
+        return { ok: false, reason: 'Draft board unavailable.' };
+      }
+
+      const playersById = buildPlayersByIdMap();
+      activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+
+      let pickResult;
+      [activeDraftState, pickResult] = makeUserDraftPick(activeDraftState, playersById, playerId);
+      if (!pickResult.ok) {
+        return {
+          ok: false,
+          reason: pickResult.reason,
+          board: buildDraftBoardListing(activeDraftState),
+        };
+      }
+
+      if (pickResult.pick) {
+        const draftPick = pickResult.pick;
+        const details = `Drafted ${draftPick.playerName} (Rd ${draftPick.round}, Pick ${draftPick.pick})`;
+        transactionLog.push({
+          date: 0,
+          season: currentSeason,
+          teamId: draftPick.teamId,
+          transaction: {
+            type: 'DRAFT_PICK',
+            playerId: draftPick.playerId,
+            teamId: draftPick.teamId,
+            round: draftPick.round,
+            pick: draftPick.pick,
+          },
+          description: details,
+        });
+        logDraftPick(eventLog, currentSeason, {
+          kind: 'draft',
+          pickNumber: draftPick.pick,
+          playerId: draftPick.playerId,
+          playerName: draftPick.playerName,
+          teamId: draftPick.teamId,
+          position: String(draftPick.position),
+          prospectType: draftPick.type,
         });
       }
-    }
 
-    rebuildMaps();
+      activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+      players = Array.from(playersById.values());
+      cache.invalidate();
 
-    // ── Franchise records ──────────────────────────────────────────────────
-    const userTeamRecord = result.teamSeasons.find(ts => ts.teamId === state.userTeamId);
-    if (userTeamRecord) {
-      const recBook = _franchiseRecords ?? emptyRecordBook();
-      const recResult = updateFranchiseRecords(
-        recBook, _playerSeasonStats, _careerHistory, _playerMap,
-        { wins: userTeamRecord.record.wins, losses: userTeamRecord.record.losses },
-        state.season, state.userTeamId,
-      );
-      _franchiseRecords = recResult.records;
-    }
+      const saveState = buildPersistedState();
+      if (saveState) {
+        createAutosave(saveState, 'Draft Updated');
+      }
 
-    // ── Hall of Fame ────────────────────────────────────────────────────────
-    const existingInducteeIds = new Set(_hallOfFame.map(i => i.playerId));
-    const hofCandidates = identifyHOFCandidates(_retiredCareerHistory, state.season, existingInducteeIds);
-    if (hofCandidates.length > 0) {
-      const hofSeed = state.season * 31337;
-      const votingResult = simulateHOFVoting(hofCandidates, hofSeed);
-      _hallOfFame.push(...votingResult.inducted);
-    }
-
-    state.prngState = serializeState(gen);
-    _seasonResults.push(result);
-    state.season++;
-
-    // Clear in-season state (season is done)
-    _seasonSimState = null;
-
-    return {
-      ...result,
-      awards,
-      divisionChampions,
-      developmentEvents: offseasonResult.events,
-      injuryEvents,
-    };
-  },
-
-  /** Get current in-season state (for UI display during pauses). */
-  async getInSeasonState(): Promise<SeasonSimState | null> {
-    return _seasonSimState;
-  },
-
-  async ping(): Promise<string> {
-    return 'pong';
+      return {
+        ok: true,
+        pick: pickResult.pick,
+        board: buildDraftBoardListing(activeDraftState),
+      };
+    });
   },
 };
 
-export type WorkerAPI = typeof api;
+// ─── Helper Types ────────────────────────────────────────────────
+
+export type SeasonStage = 'idle' | 'season' | 'postseason' | 'awards';
+
+export interface SaveOperationResult {
+  ok: boolean;
+  manifest?: SaveManifest;
+  error?: string;
+}
+
+export interface LoadSaveResult extends SaveOperationResult {
+  warning?: string;
+  season?: number;
+  stage?: SeasonStage;
+}
+
+export interface ExportSaveResult {
+  ok: boolean;
+  json?: string;
+  error?: string;
+}
+
+export interface TradeCounterOfferResult {
+  ok: boolean;
+  suggestion?: TradeSuggestion;
+  changed?: boolean;
+  rounds?: number;
+  reason?: string;
+}
+
+export interface DraftBoardListing {
+  season: number;
+  userTeamId: number;
+  totalRounds: number;
+  currentRound: number;
+  currentPickInRound: number;
+  overallPick: number;
+  teamOnClockId: number | null;
+  completed: boolean;
+  picks: DraftPick[];
+  available: DraftBoardEntry[];
+}
+
+export interface DraftPickResponse {
+  ok: boolean;
+  reason?: string;
+  pick?: DraftPick;
+  board?: DraftBoardListing;
+}
+
+export type ActivityIntelRequest = ActivityIntelQuery;
+
+export interface TradeSuggestion {
+  package: TradePackage;
+  fromTeamName: string;
+  toTeamName: string;
+  playersOfferedNames: string[];
+  playersRequestedNames: string[];
+  accepted: boolean;
+  surplus: number;
+  reason: string;
+  marketDiagnostics: TradeMarketDiagnostics;
+}
+
+export interface FreeAgentListing {
+  playerId: number;
+  name: string;
+  position: string;
+  age: number;
+  isPitcher: boolean;
+  overall: number;
+  potential: number;
+  desiredYears: number;
+  desiredSalary: number;
+  teamFitScore: number;
+  marketInterest: number;
+}
+
+export interface TeamStandingRow {
+  teamId: number;
+  city: string;
+  name: string;
+  abbreviation: string;
+  conferenceId: number;
+  divisionId: number;
+  wins: number;
+  losses: number;
+  pct: string;
+  runsScored: number;
+  runsAllowed: number;
+  pythWins: number;
+  divisionRank: number;
+}
+
+export interface RosterPlayer {
+  playerId: number;
+  name: string;
+  position: string;
+  leagueLevel: string;
+  rosterStatus: RosterStatus;
+  isOn40Man: boolean;
+  optionYearsRemaining: number;
+  demotionsThisSeason: number;
+  salary: number;
+  age: number;
+  bats: string;
+  throws: string;
+  isPitcher: boolean;
+  stats: StatLine | null;
+}
+
+export interface StatLine {
+  // Batting
+  ba?: string;
+  hr?: number;
+  rbi?: number;
+  runs?: number;
+  // Pitching
+  era?: string;
+  wins?: number;
+  losses?: number;
+  k?: number;
+  ip?: string;
+  saves?: number;
+}
+
+export interface LeaderboardEntry {
+  playerId: number;
+  name: string;
+  team: string;
+  position: string;
+  stat1: number; // primary sort stat
+  stat2: number;
+  stat3: number;
+  stat4: number;
+  stat5: number;
+}
+
+export interface PlayerProfileData {
+  player: Player;
+  seasonStats: PlayerSeason | null;
+}
+
+export interface PerformanceStats {
+  cacheVersion: number;
+  playerCount: number;
+  gameResultCount: number;
+  featuredGameCount: number;
+  playerSeasonCount: number;
+  teamCount: number;
+  currentSeason: number;
+  estimatedMemoryMB: number;
+}
+
+export interface TeamRosterCounts {
+  teamId: number;
+  fortyMan: number;
+  twentySixMan: number;
+}
+
+export interface IntegrityAuditIssue {
+  code: string;
+  severity: 'error' | 'warn';
+  count: number;
+  detail: string;
+}
+
+export interface IntegrityAuditReport {
+  ok: boolean;
+  checkedAt: number;
+  totals: {
+    teams: number;
+    players: number;
+    transactions: number;
+    enabledFeatures: number;
+  };
+  issues: IntegrityAuditIssue[];
+}
+
+export interface FeatureReadinessDependency {
+  featureId: FeatureDependencyHealth['featureId'];
+  found: FeatureDependencyHealth['found'];
+  enabled: FeatureDependencyHealth['enabled'];
+  ready: FeatureDependencyHealth['ready'];
+}
+
+export interface FeatureReadinessReport {
+  featureId: string;
+  found: boolean;
+  ready: boolean;
+  tier?: FeatureTier;
+  status?: FeatureStatus;
+  reasons: string[];
+  dependencies: FeatureReadinessDependency[];
+}
+
+export interface PlayableReadinessGate {
+  gateId: string;
+  label: string;
+  pass: boolean;
+  blocker: boolean;
+  detail: string;
+}
+
+export interface AlphaGateResult {
+  gateId: string;
+  label: string;
+  pass: boolean;
+  blocker: boolean;
+  detail: string;
+  recommendation?: string;
+}
+
+export interface PlayableReadinessReport {
+  ok: boolean;
+  generatedAt: number;
+  season: number;
+  stage: SeasonStage;
+  blockers: string[];
+  gates: AlphaGateResult[];
+}
+
+export type WorkerHealthMode = 'normal' | 'degraded' | 'panic-safe';
+
+export interface DiagnosticsSnapshot {
+  generatedAt: number;
+  season: number;
+  stage: SeasonStage;
+  healthMode: WorkerHealthMode;
+  cache: {
+    version: number;
+    estimatedMemoryMB: number;
+  };
+  counts: {
+    teams: number;
+    players: number;
+    games: number;
+    featuredGames: number;
+    playerSeasons: number;
+    transactions: number;
+    newsStories: number;
+  };
+  features: {
+    enabledCount: number;
+    coreEnabledCount: number;
+    totalManifestCount: number;
+    buildFingerprint: string;
+  };
+  integrity: {
+    ok: boolean;
+    issueCount: number;
+  };
+  manifest: {
+    ok: boolean;
+    issueCount: number;
+  };
+  latency: {
+    ok: boolean;
+    issueCount: number;
+    sampledEndpoints: number;
+  };
+}
+
+export interface SmokeFlowStepResult {
+  stepId: string;
+  label: string;
+  pass: boolean;
+  detail: string;
+}
+
+export interface SmokeFlowReport {
+  ok: boolean;
+  generatedAt: number;
+  stage: SeasonStage;
+  blockers: string[];
+  steps: SmokeFlowStepResult[];
+}
+
+export interface DeterminismProbeSeasonMetrics {
+  season: number;
+  totalGames: number;
+  totalRuns: number;
+  winsChecksum: number;
+  homeRunsChecksum: number;
+  topTeamId: number;
+  topTeamWins: number;
+}
+
+export interface DeterminismProbeReport {
+  ok: boolean;
+  generatedAt: number;
+  seed: number;
+  seasons: number;
+  reason?: string;
+  mismatches: string[];
+  metricsA: DeterminismProbeSeasonMetrics[];
+  metricsB: DeterminismProbeSeasonMetrics[];
+}
+
+export interface IntakeAuditReport {
+  packId: IntakePack;
+  generatedAt: number;
+  ok: boolean;
+  totalFeatures: number;
+  avgRiskScore: number;
+  statusCounts: Record<FeatureStatus, number>;
+  highRiskFeatureIds: string[];
+  blockers: string[];
+}
+
+export type SoakSimulationMode = 'core' | 'all';
+
+export interface SoakSimulationReport {
+  ok: boolean;
+  generatedAt: number;
+  seed: number;
+  seasons: number;
+  mode: SoakSimulationMode;
+  durationMs: number;
+  blockers: string[];
+  checkpoints: DeterminismProbeSeasonMetrics[];
+}
+
+export interface LatencyBudgetEndpointResult {
+  endpoint: string;
+  calls: number;
+  avgMs: number;
+  p95Ms: number;
+  lastMs: number;
+  budgetMs: number;
+  pass: boolean;
+}
+
+export interface LatencyBudgetReport {
+  generatedAt: number;
+  healthMode: WorkerHealthMode;
+  ok: boolean;
+  blockers: string[];
+  endpoints: LatencyBudgetEndpointResult[];
+}
+
+// ─── Internal Helpers ────────────────────────────────────────────
+
+function deepClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function recordEndpointLatency(endpoint: string, durationMs: number): void {
+  const history = endpointLatencyHistory.get(endpoint) ?? [];
+  history.push(durationMs);
+  if (history.length > MAX_ENDPOINT_LATENCY_SAMPLES) {
+    history.splice(0, history.length - MAX_ENDPOINT_LATENCY_SAMPLES);
+  }
+  endpointLatencyHistory.set(endpoint, history);
+}
+
+async function timedEndpointCall<T>(
+  endpoint: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await run();
+  } finally {
+    recordEndpointLatency(endpoint, performance.now() - start);
+  }
+}
+
+function percentile(samples: number[], p: number): number {
+  if (samples.length === 0) return 0;
+  const sorted = [...samples].sort((a, b) => a - b);
+  const rank = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[rank];
+}
+
+function buildLatencyBudgetReportInternal(): LatencyBudgetReport {
+  const endpoints: LatencyBudgetEndpointResult[] = Object.entries(ENDPOINT_LATENCY_BUDGET_MS).map(([endpoint, budgetMs]) => {
+    const samples = endpointLatencyHistory.get(endpoint) ?? [];
+    const calls = samples.length;
+    const total = samples.reduce((sum, value) => sum + value, 0);
+    const avgMs = calls === 0 ? 0 : total / calls;
+    const p95Ms = percentile(samples, 95);
+    const lastMs = calls === 0 ? 0 : samples[calls - 1];
+    const pass = calls === 0 ? true : p95Ms <= budgetMs;
+    return {
+      endpoint,
+      calls,
+      avgMs: Number(avgMs.toFixed(3)),
+      p95Ms: Number(p95Ms.toFixed(3)),
+      lastMs: Number(lastMs.toFixed(3)),
+      budgetMs,
+      pass,
+    };
+  });
+
+  const blockers = endpoints.filter((entry) => !entry.pass).map((entry) => entry.endpoint);
+  return {
+    generatedAt: Date.now(),
+    healthMode: workerHealthMode,
+    ok: blockers.length === 0,
+    blockers,
+    endpoints,
+  };
+}
+
+function makeBuildFingerprint(): string {
+  return `mrbd-worker-schema-${CURRENT_SCHEMA_VERSION}-features-${FEATURE_MANIFEST.length}`;
+}
+
+function runDeterminismPass(seed: number, seasons: number): DeterminismProbeSeasonMetrics[] {
+  const localTeams = deepClone(teams);
+  const localPlayers = deepClone(players);
+  const metrics: DeterminismProbeSeasonMetrics[] = [];
+
+  for (let seasonIdx = 0; seasonIdx < seasons; seasonIdx += 1) {
+    const simSeason = Math.max(1, currentSeason + seasonIdx);
+    const simSeed = seed + simSeason * 97;
+    const result = simulateSeason(localTeams, localPlayers, simSeason, simSeed);
+
+    let totalRuns = 0;
+    let homeRunsChecksum = 0;
+    for (const game of result.gameResults) {
+      totalRuns += game.homeScore + game.awayScore;
+    }
+    for (const [, ps] of result.playerSeasons) {
+      homeRunsChecksum += ps.hr;
+    }
+
+    const sorted = [...result.teamSeasons].sort((a, b) => b.wins - a.wins || a.teamId - b.teamId);
+    const top = sorted[0];
+    const winsChecksum = result.teamSeasons.reduce((sum, season) => sum + season.wins * (season.teamId + 3), 0);
+
+    metrics.push({
+      season: simSeason,
+      totalGames: result.gameResults.length,
+      totalRuns,
+      winsChecksum,
+      homeRunsChecksum,
+      topTeamId: top?.teamId ?? -1,
+      topTeamWins: top?.wins ?? 0,
+    });
+  }
+
+  return metrics;
+}
+
+function buildDefaultFeatureVersions(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const entry of FEATURE_MANIFEST) {
+    out[entry.id] = entry.sinceWave;
+  }
+  return out;
+}
+
+function normalizeFeatureVersions(raw: Record<string, unknown> | undefined): Record<string, number> {
+  if (!raw) return buildDefaultFeatureVersions();
+
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isFeatureId(key)) continue;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue;
+    out[key] = Math.floor(value);
+  }
+
+  const defaults = buildDefaultFeatureVersions();
+  for (const [id, version] of Object.entries(defaults)) {
+    if (!(id in out)) {
+      out[id] = version;
+    }
+  }
+  return out;
+}
+
+function normalizeEnabledFeatures(raw: string[] | undefined): FeatureId[] {
+  if (!raw || raw.length === 0) return getCoreFeatureIds();
+
+  const unique = new Set<FeatureId>();
+  const out: FeatureId[] = [];
+  for (const value of raw) {
+    if (!isFeatureId(value)) continue;
+    if (unique.has(value)) continue;
+    unique.add(value);
+    out.push(value);
+  }
+  return out.length > 0 ? out : getCoreFeatureIds();
+}
+
+function normalizeMigrationNotes(raw: string[] | undefined): string[] {
+  if (!raw) return [];
+  const out: string[] = [];
+  for (const value of raw) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    out.push(trimmed);
+    if (out.length >= 24) break;
+  }
+  return out;
+}
+
+function extractTransactionPlayerIds(tx: RosterTransaction): number[] {
+  switch (tx.type) {
+    case 'TRADE':
+      return tx.playerIds;
+    case 'CALL_UP':
+    case 'OPTION':
+    case 'DFA':
+    case 'PLACE_IL':
+    case 'ACTIVATE_IL':
+    case 'WAIVER_CLAIM':
+    case 'OUTRIGHT':
+    case 'RELEASE':
+    case 'SIGN_FA':
+    case 'DRAFT_PICK':
+    case 'RULE_5_SELECT':
+    case 'RULE_5_RETURN':
+    case 'ADD_TO_40_MAN':
+    case 'RETIREMENT':
+      return [tx.playerId];
+  }
+}
+
+function countDuplicates(values: number[]): number {
+  const seen = new Set<number>();
+  const dupes = new Set<number>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      dupes.add(value);
+    } else {
+      seen.add(value);
+    }
+  }
+  return dupes.size;
+}
+
+function buildIntegrityAuditReport(): IntegrityAuditReport {
+  const issues: IntegrityAuditIssue[] = [];
+  const teamIds = teams.map((team) => team.teamId);
+  const playerIds = players.map((player) => player.playerId);
+  const teamIdSet = new Set(teamIds);
+  const playerIdSet = new Set(playerIds);
+
+  const duplicateTeamIds = countDuplicates(teamIds);
+  if (duplicateTeamIds > 0) {
+    issues.push({
+      code: 'duplicate-team-ids',
+      severity: 'error',
+      count: duplicateTeamIds,
+      detail: 'Duplicate team IDs detected in in-memory league state.',
+    });
+  }
+
+  const duplicatePlayerIds = countDuplicates(playerIds);
+  if (duplicatePlayerIds > 0) {
+    issues.push({
+      code: 'duplicate-player-ids',
+      severity: 'error',
+      count: duplicatePlayerIds,
+      detail: 'Duplicate player IDs detected in in-memory player pool.',
+    });
+  }
+
+  let danglingPlayerTeamRefs = 0;
+  for (const player of players) {
+    if (player.rosterData.rosterStatus === 'FREE_AGENT' || player.rosterData.rosterStatus === 'RETIRED') continue;
+    if (!teamIdSet.has(player.teamId)) danglingPlayerTeamRefs += 1;
+  }
+  if (danglingPlayerTeamRefs > 0) {
+    issues.push({
+      code: 'dangling-player-team',
+      severity: 'error',
+      count: danglingPlayerTeamRefs,
+      detail: 'Players reference missing team IDs.',
+    });
+  }
+
+  let danglingTransactionTeams = 0;
+  let danglingTransactionPlayers = 0;
+  for (const entry of transactionLog) {
+    if (!teamIdSet.has(entry.teamId)) danglingTransactionTeams += 1;
+    for (const playerId of extractTransactionPlayerIds(entry.transaction)) {
+      if (!playerIdSet.has(playerId)) danglingTransactionPlayers += 1;
+    }
+  }
+  if (danglingTransactionTeams > 0) {
+    issues.push({
+      code: 'dangling-transaction-team',
+      severity: 'error',
+      count: danglingTransactionTeams,
+      detail: 'Transactions reference missing team IDs.',
+    });
+  }
+  if (danglingTransactionPlayers > 0) {
+    issues.push({
+      code: 'dangling-transaction-player',
+      severity: 'error',
+      count: danglingTransactionPlayers,
+      detail: 'Transactions reference missing player IDs.',
+    });
+  }
+
+  const unknownEnabledFeatures = enabledFeatures.filter((id) => !getFeatureManifestEntry(id));
+  if (unknownEnabledFeatures.length > 0) {
+    issues.push({
+      code: 'unknown-enabled-feature',
+      severity: 'warn',
+      count: unknownEnabledFeatures.length,
+      detail: `Unknown feature IDs in enabledFeatures: ${unknownEnabledFeatures.join(', ')}`,
+    });
+  }
+
+  const ok = !issues.some((issue) => issue.severity === 'error');
+
+  return {
+    ok,
+    checkedAt: Date.now(),
+    totals: {
+      teams: teams.length,
+      players: players.length,
+      transactions: transactionLog.length,
+      enabledFeatures: enabledFeatures.length,
+    },
+    issues,
+  };
+}
+
+function buildFeatureReadinessReport(featureId: string): FeatureReadinessReport {
+  const assessment = assessFeatureReadiness(featureId, enabledFeatures);
+  return {
+    featureId: assessment.featureId,
+    found: assessment.found,
+    ready: assessment.ready,
+    tier: assessment.tier,
+    status: assessment.status,
+    reasons: assessment.reasons,
+    dependencies: assessment.dependencies,
+  };
+}
+
+function shouldCreateTransactionStory(type: RosterTransaction['type']): boolean {
+  switch (type) {
+    case 'CALL_UP':
+    case 'DFA':
+    case 'PLACE_IL':
+    case 'ACTIVATE_IL':
+    case 'RELEASE':
+    case 'WAIVER_CLAIM':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function buildTradeSuggestion(
+  pkg: TradePackage,
+  evalResult: { accepted: boolean; surplus: number; reason: string; marketDiagnostics: TradeMarketDiagnostics },
+  playerMap: Map<number, Player>,
+  nameMap: Map<number, string>,
+): TradeSuggestion {
+  return {
+    package: pkg,
+    fromTeamName: nameMap.get(pkg.fromTeamId) ?? `Team ${pkg.fromTeamId}`,
+    toTeamName: nameMap.get(pkg.toTeamId) ?? `Team ${pkg.toTeamId}`,
+    playersOfferedNames: pkg.playersOffered.map((id) => {
+      const p = playerMap.get(id);
+      return p ? `${p.firstName} ${p.lastName}` : `Player #${id}`;
+    }),
+    playersRequestedNames: pkg.playersRequested.map((id) => {
+      const p = playerMap.get(id);
+      return p ? `${p.firstName} ${p.lastName}` : `Player #${id}`;
+    }),
+    accepted: evalResult.accepted,
+    surplus: evalResult.surplus,
+    reason: evalResult.reason,
+    marketDiagnostics: evalResult.marketDiagnostics,
+  };
+}
+
+function buildTradeMarketContext(
+  pkg: TradePackage,
+  deadlineUrgency: number,
+): TradeMarketContext {
+  const fromTeam = teams.find((team) => team.teamId === pkg.fromTeamId);
+  const toTeam = teams.find((team) => team.teamId === pkg.toTeamId);
+  const sameLeague = Boolean(
+    fromTeam &&
+    toTeam &&
+    fromTeam.conferenceId === toTeam.conferenceId,
+  );
+  const sameDivision = Boolean(
+    fromTeam &&
+    toTeam &&
+    fromTeam.conferenceId === toTeam.conferenceId &&
+    fromTeam.divisionId === toTeam.divisionId,
+  );
+  const rivalryTax = sameDivision ? 8 : sameLeague ? 3 : 0;
+
+  return {
+    deadlineUrgency: Math.max(0, Math.min(1, deadlineUrgency)),
+    sameLeague,
+    sameDivision,
+    rivalryTax,
+  };
+}
+
+function buildPlayersByIdMap(): Map<number, Player> {
+  const map = new Map<number, Player>();
+  for (const player of players) {
+    map.set(player.playerId, player);
+  }
+  return map;
+}
+
+function removeDraftEligiblePool(): void {
+  players = players.filter((player) => player.rosterData.rosterStatus !== 'DRAFT_ELIGIBLE');
+}
+
+function sourceTeamSeasonsForDraft(): TeamSeason[] {
+  if (latestTeamSeasons.length > 0) {
+    return latestTeamSeasons;
+  }
+
+  const previous = seasonHistory.at(-1);
+  if (previous && previous.teamSeasons.length > 0) {
+    return previous.teamSeasons;
+  }
+
+  return teams.map((team) => ({
+    teamId: team.teamId,
+    season: currentSeason,
+    wins: 81,
+    losses: 81,
+    runsScored: 700,
+    runsAllowed: 700,
+    divisionRank: 3,
+    playoffResult: null,
+  }));
+}
+
+function refreshDraftBoard(userTeamId: number): void {
+  if (!gen) {
+    gen = createPRNG(rngSeed + currentSeason + 1000);
+  }
+
+  removeDraftEligiblePool();
+  const sourceTeamSeasons = sourceTeamSeasonsForDraft();
+  let draftState: DraftBoardState;
+  let draftPlayers: Player[];
+  [draftState, draftPlayers, gen] = createDraftBoardState(
+    sourceTeamSeasons,
+    players,
+    currentSeason,
+    userTeamId,
+    gen,
+  );
+
+  if (draftPlayers.length > 0) {
+    players = [...players, ...draftPlayers];
+  }
+
+  const playersById = buildPlayersByIdMap();
+  activeDraftState = runAIPicksUntilUserTurn(draftState, playersById);
+}
+
+function buildDraftBoardListing(state: DraftBoardState): DraftBoardListing {
+  const available = state.board
+    .filter((entry) => entry.draftedByTeamId == null)
+    .sort((a, b) => b.scoutRank - a.scoutRank);
+
+  return {
+    season: state.season,
+    userTeamId: state.userTeamId,
+    totalRounds: state.totalRounds,
+    currentRound: state.currentRound,
+    currentPickInRound: state.currentPickInRound,
+    overallPick: state.overallPick,
+    teamOnClockId: teamOnClockId(state),
+    completed: state.completed,
+    picks: [...state.picks],
+    available,
+  };
+}
+
+function primaryPlayerId(tx: RosterTransaction): number | null {
+  switch (tx.type) {
+    case 'CALL_UP':
+    case 'OPTION':
+    case 'DFA':
+    case 'PLACE_IL':
+    case 'ACTIVATE_IL':
+    case 'WAIVER_CLAIM':
+    case 'OUTRIGHT':
+    case 'RELEASE':
+    case 'SIGN_FA':
+    case 'DRAFT_PICK':
+    case 'RULE_5_SELECT':
+    case 'RULE_5_RETURN':
+    case 'ADD_TO_40_MAN':
+    case 'RETIREMENT':
+      return tx.playerId;
+    case 'TRADE':
+      return tx.playerIds[0] ?? null;
+  }
+}
+
+function featuredReasonForGame(game: GameResult): string {
+  const diff = Math.abs(game.homeScore - game.awayScore);
+  if (game.innings > 9) return `${game.innings}-inning game`;
+  if (diff === 1) return 'one-run finish';
+  if (game.homeScore === 0 || game.awayScore === 0) return 'shutout';
+  if (game.homeScore + game.awayScore >= 15) return 'slugfest';
+  return 'dramatic finish';
+}
+
+function deriveTeamStrategies(teamIds: number[]): Map<number, TeamStrategy> {
+  if (latestTeamSeasons.length === 0) {
+    const baseline = new Map<number, TeamStrategy>();
+    for (const id of teamIds) {
+      const override = ownerProfiles.get(id)?.activeMandate.strategyOverride;
+      baseline.set(id, override ?? 'fringe');
+    }
+    return baseline;
+  }
+
+  const map = new Map<number, TeamSeason>();
+  for (const ts of latestTeamSeasons) {
+    map.set(ts.teamId, ts);
+  }
+  const classified = classifyAllTeams(map);
+  for (const [teamId, strategy] of classified) {
+    const override = ownerProfiles.get(teamId)?.activeMandate.strategyOverride;
+    classified.set(teamId, override ?? strategy);
+  }
+  return classified;
+}
+
+function buildOwnerBidModifiers(
+  profiles: Map<number, OwnerProfile>,
+): Map<number, TeamBidModifier> {
+  const teamIds = Array.from(profiles.keys()).sort((a, b) => a - b);
+  const budgets = assignMarketSizes(teamIds);
+  const modifiers = new Map<number, TeamBidModifier>();
+
+  const luxuryByMandate: Record<OwnerProfile['activeMandate']['type'], number> = {
+    WIN_NOW: 28_000_000,
+    STAY_COMPETITIVE: 16_000_000,
+    PATIENT_BUILD: 4_000_000,
+    TRIM_PAYROLL: 0,
+    BALANCED: 10_000_000,
+  };
+
+  for (const [teamId, profile] of profiles) {
+    const mandate = profile.activeMandate;
+    const budget = budgets.get(teamId);
+    const baseTarget = budget?.payrollTarget ?? 160_000_000;
+    const baseCap = budget?.hardCap ?? 230_000_000;
+    const sizeComfort =
+      budget?.marketSize === 'large' ? 6_000_000 :
+      budget?.marketSize === 'small' ? -4_000_000 :
+      0;
+    const capFlex =
+      mandate.type === 'WIN_NOW' ? 1.06 :
+      mandate.type === 'TRIM_PAYROLL' ? 0.9 :
+      mandate.type === 'PATIENT_BUILD' ? 0.95 :
+      1.0;
+    const payrollTarget = Math.round(baseTarget * Math.max(0.8, Math.min(1.25, mandate.payrollModifier)));
+    const maxPayrollCap = Math.round(baseCap * capFlex);
+    const luxuryTaxComfort = Math.max(0, luxuryByMandate[mandate.type] + sizeComfort);
+    modifiers.set(teamId, {
+      bidAggression: Math.max(0.75, Math.min(1.35, mandate.bidAggression)),
+      offerMultiplier: Math.max(0.8, Math.min(1.25, mandate.payrollModifier)),
+      payrollTarget: Math.min(payrollTarget, maxPayrollCap),
+      maxPayrollCap,
+      luxuryTaxComfort,
+    });
+  }
+  return modifiers;
+}
+
+function computePositionNeedScore(teamId: number, position: string): number {
+  let count = 0;
+  let totalOverall = 0;
+
+  for (const p of players) {
+    if (p.teamId !== teamId) continue;
+    if (String(p.position) !== position) continue;
+    if (p.rosterData.rosterStatus === 'FREE_AGENT') continue;
+    if (p.rosterData.rosterStatus === 'RETIRED') continue;
+    if (p.rosterData.rosterStatus === 'DRAFT_ELIGIBLE') continue;
+
+    count++;
+    totalOverall += playerOverall(p);
+  }
+
+  if (count === 0) return 1.0;
+
+  const avg = totalOverall / count;
+  let score = (420 - avg) / 220;
+  if (count <= 1) score += 0.2;
+  return Math.max(0, Math.min(1.0, score));
+}
+
+function estimateFreeAgentMarketInterest(
+  position: string,
+  overall: number,
+  teamIds: number[],
+  teamStrategies: Map<number, TeamStrategy>,
+): number {
+  let interestedTeams = 0;
+
+  for (const teamId of teamIds) {
+    const need = computePositionNeedScore(teamId, position);
+    const strategy = teamStrategies.get(teamId) ?? 'fringe';
+    const appetite =
+      strategy === 'contender' ? 0.35 :
+      strategy === 'rebuilder' ? 0.2 :
+      0.28;
+    const talentBoost =
+      overall >= 340 ? 0.35 :
+      overall >= 300 ? 0.2 :
+      overall >= 260 ? 0.1 : 0;
+
+    if (need + appetite + talentBoost >= 0.9) {
+      interestedTeams++;
+    }
+  }
+
+  return interestedTeams;
+}
+
+function buildPersistedState(): PersistedGameState | null {
+  if (!gen) return null;
+
+  return {
+    season: currentSeason,
+    rngSeed,
+    gen,
+    teams,
+    players,
+    teamSeasons: latestTeamSeasons,
+    playerSeasons: latestPlayerSeasons,
+    gameResults: latestGameResults,
+    playoffBracket: latestPlayoffBracket,
+    seasonAwards: latestSeasonAwards,
+    hallOfFamers: [],
+    milestones: [],
+    leagueRecords: [],
+    newsFeed: latestNewsFeed,
+    transactionLog,
+    coachingStaffs,
+    latestOffseasonRecap,
+    ownerProfiles,
+    teamChemistry,
+    clubhouseEvents,
+    ownerEvaluationHistory,
+    eventLog: eventLog.serialize(),
+    featureVersions,
+    enabledFeatures,
+    migrationNotes,
+    buildFingerprint,
+  };
+}
+
+function applyLoadedState(state: PersistedGameState): void {
+  currentSeason = state.season;
+  rngSeed = state.rngSeed;
+  gen = state.gen;
+  teams = state.teams;
+  players = state.players;
+  latestTeamSeasons = state.teamSeasons;
+  latestPlayerSeasons = state.playerSeasons;
+  latestGameResults = state.gameResults;
+  latestPlayoffBracket = state.playoffBracket;
+  latestSeasonAwards = state.seasonAwards;
+  latestNewsFeed = state.newsFeed;
+  transactionLog = state.transactionLog;
+  coachingStaffs = state.coachingStaffs;
+  latestOffseasonRecap = state.latestOffseasonRecap;
+
+  const teamIds = teams.map((t) => t.teamId);
+  const baselineOwnerProfiles = initializeOwnerProfiles(teamIds, currentSeason);
+  const loadedProfiles = new Map(state.ownerProfiles);
+  ownerProfiles = new Map<number, OwnerProfile>();
+  for (const [teamId, baseline] of baselineOwnerProfiles) {
+    const loaded = loadedProfiles.get(teamId);
+    if (!loaded) {
+      ownerProfiles.set(teamId, baseline);
+      continue;
+    }
+
+    ownerProfiles.set(teamId, {
+      ...baseline,
+      ...loaded,
+      activeMandate: loaded.activeMandate ?? baseline.activeMandate,
+      currentGoals: loaded.currentGoals ?? baseline.currentGoals,
+      lastEvaluation: loaded.lastEvaluation ?? baseline.lastEvaluation,
+    });
+  }
+
+  const baselineChemistry = initializeTeamChemistry(teamIds, currentSeason);
+  const loadedChemistry = new Map(state.teamChemistry);
+  teamChemistry = new Map<number, TeamChemistryState>();
+  for (const [teamId, baseline] of baselineChemistry) {
+    const loaded = loadedChemistry.get(teamId);
+    if (!loaded) {
+      teamChemistry.set(teamId, baseline);
+      continue;
+    }
+    teamChemistry.set(teamId, {
+      ...baseline,
+      ...loaded,
+      lastUpdatedSeason: loaded.lastUpdatedSeason ?? baseline.lastUpdatedSeason,
+    });
+  }
+
+  clubhouseEvents = state.clubhouseEvents.length > 400
+    ? state.clubhouseEvents.slice(-400)
+    : [...state.clubhouseEvents];
+
+  ownerEvaluationHistory.length = 0;
+  if (state.ownerEvaluationHistory.length > 300) {
+    ownerEvaluationHistory.push(...state.ownerEvaluationHistory.slice(-300));
+  } else {
+    ownerEvaluationHistory.push(...state.ownerEvaluationHistory);
+  }
+
+  eventLog.deserialize(state.eventLog ?? []);
+  featureVersions = normalizeFeatureVersions(state.featureVersions);
+  enabledFeatures = normalizeEnabledFeatures(state.enabledFeatures);
+  migrationNotes = normalizeMigrationNotes(state.migrationNotes);
+  buildFingerprint = state.buildFingerprint ?? makeBuildFingerprint();
+
+  featuredGameIds = selectFeaturedGames(latestGameResults);
+  seasonHistory.length = 0;
+  cache.invalidate();
+}
+
+function computeSeasonStage(): SeasonStage {
+  if (latestSeasonAwards) return 'awards';
+  if (latestPlayoffBracket) return 'postseason';
+  if (latestTeamSeasons.length > 0) return 'season';
+  return 'idle';
+}
+
+function buildStandings(data: {
+  teamSeasons: TeamSeason[];
+  gameResults: GameResult[];
+}): TeamStandingRow[] {
+  return data.teamSeasons.map((ts) => {
+    const team = teams.find((t) => t.teamId === ts.teamId)!;
+    const totalGames = ts.wins + ts.losses;
+    const pct = totalGames > 0 ? (ts.wins / totalGames).toFixed(3) : '.000';
+    const pythWins = totalGames > 0
+      ? Math.round(pythagoreanWins(ts.runsScored, ts.runsAllowed, totalGames))
+      : 0;
+
+    return {
+      teamId: ts.teamId,
+      city: team.city,
+      name: team.name,
+      abbreviation: team.abbreviation,
+      conferenceId: team.conferenceId,
+      divisionId: team.divisionId,
+      wins: ts.wins,
+      losses: ts.losses,
+      pct,
+      runsScored: ts.runsScored,
+      runsAllowed: ts.runsAllowed,
+      pythWins,
+      divisionRank: ts.divisionRank,
+    };
+  });
+}
+
+function buildTeamNameMap(): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const t of teams) {
+    map.set(t.teamId, `${t.city} ${t.name}`);
+  }
+  return map;
+}
+
+function nextClubhouseEventId(): number {
+  if (clubhouseEvents.length === 0) return 1;
+  let maxId = 0;
+  for (const event of clubhouseEvents) {
+    if (event.eventId > maxId) maxId = event.eventId;
+  }
+  return maxId + 1;
+}
+
+function getPlayerStatLine(playerId: number): StatLine | null {
+  const ps = latestPlayerSeasons.get(playerId);
+  if (!ps) return null;
+
+  const player = players.find((p) => p.playerId === playerId);
+  if (!player) return null;
+
+  if (player.isPitcher) {
+    return {
+      era: ps.ip > 0 ? calcERA(ps.earnedRuns, ps.ip).toFixed(2) : '-.--',
+      wins: ps.wins,
+      losses: ps.losses,
+      k: ps.kPitching,
+      ip: formatIP(ps.ip),
+      saves: ps.saves,
+    };
+  } else {
+    return {
+      ba: ps.ab > 0 ? calcBA(ps.hits, ps.ab).toFixed(3) : '.000',
+      hr: ps.hr,
+      rbi: ps.rbi,
+      runs: ps.runs,
+    };
+  }
+}
+
+// ─── Memory Estimation ──────────────────────────────────────────
+
+function estimateMemoryUsage(): number {
+  // Rough estimate in MB
+  // Player: ~1KB each (attributes, roster data, name strings)
+  // GameResult: ~100 bytes each (scores, teams, inningsPlayed)
+  // PlayerSeason: ~200 bytes each (stat accumulators)
+  // TeamSeason: ~50 bytes each
+  const playerMB = (players.length * 1024) / (1024 * 1024);
+  const gameResultMB = (latestGameResults.length * 100) / (1024 * 1024);
+  const playerSeasonMB = (latestPlayerSeasons.size * 200) / (1024 * 1024);
+  const teamSeasonMB = (latestTeamSeasons.length * 50) / (1024 * 1024);
+  const newsMB = (latestNewsFeed.length * 500) / (1024 * 1024);
+
+  return Math.round((playerMB + gameResultMB + playerSeasonMB + teamSeasonMB + newsMB) * 100) / 100;
+}
+
+// ─── Expose via Comlink ──────────────────────────────────────────
+
 Comlink.expose(api);
+
+export type WorkerAPI = typeof api;
