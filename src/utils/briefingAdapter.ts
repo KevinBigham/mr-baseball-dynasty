@@ -1,6 +1,9 @@
 /**
  * briefingAdapter.ts — Pure functions that derive briefing data from existing store state.
  * No store mutations. No side effects. Prop-driven data for the briefing stack.
+ *
+ * Signal honesty: every derived value is tagged as 'real', 'heuristic', or 'unavailable'
+ * so the UI can communicate uncertainty honestly.
  */
 
 import type { BriefingDial, StoryThread, ActionQueueTask, DigestBlock, CoachStep } from '../types/briefing';
@@ -27,17 +30,20 @@ export function buildDials(opts: {
   const moraleStatus = getMoraleStatus(opts.teamMorale);
 
   // Contention Confidence: composite of win%, games back, and win count.
-  // Formula: 60% win-pct weight + 20 if any wins + 0/10/20 based on GB proximity.
-  // Clamped to 0–100. Defaults to 50 before standings exist (preseason).
+  // Signal: REAL when standings exist (derived from actual game results).
+  //         UNAVAILABLE before season starts.
   const userRow = opts.standings?.find(s => s.teamId === opts.userTeamId);
   const contentionValue = userRow
     ? Math.min(100, Math.max(0, Math.round((userRow.pct * 100) * 0.6 + (userRow.wins > 0 ? 20 : 0) + (userRow.gb <= 5 ? 20 : userRow.gb <= 10 ? 10 : 0))))
     : 50;
-  const contentionLabel = contentionValue >= 75 ? 'STRONG' : contentionValue >= 50 ? 'IN THE MIX' : contentionValue >= 30 ? 'FRINGE' : 'REBUILDING';
-  const contentionColor = contentionValue >= 75 ? '#4ade80' : contentionValue >= 50 ? '#fbbf24' : contentionValue >= 30 ? '#fb923c' : '#6b7280';
+  const contentionLabel = userRow
+    ? (contentionValue >= 75 ? 'STRONG' : contentionValue >= 50 ? 'IN THE MIX' : contentionValue >= 30 ? 'FRINGE' : 'REBUILDING')
+    : 'NO DATA YET';
+  const contentionColor = userRow
+    ? (contentionValue >= 75 ? '#4ade80' : contentionValue >= 50 ? '#fbbf24' : contentionValue >= 30 ? '#fb923c' : '#6b7280')
+    : '#6b7280';
 
   // Market Heat: phase-based proxy until real trade activity data is exposed.
-  // TODO(codex): Replace with actual trade offer count when available.
   const marketValue = opts.gamePhase === 'offseason' ? 80
     : opts.gamePhase === 'in_season' ? 55
     : opts.gamePhase === 'preseason' ? 40 : 30;
@@ -45,10 +51,15 @@ export function buildDials(opts: {
   const marketColor = marketValue >= 70 ? '#f97316' : marketValue >= 45 ? '#fbbf24' : '#6b7280';
 
   // Scouting Certainty: maps scoutingQuality (0.0–1.0) to 0–100 dial.
-  // TODO(codex): Currently hardcoded to 0.6 at call site. Wire real value.
+  // Signal: HEURISTIC — currently hardcoded to 0.6. No real scouting system wired yet.
+  const isScoutingReal = opts.scoutingQuality !== 0.6; // detect the hardcoded default
   const scoutValue = Math.round(opts.scoutingQuality * 100);
-  const scoutLabel = scoutValue >= 80 ? 'HIGH' : scoutValue >= 55 ? 'MODERATE' : 'LOW';
-  const scoutColor = scoutValue >= 80 ? '#4ade80' : scoutValue >= 55 ? '#fbbf24' : '#ef4444';
+  const scoutLabel = isScoutingReal
+    ? (scoutValue >= 80 ? 'HIGH' : scoutValue >= 55 ? 'MODERATE' : 'LOW')
+    : 'LIMITED';
+  const scoutColor = isScoutingReal
+    ? (scoutValue >= 80 ? '#4ade80' : scoutValue >= 55 ? '#fbbf24' : '#ef4444')
+    : '#9ca3af';
 
   return [
     {
@@ -57,6 +68,10 @@ export function buildDials(opts: {
       value: contentionValue,
       status: contentionLabel,
       color: contentionColor,
+      source: userRow ? 'real' : 'unavailable',
+      sourceNote: userRow
+        ? 'Derived from win %, games back, and division position'
+        : 'Season has not started — no results to evaluate',
       desc: userRow
         ? `${userRow.wins}–${userRow.losses} (${userRow.gb === 0 ? 'Division lead' : userRow.gb + ' GB'})`
         : 'Season has not started yet',
@@ -67,6 +82,8 @@ export function buildDials(opts: {
       value: opts.ownerPatience,
       status: ownerStatus.label,
       color: ownerStatus.color,
+      source: 'real',
+      sourceNote: 'Tracked by the game engine based on results and decisions',
       desc: ownerStatus.desc,
     },
     {
@@ -75,6 +92,8 @@ export function buildDials(opts: {
       value: marketValue,
       status: marketLabel,
       color: marketColor,
+      source: 'heuristic',
+      sourceNote: 'Based on game phase — no real trade offer data available yet',
       desc: opts.gamePhase === 'offseason'
         ? 'Free agency and trades are active.'
         : opts.gamePhase === 'in_season'
@@ -87,7 +106,13 @@ export function buildDials(opts: {
       value: scoutValue,
       status: scoutLabel,
       color: scoutColor,
-      desc: `Scouting accuracy: ${scoutValue}%. Higher means better prospect evaluations.`,
+      source: isScoutingReal ? 'real' : 'heuristic',
+      sourceNote: isScoutingReal
+        ? 'Based on front office scouting staff quality'
+        : 'Estimated — scouting system not fully connected yet',
+      desc: isScoutingReal
+        ? `Scouting accuracy: ${scoutValue}%. Higher means better prospect evaluations.`
+        : 'Scouting data is limited. Prospect evaluations are approximate.',
     },
     {
       id: 'clubhouse',
@@ -95,6 +120,8 @@ export function buildDials(opts: {
       value: opts.teamMorale,
       status: moraleStatus.label,
       color: moraleStatus.color,
+      source: 'real',
+      sourceNote: 'Tracked by the game engine based on performance and events',
       desc: opts.teamMorale >= 70
         ? 'The clubhouse is energized and unified.'
         : opts.teamMorale >= 40
@@ -121,6 +148,7 @@ export function buildStoryThreads(opts: {
   const arcInfo = getArchetypeInfo(opts.ownerArchetype);
 
   // ── Urgent Problem ──
+  // Priority cascade: owner patience > roster over limit > roster short > DFA pending > IL returns > heavy IL > low morale
   let urgent: StoryThread | null = null;
   if (opts.ownerPatience <= 25) {
     urgent = {
@@ -128,6 +156,14 @@ export function buildStoryThreads(opts: {
       title: 'Owner Patience Critical',
       body: `Patience at ${opts.ownerPatience}%. ${arcInfo.mandate} You need results now or face termination.`,
       actionLabel: 'VIEW ROSTER', actionTab: 'roster',
+    };
+  } else if (opts.roster && opts.roster.active.length > 26) {
+    const over = opts.roster.active.length - 26;
+    urgent = {
+      type: 'urgent', icon: '🚨', color: '#ef4444',
+      title: `Roster Over Limit — ${over} Player${over > 1 ? 's' : ''} Must Go`,
+      body: `Your 26-man roster has ${opts.roster.active.length} active players. DFA, option, or release before the next sim.`,
+      actionLabel: 'FIX ROSTER', actionTab: 'roster',
     };
   } else if (opts.roster && opts.roster.active.length < 25) {
     const short = 25 - opts.roster.active.length;
@@ -137,8 +173,14 @@ export function buildStoryThreads(opts: {
       body: `Your 26-man roster has only ${opts.roster.active.length} active players. Fill the gaps before the next sim.`,
       actionLabel: 'MANAGE ROSTER', actionTab: 'roster',
     };
+  } else if (opts.roster && opts.roster.dfa.length > 0) {
+    urgent = {
+      type: 'urgent', icon: '📋', color: '#fb923c',
+      title: `${opts.roster.dfa.length} Player${opts.roster.dfa.length > 1 ? 's' : ''} on DFA — Decision Needed`,
+      body: 'DFA assignments need resolution. Trade, release, or outright these players.',
+      actionLabel: 'RESOLVE', actionTab: 'roster',
+    };
   } else if (opts.roster && opts.roster.il.length > 0) {
-    const ilCount = opts.roster.il.length;
     const readySoon = opts.roster.il.filter(p => p.injuryInfo && p.injuryInfo.daysRemaining <= 7);
     if (readySoon.length > 0) {
       urgent = {
@@ -147,10 +189,10 @@ export function buildStoryThreads(opts: {
         body: `${readySoon.map(p => p.name).join(', ')} ${readySoon.length === 1 ? 'is' : 'are'} close to coming off the IL. Make room on the roster.`,
         actionLabel: 'ROSTER MOVES', actionTab: 'roster',
       };
-    } else if (ilCount >= 3) {
+    } else if (opts.roster.il.length >= 3) {
       urgent = {
         type: 'urgent', icon: '🏥', color: '#fb923c',
-        title: `${ilCount} Players on the IL`,
+        title: `${opts.roster.il.length} Players on the IL`,
         body: 'Multiple injuries are straining your depth. Monitor recovery timelines and consider replacements.',
         actionLabel: 'VIEW IL', actionTab: 'roster',
       };
@@ -165,6 +207,7 @@ export function buildStoryThreads(opts: {
   }
 
   // ── Open Mystery ──
+  // Priority: prospect breakout > tight division race (chasing or defending) > philosophical question
   let mystery: StoryThread | null = null;
   if (opts.roster) {
     const prospects = opts.roster.minors.filter(p => p.potential > p.overall + 20);
@@ -187,6 +230,18 @@ export function buildStoryThreads(opts: {
         body: `You're ${userRow.gb} games back. The margin is razor-thin. Every series matters.`,
         actionLabel: 'STANDINGS', actionTab: 'standings',
       };
+    } else if (userRow && userRow.gb === 0) {
+      const chasers = opts.standings.filter(
+        s => s.division === userRow.division && s.league === userRow.league && s.gb <= 2 && s.teamId !== opts.userTeamId
+      );
+      if (chasers.length > 0) {
+        mystery = {
+          type: 'mystery', icon: '🏁', color: '#60a5fa',
+          title: 'Can You Hold the Lead?',
+          body: `${chasers.length} team${chasers.length > 1 ? 's are' : ' is'} within 2 games. The division is far from settled.`,
+          actionLabel: 'STANDINGS', actionTab: 'standings',
+        };
+      }
     }
   }
   if (!mystery) {
@@ -196,7 +251,8 @@ export function buildStoryThreads(opts: {
       body: opts.seasonsManaged <= 1
         ? 'Your first moves will define the franchise philosophy. Contend now or build for the future?'
         : 'Every offseason reshapes the roster. What story will next season tell?',
-      actionLabel: 'VIEW FINANCES', actionTab: 'finance',
+      actionLabel: opts.seasonsManaged <= 1 ? 'VIEW ROSTER' : 'VIEW HISTORY',
+      actionTab: opts.seasonsManaged <= 1 ? 'roster' : 'history',
     };
   }
 
@@ -263,6 +319,7 @@ export function buildActionQueue(opts: {
         title: 'ROSTER OVER LIMIT',
         subtitle: `${opts.roster.active.length}/26 active — must DFA or option players`,
         icon: '🚨', actionLabel: 'FIX ROSTER', actionTab: 'roster',
+        deadline: 'Before next sim',
       });
     }
     if (opts.roster.active.length < 25) {
@@ -271,6 +328,7 @@ export function buildActionQueue(opts: {
         title: 'ROSTER BELOW MINIMUM',
         subtitle: `${opts.roster.active.length}/26 active — call up or sign players`,
         icon: '⚠️', actionLabel: 'FILL ROSTER', actionTab: 'roster',
+        deadline: 'Before next sim',
       });
     }
 
@@ -306,6 +364,7 @@ export function buildActionQueue(opts: {
         title: `${opts.roster.dfa.length} Player${opts.roster.dfa.length > 1 ? 's' : ''} on DFA`,
         subtitle: 'Resolve DFA assignments before next sim',
         icon: '📋', actionLabel: 'RESOLVE', actionTab: 'roster',
+        deadline: 'Before next sim',
       });
     }
   }
@@ -391,6 +450,19 @@ export function buildDigest(opts: {
     });
   }
 
+  // Roster depth summary
+  if (opts.roster) {
+    const depthEntries = [
+      { icon: '👥', label: 'Active Roster', detail: `${opts.roster.active.length}/26`, color: opts.roster.active.length < 25 || opts.roster.active.length > 26 ? '#ef4444' : '#4ade80' },
+      { icon: '🏥', label: 'Injured List', detail: `${opts.roster.il.length} player${opts.roster.il.length !== 1 ? 's' : ''}` },
+      { icon: '🌟', label: 'Minor Leaguers', detail: `${opts.roster.minors.length} on 40-man` },
+    ];
+    if (opts.roster.dfa.length > 0) {
+      depthEntries.push({ icon: '📋', label: 'DFA Pending', detail: `${opts.roster.dfa.length}`, color: '#fb923c' });
+    }
+    blocks.push({ section: 'ROSTER DEPTH', entries: depthEntries });
+  }
+
   // Front Office Pulse
   blocks.push({
     section: 'FRONT OFFICE PULSE',
@@ -442,7 +514,7 @@ export function buildCoachSteps(opts: {
     {
       id: 'review-roster',
       title: 'Review Your Roster',
-      body: 'See who you have: starters, bench, bullpen, and minor-leaguers. Identify your strengths and weaknesses.',
+      body: 'See who you have: starters, bench, bullpen, and minor-leaguers. Identify your best players and biggest gaps.',
       actionLabel: 'GO TO ROSTER',
       actionTab: 'roster',
       completed: hasCheckedRoster,
@@ -450,34 +522,43 @@ export function buildCoachSteps(opts: {
     {
       id: 'check-standings',
       title: 'Check the Standings',
-      body: 'See where you stand in the division and league. Know your competition.',
+      body: 'See where your team ranks in the division. Know your competition before the season starts.',
       actionLabel: 'VIEW STANDINGS',
       actionTab: 'standings',
       completed: hasCheckedStandings,
     },
     {
-      id: 'review-finances',
-      title: 'Understand Your Budget',
-      body: 'Your payroll, luxury tax situation, and available cap space determine what moves you can make.',
-      actionLabel: 'VIEW FINANCES',
-      actionTab: 'finance',
-      completed: false,
-    },
-    {
       id: 'first-sim',
-      title: 'Simulate Your First Games',
-      body: 'Start the season and watch the results roll in. After each chunk, you can make roster adjustments.',
+      title: 'Start the Season',
+      body: 'Hit "Play Season" to begin. After each segment you can make roster moves, trades, and call-ups.',
       actionLabel: 'PLAY SEASON',
       actionTab: 'dashboard',
       completed: opts.gamePhase === 'in_season' || opts.gamePhase === 'postseason',
     },
     {
       id: 'make-a-move',
-      title: 'Make Your First Move',
-      body: 'Call up a prospect, sign a free agent, or propose a trade. Your decisions shape the franchise.',
+      title: 'Make Your First Roster Move',
+      body: 'Call up a prospect, option a struggling player, or sign a free agent. Small moves shape a season.',
       actionLabel: 'ROSTER MOVES',
       actionTab: 'roster',
       completed: false,
     },
   ];
 }
+
+// ─── Glossary Terms ──────────────────────────────────────────────────────────
+
+export const GLOSSARY: Record<string, string> = {
+  'service time': 'Days a player has spent on the MLB active roster. Six full years of service time (172 days/season) earns free agency.',
+  'option': 'Sending a player with option years remaining to the minors without exposing them to waivers. Players get three option years.',
+  'dfa': 'Designated for Assignment. The player is removed from the 40-man roster and the team has 7 days to trade, release, or outright them.',
+  '40-man': 'The 40-man roster is your full organizational roster of players protected from the Rule 5 Draft. The 26-man active roster is drawn from it.',
+  'waivers': 'A process where other teams can claim a player you want to move. Unclaimed players can be sent to the minors or released.',
+  'owner patience': 'How much patience the owner has for your performance. Drops with losing, rises with winning. Reach zero and you get fired.',
+  'contention confidence': 'How competitive your team looks based on win %, games back, and division position. Derived from actual game results.',
+  'scouting certainty': 'How reliable your prospect evaluations are. Better scouting staff means more accurate player ratings.',
+  'market heat': 'How active the trade and free agent market is. Based on the current game phase — offseason is hottest.',
+  'clubhouse temperature': 'Team morale level. Affected by wins, losses, roster moves, and press conferences.',
+  'run differential': 'Runs scored minus runs allowed. A strong indicator of true team quality beyond wins and losses.',
+  'pythagorean wins': 'Expected wins based on run differential. Teams with more actual wins than Pythagorean wins may be overperforming.',
+};
