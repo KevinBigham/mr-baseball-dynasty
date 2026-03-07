@@ -447,6 +447,7 @@ export function evaluateProposedTrade(
   players: Player[],
   userPlayerIds: number[],
   partnerPlayerIds: number[],
+  tradeValueBonus = 0,
 ): { fair: boolean; userValue: number; partnerValue: number } {
   let userValue = 0;
   let partnerValue = 0;
@@ -460,7 +461,9 @@ export function evaluateProposedTrade(
     if (p) partnerValue += evaluatePlayer(p);
   }
 
-  // AI accepts if getting at least 85% of value
-  const fair = userValue >= partnerValue * 0.85;
+  // AI accepts if getting at least 85% of value, adjusted by GM trade skill.
+  // tradeValueBonus (-9 to +9) shifts the effective value of the user's package.
+  const adjustedUserValue = userValue + tradeValueBonus;
+  const fair = adjustedUserValue >= partnerValue * 0.85;
   return { fair, userValue, partnerValue };
 }
