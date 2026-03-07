@@ -26,22 +26,26 @@ export function buildDials(opts: {
   const ownerStatus = getOwnerStatus(opts.ownerPatience);
   const moraleStatus = getMoraleStatus(opts.teamMorale);
 
-  // Contention Confidence: derived from standings position + record
+  // Contention Confidence: composite of win%, games back, and win count.
+  // Formula: 60% win-pct weight + 20 if any wins + 0/10/20 based on GB proximity.
+  // Clamped to 0–100. Defaults to 50 before standings exist (preseason).
   const userRow = opts.standings?.find(s => s.teamId === opts.userTeamId);
   const contentionValue = userRow
     ? Math.min(100, Math.max(0, Math.round((userRow.pct * 100) * 0.6 + (userRow.wins > 0 ? 20 : 0) + (userRow.gb <= 5 ? 20 : userRow.gb <= 10 ? 10 : 0))))
-    : 50; // default for preseason
+    : 50;
   const contentionLabel = contentionValue >= 75 ? 'STRONG' : contentionValue >= 50 ? 'IN THE MIX' : contentionValue >= 30 ? 'FRINGE' : 'REBUILDING';
   const contentionColor = contentionValue >= 75 ? '#4ade80' : contentionValue >= 50 ? '#fbbf24' : contentionValue >= 30 ? '#fb923c' : '#6b7280';
 
-  // Market Heat: based on game phase / trade activity potential
+  // Market Heat: phase-based proxy until real trade activity data is exposed.
+  // TODO(codex): Replace with actual trade offer count when available.
   const marketValue = opts.gamePhase === 'offseason' ? 80
     : opts.gamePhase === 'in_season' ? 55
     : opts.gamePhase === 'preseason' ? 40 : 30;
   const marketLabel = marketValue >= 70 ? 'ACTIVE' : marketValue >= 45 ? 'WARMING' : 'QUIET';
   const marketColor = marketValue >= 70 ? '#f97316' : marketValue >= 45 ? '#fbbf24' : '#6b7280';
 
-  // Scouting Certainty: from team scouting quality (0.4–1.0) → 0–100
+  // Scouting Certainty: maps scoutingQuality (0.0–1.0) to 0–100 dial.
+  // TODO(codex): Currently hardcoded to 0.6 at call site. Wire real value.
   const scoutValue = Math.round(opts.scoutingQuality * 100);
   const scoutLabel = scoutValue >= 80 ? 'HIGH' : scoutValue >= 55 ? 'MODERATE' : 'LOW';
   const scoutColor = scoutValue >= 80 ? '#4ade80' : scoutValue >= 55 ? '#fbbf24' : '#ef4444';
@@ -237,6 +241,8 @@ export function buildStoryThreads(opts: {
 
 // ─── Action Queue ────────────────────────────────────────────────────────────
 
+// Counter resets each render cycle since buildActionQueue is called inside useMemo.
+// IDs only need uniqueness within a single render pass.
 let _actionId = 0;
 function aid(): string { return `aq-${++_actionId}`; }
 
