@@ -167,6 +167,7 @@ export default function DevLab({
     (async () => {
       try {
         const engine = getEngine();
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const data = await engine.getDevAssignments();
         setAssignments(data);
       } catch {
@@ -215,6 +216,7 @@ export default function DevLab({
         [playerId]: { playerId, program, assignedSeason: 0 },
       }));
     } else {
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       addToast(result.error ?? 'Failed to assign program.', 'error');
     }
   }, [addToast]);

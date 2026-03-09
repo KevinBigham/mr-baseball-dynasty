@@ -8,7 +8,7 @@ import type { Team } from '../../src/types/team';
 function makeTeam(id: number, abbr = 'TST'): Team {
   return {
     teamId: id, name: `Team ${id}`, abbreviation: abbr, city: 'Test City',
-    league: 'AL', division: 'East', parkFactorId: 0, budget: 100_000_000,
+    league: 'AL', division: 'East', conferenceId: 0, divisionId: 0, parkFactorId: 0, budget: 100_000_000,
     scoutingQuality: 0.7, coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.5 },
     strategy: 'contender', seasonRecord: { wins: 80, losses: 82, runsScored: 700, runsAllowed: 720 },
     rotationIndex: 0, bullpenReliefCounter: 0,
@@ -18,6 +18,9 @@ function makeTeam(id: number, abbr = 'TST'): Team {
 function makePlayer(overrides: Partial<Player> & { playerId: number; teamId: number }): Player {
   return {
     name: `Player ${overrides.playerId}`,
+    firstName: 'Test',
+    lastName: 'Player',
+    leagueLevel: 'MLB',
     age: 26,
     position: 'SS',
     bats: 'R',

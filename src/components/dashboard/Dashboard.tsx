@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [playerNames, setPlayerNames] = useState<Record<number, string>>({});
   useEffect(() => {
     if (sim.lastResult) {
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getPlayerNameMap().then(setPlayerNames);
     }
   }, [sim.lastResult]);

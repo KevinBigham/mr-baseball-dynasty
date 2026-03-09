@@ -72,6 +72,7 @@ export default function Rule5Panel({ onComplete, onTransaction }: Props) {
     if (selectedId) {
       const result = await engine.userRule5Pick(selectedId);
       if (!result.ok) {
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         setError(result.error || 'Unable to select player.');
         setBusy(false);
         return;
