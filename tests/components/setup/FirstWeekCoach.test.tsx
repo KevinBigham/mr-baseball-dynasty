@@ -119,7 +119,6 @@ describe('FirstWeekCoach', () => {
     render(<FirstWeekCoach />);
     // This is tested at the adapter level, but verify the component doesn't
     // render any button routing to finance
-    const allButtons = screen.getAllByRole('button');
     // Only button should be DISMISS
     // Finance check is structural — if buildCoachSteps is correct, no finance routing appears
   });

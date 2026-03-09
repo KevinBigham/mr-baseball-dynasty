@@ -356,3 +356,14 @@ export const FO_BUDGET: Record<string, number> = {
   normal: 15,  // $15M — balanced
   hard:   10,  // $10M — tight
 };
+
+// ─── Injury risk multiplier (based on coaching staff quality) ─────────────────
+/**
+ * Returns an injury risk multiplier based on a team's coaching staff quality.
+ * Lower pitching/hitting coach quality → higher injury risk.
+ */
+export function getInjuryRiskMultiplier(coaching: { hittingCoachQuality: number; pitchingCoachQuality: number }): number {
+  const avgQuality = (coaching.hittingCoachQuality + coaching.pitchingCoachQuality) / 2;
+  // Quality ranges 0.3–0.7, map to multiplier 1.3–0.85
+  return 1.3 - avgQuality * 0.65;
+}

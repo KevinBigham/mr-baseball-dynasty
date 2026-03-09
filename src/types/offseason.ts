@@ -34,3 +34,28 @@ export const OFFSEASON_PHASE_LABELS: Record<OffseasonPhase, string> = {
   trading: 'Trade Center',
   summary: 'Offseason Summary',
 };
+
+/** Worker-internal coaching staff (distinct from team.CoachingStaff). */
+export type { CoachingStaff } from './team';
+
+/** Draft pick record. */
+export interface DraftPick {
+  playerId: number;
+  playerName: string;
+  teamId: number;
+  round: number;
+  pick: number;
+  position: string;
+  type: string;
+}
+
+/** Season offseason recap summary. */
+export interface OffseasonRecap {
+  season: number;
+  retirements: number[];
+  faSignings: Array<{ playerId: number; teamId: number; years: number; annualSalary: number }>;
+  rule5Picks: Array<{ playerId: number; selectingTeamId: number }>;
+  draftResult: { picks: DraftPick[] };
+}
+
+export type TeamStrategy = import('./team').TeamStrategy;

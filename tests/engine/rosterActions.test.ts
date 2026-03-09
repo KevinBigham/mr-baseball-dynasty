@@ -11,7 +11,11 @@ import type { Player } from '../../src/types/player';
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
     playerId: 1, teamId: 1,
-    name: 'Test Player', age: 26,
+    name: 'Test Player',
+    firstName: 'Test',
+    lastName: 'Player',
+    leagueLevel: 'MLB',
+    age: 26,
     position: 'SS', bats: 'R', throws: 'R',
     nationality: 'american', isPitcher: false,
     hitterAttributes: {

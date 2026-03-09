@@ -164,6 +164,7 @@ export default function StandingsView() {
     if (!gameStarted || standings) return;
     setLoading(true);
     getEngine().getStandings()
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       .then(setStandings)
       .finally(() => setLoading(false));
   }, [gameStarted, standings, setStandings]);

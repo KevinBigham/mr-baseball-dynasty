@@ -22,6 +22,8 @@ export interface Team {
   city: string;
   league: League;
   division: Division;
+  conferenceId: number; // Numeric league identifier
+  divisionId: number;   // Numeric division identifier
   parkFactorId: number; // Index into park factors array
   budget: number;       // Annual payroll budget in dollars
   scoutingQuality: number; // 0.4–1.0 (fog of war)
@@ -41,3 +43,19 @@ export interface TeamSeasonStats {
   playoffSeed?: number;
   playoffRound?: 'WC' | 'DS' | 'CS' | 'WS' | 'Champion';
 }
+
+/** Worker-internal team season record (sim output). */
+export interface TeamSeason {
+  teamId: number;
+  season: number;
+  wins: number;
+  losses: number;
+  runsScored: number;
+  runsAllowed: number;
+  divisionRank: number;
+  playoffResult: string | null;
+}
+
+/** Conference/division identifiers used by Team.conferenceId / Team.divisionId */
+export type ConferenceId = number;
+export type DivisionId = number;

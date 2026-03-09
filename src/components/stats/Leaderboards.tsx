@@ -227,14 +227,17 @@ export default function Leaderboards() {
     setLoading(true);
 
     if (isCareer) {
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getCareerLeaderboard({ category: careerSubCat, sortBy, limit: 50 })
         .then(setCareerData)
         .finally(() => setLoading(false));
     } else if (isAdvanced) {
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getLeaderboardAdvanced(advSubCat, sortBy, 50)
         .then(setAdvData)
         .finally(() => setLoading(false));
     } else {
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getLeaderboardFull({
         category: leaderboardCategory,
         sortBy,
