@@ -251,10 +251,10 @@ const api = {
 
     for (const game of result.gameResults) {
       if (!featuredGameIds.has(game.gameId)) continue;
-      logGameResult(eventLog, currentSeason, game.date, {
+      logGameResult(eventLog, currentSeason, game.boxScore.date, {
         kind: 'game_result',
-        homeTeamId: game.homeTeam,
-        awayTeamId: game.awayTeam,
+        homeTeamId: game.homeTeamId,
+        awayTeamId: game.awayTeamId,
         homeScore: game.homeScore,
         awayScore: game.awayScore,
         innings: game.innings,
@@ -743,7 +743,7 @@ const api = {
 
   async getStandings(): Promise<TeamStandingRow[]> {
     const cached = cache.getStandings(currentSeason);
-    if (cached) return cached;
+    if (cached) return cached as TeamStandingRow[];
     const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
     cache.setStandings(currentSeason, standings);
     return standings;
@@ -798,7 +798,7 @@ const api = {
 
   async getBattingLeaders(limit = 20): Promise<LeaderboardEntry[]> {
     const cached = cache.getBattingLeaders(currentSeason);
-    if (cached && cached.length >= limit) return cached.slice(0, limit);
+    if (cached && cached.length >= limit) return cached.slice(0, limit) as LeaderboardEntry[];
 
     const entries: LeaderboardEntry[] = [];
     for (const [playerId, ps] of latestPlayerSeasons) {
@@ -826,7 +826,7 @@ const api = {
 
   async getPitchingLeaders(limit = 20): Promise<LeaderboardEntry[]> {
     const cached = cache.getPitchingLeaders(currentSeason);
-    if (cached && cached.length >= limit) return cached.slice(0, limit);
+    if (cached && cached.length >= limit) return cached.slice(0, limit) as LeaderboardEntry[];
 
     const entries: LeaderboardEntry[] = [];
     for (const [playerId, ps] of latestPlayerSeasons) {
@@ -2096,10 +2096,10 @@ const api = {
   async simRemainingChunks() { return { done: true, gamesPlayed: 0 }; },
 
   // Roster transactions
-  async promotePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'PROMOTE', playerId }); },
-  async demotePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'OPTION', playerId }); },
-  async dfaPlayer(playerId: number) { return api.submitRosterTransaction({ type: 'DFA', playerId }); },
-  async releasePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'RELEASE', playerId }); },
+  async promotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'CALL_UP', playerId }); },
+  async demotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'OPTION', playerId }); },
+  async dfaPlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'DFA', playerId }); },
+  async releasePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'RELEASE', playerId }); },
   async setLineupOrder(_teamId: number, _order: number[]) { /* TODO */ },
   async setRotationOrder(_teamId: number, _order: number[]) { /* TODO */ },
   async getLineupOrder(_teamId: number) { return [] as number[]; },

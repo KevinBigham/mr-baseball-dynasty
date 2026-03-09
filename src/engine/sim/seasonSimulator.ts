@@ -1,7 +1,7 @@
 import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
-import type { ScheduleEntry } from '../../types/game';
+import type { GameResult, ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
@@ -335,15 +335,7 @@ import { generateScheduleTemplate } from '../../data/scheduleTemplate';
 export interface SeasonSimResult {
   teamSeasons: TeamSeason[];
   playerSeasons: Map<number, PlayerSeason>;
-  gameResults: Array<{
-    gameId: number;
-    homeTeam: number;
-    awayTeam: number;
-    homeScore: number;
-    awayScore: number;
-    innings: number;
-    date: string;
-  }>;
+  gameResults: GameResult[];
   gen: RandomGenerator;
   leagueGamesOnIL: number;
 }
@@ -418,14 +410,27 @@ export async function simulateSeasonForWorker(
   }
 
   // Build simplified game results
-  const gameResults = schedule.map((entry, _i) => ({
+  const gameResults: GameResult[] = schedule.map((entry) => ({
     gameId: entry.gameId,
-    homeTeam: entry.homeTeamId,
-    awayTeam: entry.awayTeamId,
+    homeTeamId: entry.homeTeamId,
+    awayTeamId: entry.awayTeamId,
     homeScore: 0,
     awayScore: 0,
     innings: 9,
-    date: entry.date,
+    boxScore: {
+      gameId: entry.gameId,
+      season: _season,
+      date: entry.date,
+      homeTeamId: entry.homeTeamId,
+      awayTeamId: entry.awayTeamId,
+      homeScore: 0,
+      awayScore: 0,
+      innings: 9,
+      homeBatting: [],
+      awayBatting: [],
+      homePitching: [],
+      awayPitching: [],
+    },
   }));
 
   return {
