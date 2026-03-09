@@ -16,7 +16,7 @@ import type { GameEvent } from '../types/events.ts';
 import { createPRNG } from './math/prng.ts';
 import type { RandomGenerator } from './math/prng.ts';
 import { generateAllPlayers } from './player/generation.ts';
-import { simulateSeason, type SeasonSimResult } from './sim/seasonSimulator.ts';
+import { simulateSeasonForWorker as simulateSeason, type SeasonSimResult } from './sim/seasonSimulator.ts';
 import { TEAMS } from '../data/teams.ts';
 import { calcBA, calcERA, formatIP, playerOverall, pythagoreanWins } from '../utils/helpers.ts';
 import { simulatePlayoffs, type PlayoffBracket } from './league/playoffs.ts';

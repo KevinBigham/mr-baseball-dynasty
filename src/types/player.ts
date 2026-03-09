@@ -111,11 +111,14 @@ export interface Player {
   playerId: number;
   teamId: number;       // -1 = free agent
   name: string;
+  firstName: string;
+  lastName: string;
   age: number;
   position: Position;
   bats: BatSide;
   throws: ThrowSide;
   nationality: 'american' | 'latin' | 'asian';
+  leagueLevel: string;  // e.g. 'MLB', 'AAA', 'AA', 'Rookie'
 
   // Attributes: exactly one set populated based on isPitcher
   isPitcher: boolean;
@@ -161,4 +164,27 @@ export interface PlayerSeasonStats {
   gp: number; gs: number; outs: number; // outs pitched
   ha: number; ra: number; er: number; bba: number; ka: number; hra: number;
   pitchCount: number;
+}
+
+/**
+ * Worker-internal season stats shape (richer than PlayerSeasonStats).
+ * Maps to the latestPlayerSeasons accumulator in the worker.
+ */
+export interface PlayerSeason {
+  playerId: number;
+  teamId: number;
+  season: number;
+  // Batting
+  ab: number;
+  hits: number;
+  hr: number;
+  rbi: number;
+  runs: number;
+  // Pitching
+  ip: number;          // innings pitched (fractional)
+  earnedRuns: number;
+  wins: number;
+  losses: number;
+  kPitching: number;
+  saves: number;
 }

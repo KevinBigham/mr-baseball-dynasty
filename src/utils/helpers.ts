@@ -150,3 +150,20 @@ export function pearsonCorrelation(xs: number[], ys: number[]): number {
 export function pluralize(n: number, singular: string, plural?: string): string {
   return n === 1 ? singular : (plural ?? `${singular}s`);
 }
+
+// ─── Worker-compatible aliases ──────────────────────────────────────────────
+// worker.ts imports these names; they delegate to canonical implementations.
+
+/** Alias for calcAVG (worker convention) */
+export const calcBA = calcAVG;
+
+/** Alias for fmtIP (worker convention) */
+export const formatIP = fmtIP;
+
+/** pythagoreanWins(rs, ra, games) — alias for expectedWins */
+export const pythagoreanWins = expectedWins;
+
+/** Overall rating from a Player object. Returns the stored overall value. */
+export function playerOverall(player: { overall: number }): number {
+  return player.overall;
+}

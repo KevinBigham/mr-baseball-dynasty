@@ -1,4 +1,5 @@
 import { xoroshiro128plus, type RandomGenerator } from 'pure-rand';
+export type { RandomGenerator };
 
 // ─── Core PRNG (pure-rand xoroshiro128+) ─────────────────────────────────────
 // CRITICAL: Generator is IMMUTABLE. Every call returns a NEW generator.
