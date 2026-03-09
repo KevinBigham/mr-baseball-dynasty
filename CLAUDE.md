@@ -24,3 +24,7 @@ Player-facing cadence, onboarding, UI clarity, packaging, promotion prep, low-co
 - tests run
 - blockers
 - recommended next move
+
+- Do not edit `docs/collaboration/COMMAND_CENTER.md` unless explicitly assigned for a conflict-resolution or architect-requested update.
+
+
