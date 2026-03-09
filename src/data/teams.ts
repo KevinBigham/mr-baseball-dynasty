@@ -3,7 +3,7 @@ import type { Team } from '../types/team';
 // ─── 30 teams: 15 AL, 15 NL, 3 divisions each, 5 teams per division ─────────
 // Teams use fictional names and cities to avoid IP issues.
 
-export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullpenReliefCounter' | 'strategy'>[] = [
+export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullpenReliefCounter' | 'strategy' | 'conferenceId' | 'divisionId'>[] = [
   // ─── AMERICAN LEAGUE EAST ──────────────────────────────────────────
   { teamId: 1,  name: 'Admirals',   abbreviation: 'ADM', city: 'New Harbor',    league: 'AL', division: 'East', parkFactorId: 3,  budget: 200_000_000, scoutingQuality: 0.85, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.7 } },
   { teamId: 2,  name: 'Colonials',  abbreviation: 'COL', city: 'Capitol City',  league: 'AL', division: 'East', parkFactorId: 5,  budget: 185_000_000, scoutingQuality: 0.80, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.5 } },
