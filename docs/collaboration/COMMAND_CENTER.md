@@ -34,12 +34,13 @@ Nothing is "done" until reported.
 Nothing is "promoted" until reviewed.
 
 ## Current blockers
-- PR #11 has a merge conflict in `docs/collaboration/COMMAND_CENTER.md`.
-- Codex current environment has no `origin`, so Codex cannot push or open a PR directly.
-- Shared branch health should be re-verified after conflict resolution (`typecheck`, `test`, `build`).
+- PR #11 is not merge-ready.
+- `npm run typecheck` fails on the shared branch (334 TS errors reported by Claude).
+- `npm run test` fails due to a stale `tests/engine/pythagoreanWins.test.ts` assertion and smoke coverage drift.
+- `npm run build` is blocked by the current typecheck failures.
+- Codex environment has no `origin`, so Codex cannot push or open a PR directly.
 
 ## Next architect decision
-- Resolve this file conflict.
-- Re-run checks on `claude/baseball-dynasty-sim-UjlF2`.
-- Decide whether PR #11 is intended to merge Claude Sprint 03/04 work into `main`.
-- Continue Sprint 04 once the branch is clean.
+- Claude owns branch surgery until `typecheck`, `test`, and `build` are all green.
+- Codex owns a docs-first `Player Personality & Chemistry RFC v1`.
+- No new feature implementation begins until branch health is green.
