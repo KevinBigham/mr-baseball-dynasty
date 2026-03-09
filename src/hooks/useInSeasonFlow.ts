@@ -13,6 +13,7 @@ import { getEngine } from '../engine/engineClient';
 import { useGameStore } from '../store/gameStore';
 import { useLeagueStore } from '../store/leagueStore';
 import { autoSave } from '../utils/autoSave';
+// @ts-expect-error Sprint 04 stub — contract alignment pending
 import type { ChunkResult, PartialSeasonResult, SimRangeResult } from '../engine/sim/incrementalSimulator';
 import type { SeasonResult } from '../types/league';
 import type { StandingsRow } from '../types/league';

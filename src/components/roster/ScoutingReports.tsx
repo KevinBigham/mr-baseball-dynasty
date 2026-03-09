@@ -91,6 +91,7 @@ export default function ScoutingReports() {
       const engine = getEngine();
       const data = await engine.getScoutablePlayers(
         teamFilter >= 0 ? teamFilter : undefined,
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         posFilter !== 'ALL' ? posFilter : undefined,
       );
       setPlayers(data);

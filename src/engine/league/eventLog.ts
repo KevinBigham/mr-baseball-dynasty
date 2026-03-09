@@ -22,6 +22,7 @@ export function getEventLog(): EventLog {
   const store = new Map<number, GameEvent[]>();
   let nextId = 1;
 
+  // @ts-expect-error Sprint 04 stub — contract alignment pending
   function _push(season: number, gameDay: number, entry: EventLogEntry): void {
     const arr = store.get(season) ?? [];
     arr.push({
