@@ -80,6 +80,11 @@ import {
   getFeatureManifestEntry,
   isFeatureId,
 } from '../features/catalog.ts';
+import {
+  buildAlphaGateResults,
+  summarizeManifestHealth,
+  type AlphaGateInput,
+} from '../features/playableReadiness.ts';
 import { assessFeatureReadiness } from '../features/featureReadiness.ts';
 import type {
   FeatureDependencyHealth,
@@ -124,6 +129,9 @@ let enabledFeatures: FeatureId[] = [];
 let migrationNotes: string[] = [];
 let buildFingerprint = `mrbd-worker-schema-${CURRENT_SCHEMA_VERSION}`;
 let workerHealthMode: WorkerHealthMode = 'normal';
+let lastIntegrityCleanAt: number | null = null;
+let lastReadinessOkAt: number | null = null;
+let lastSmokeOkAt: number | null = null;
 const endpointLatencyHistory = new Map<string, number[]>();
 const MAX_ENDPOINT_LATENCY_SAMPLES = 64;
 const ENDPOINT_LATENCY_BUDGET_MS: Record<string, number> = {
@@ -190,6 +198,9 @@ const api = {
     migrationNotes = [];
     buildFingerprint = makeBuildFingerprint();
     workerHealthMode = 'normal';
+    lastIntegrityCleanAt = null;
+    lastReadinessOkAt = null;
+    lastSmokeOkAt = null;
 
     const saveState = buildPersistedState();
     if (saveState) {
@@ -1557,79 +1568,121 @@ const api = {
       const missingCore = coreFeatureIds.filter((id) => !enabledFeatures.includes(id));
       const determinism = await api.runDeterminismProbe(currentSeason + 31, 1);
       const latency = buildLatencyBudgetReportInternal();
+      const manifestLint = lintFeatureManifest();
+      const canSave = buildPersistedState() !== null;
+      const saveManifests = listSaveManifests();
+      const loadProbe = saveManifests[0] ? loadSave(saveManifests[0].slotId) : null;
+      const loadAvailable = loadProbe ? loadProbe.success && Boolean(loadProbe.state) : false;
+      const stageCoherent = isStageStateCoherent(stage);
+      const smokeEvidenceExists = smoke.steps.length >= 6
+        && smoke.steps.some((step) => step.stepId === 'new_game')
+        && smoke.steps.some((step) => step.stepId === 'simulate')
+        && smoke.steps.some((step) => step.stepId === 'transaction_action')
+        && smoke.steps.some((step) => step.stepId === 'save')
+        && smoke.steps.some((step) => step.stepId === 'load')
+        && smoke.steps.some((step) => step.stepId === 'continue');
 
-      const gates: PlayableReadinessGate[] = [
+      const gateInputs: AlphaGateInput[] = [
         {
           gateId: 'league_seeded',
           label: 'League seeded',
           pass: teams.length >= 30 && players.length >= 3000 && gen !== null,
           blocker: true,
-          detail: `teams=${teams.length}, players=${players.length}`,
+          evidence: `teams=${teams.length}, players=${players.length}, prng=${gen ? 'ready' : 'missing'}`,
+          recommendation: 'Run newGame(seed) and regenerate full league state before alpha verification.',
         },
         {
-          gateId: 'core_features_enabled',
-          label: 'Core feature set enabled',
-          pass: missingCore.length === 0,
+          gateId: 'core_sim_path',
+          label: 'Core sim path available',
+          pass: missingCore.length === 0 && teams.length >= 30,
           blocker: true,
-          detail: missingCore.length === 0 ? `${coreFeatureIds.length} core features enabled` : `missing: ${missingCore.join(', ')}`,
+          evidence: missingCore.length === 0 ? `${coreFeatureIds.length} core features enabled` : `missing core features: ${missingCore.join(', ')}`,
+          recommendation: 'Enable missing core manifest entries before alpha claims.',
         },
         {
           gateId: 'integrity_audit',
-          label: 'Integrity audit clean',
+          label: 'No blocker integrity failures',
           pass: audit.ok,
           blocker: true,
-          detail: audit.ok ? 'No critical integrity issues' : `${audit.issues.length} issue(s) detected`,
+          evidence: audit.ok ? 'No blocker integrity issues found' : `blockers=${audit.buckets.blockers.length}, warnings=${audit.buckets.warnings.length}`,
+          recommendation: 'Resolve integrity blockers first; warnings can remain for intake features only.',
         },
         {
           gateId: 'save_system_online',
           label: 'Save system online',
-          pass: true,
+          pass: canSave,
           blocker: true,
-          detail: `save slots=${listSaveManifests().length}`,
+          evidence: canSave ? `state serializable, slots=${saveManifests.length}` : 'buildPersistedState() returned null',
+          recommendation: 'Restore persisted state serialization path before attempting alpha loop.',
         },
         {
-          gateId: 'stage_valid',
-          label: 'Season stage available',
-          pass: stage === 'idle' || stage === 'season' || stage === 'postseason' || stage === 'awards',
+          gateId: 'load_system_online',
+          label: 'Load system operational',
+          pass: loadAvailable,
+          blocker: true,
+          evidence: loadProbe
+            ? `load slot ${saveManifests[0]?.slotId}: ${loadProbe.success ? 'ok' : `failed (${loadProbe.error ?? 'unknown'})`}`
+            : 'No save manifest available to verify load path',
+          recommendation: 'Create at least one save and verify loadGameFromSlot() succeeds.',
+        },
+        {
+          gateId: 'stage_state_coherence',
+          label: 'Stage/state coherence valid',
+          pass: stageCoherent,
           blocker: false,
-          detail: `stage=${stage}`,
+          evidence: `stage=${stage}, teamSeasons=${latestTeamSeasons.length}, bracket=${latestPlayoffBracket ? 'yes' : 'no'}, awards=${latestSeasonAwards ? 'yes' : 'no'}`,
+          recommendation: 'Recompute stage markers after load/import if coherence fails.',
         },
         {
           gateId: 'smoke_flow',
-          label: 'Smoke flow',
-          pass: smoke.ok,
+          label: 'Playable smoke path evidence exists',
+          pass: smoke.ok && smokeEvidenceExists,
           blocker: true,
-          detail: smoke.ok ? 'Smoke flow contract satisfied' : `blockers=${smoke.blockers.join(', ')}`,
+          evidence: smoke.ok
+            ? `steps=${smoke.steps.length}; blockers=none`
+            : `smoke blockers=${smoke.blockers.join(', ')}`,
+          recommendation: 'Ensure smoke contract covers new game → simulate → transaction → save → load → continue.',
+        },
+        {
+          gateId: 'manifest_health',
+          label: 'Manifest health valid for core play',
+          pass: manifestLint.ok,
+          blocker: true,
+          evidence: manifestLint.ok ? 'Manifest lint clean' : `manifest issues=${manifestLint.issues.length}`,
+          recommendation: 'Fix manifest lint blockers before promoting or enabling core paths.',
         },
         {
           gateId: 'determinism_probe',
           label: 'Determinism probe',
           pass: determinism.ok,
           blocker: false,
-          detail: determinism.ok
+          evidence: determinism.ok
             ? `seed=${determinism.seed} seasons=${determinism.seasons}`
             : determinism.reason ?? `mismatches=${determinism.mismatches.length}`,
+          recommendation: 'Re-run determinism probe after core-sim or roster logic changes.',
         },
         {
           gateId: 'latency_budget',
           label: 'Latency budget',
           pass: latency.ok,
           blocker: false,
-          detail: latency.ok ? 'Latency budgets within threshold' : `over budget endpoints=${latency.blockers.join(', ')}`,
+          evidence: latency.ok ? 'Latency budgets within threshold' : `over budget endpoints=${latency.blockers.join(', ')}`,
+          recommendation: 'Profile and reduce p95 endpoint latency before RC freeze.',
         },
       ];
 
-      const blockers = gates
-        .filter((gate) => gate.blocker && !gate.pass)
-        .map((gate) => gate.gateId);
+      const rollup = buildAlphaGateResults(gateInputs);
+      if (rollup.ok) {
+        lastReadinessOkAt = Date.now();
+      }
 
       return {
-        ok: blockers.length === 0,
+        ok: rollup.ok,
         generatedAt: Date.now(),
         season: currentSeason,
         stage,
-        blockers,
-        gates,
+        blockers: rollup.blockers,
+        gates: rollup.gates,
       };
     });
   },
@@ -1637,14 +1690,17 @@ const api = {
   async getDiagnosticsSnapshot(): Promise<DiagnosticsSnapshot> {
     return timedEndpointCall('getDiagnosticsSnapshot', async () => {
       const integrity = buildIntegrityAuditReport();
+      const readiness = await api.getPlayableReadinessReport();
+      const smoke = await api.getSmokeFlowReport();
       const coreFeatureIds = getCoreFeatureIds();
       const coreEnabledCount = coreFeatureIds.filter((id) => enabledFeatures.includes(id)).length;
       const manifestLint = lintFeatureManifest();
+      const manifestSummary = summarizeManifestHealth(FEATURE_MANIFEST);
       const latency = buildLatencyBudgetReportInternal();
       if (!integrity.ok && workerHealthMode === 'normal') {
         workerHealthMode = 'degraded';
       }
-      if (integrity.issues.length >= 8) {
+      if (integrity.buckets.blockers.length >= 8) {
         workerHealthMode = 'panic-safe';
       }
       return {
@@ -1678,11 +1734,28 @@ const api = {
         manifest: {
           ok: manifestLint.ok,
           issueCount: manifestLint.issues.length,
+          statusCounts: manifestSummary.statusCounts,
+          tierCounts: manifestSummary.tierCounts,
+        },
+        readiness: {
+          ok: readiness.ok,
+          blockerCount: readiness.blockers.length,
+          gateCount: readiness.gates.length,
+        },
+        smoke: {
+          ok: smoke.ok,
+          blockerCount: smoke.blockers.length,
+          stepCount: smoke.steps.length,
         },
         latency: {
           ok: latency.ok,
           issueCount: latency.blockers.length,
           sampledEndpoints: latency.endpoints.filter((entry) => entry.calls > 0).length,
+        },
+        markers: {
+          lastIntegrityCleanAt,
+          lastReadinessOkAt,
+          lastSmokeOkAt,
         },
       };
     });
@@ -1694,14 +1767,14 @@ const api = {
       const stage = computeSeasonStage();
 
       steps.push({
-        stepId: 'league_available',
-        label: 'League initialized',
+        stepId: 'new_game',
+        label: 'New game available',
         pass: teams.length > 0 && players.length > 0,
         detail: `teams=${teams.length}, players=${players.length}`,
       });
 
       steps.push({
-        stepId: 'can_simulate',
+        stepId: 'simulate',
         label: 'Simulation callable',
         pass: gen !== null && teams.length >= 30,
         detail: gen ? 'PRNG state available' : 'PRNG state missing',
@@ -1709,7 +1782,7 @@ const api = {
 
       const hasTransactions = transactionLog.length > 0;
       steps.push({
-        stepId: 'roster_or_market_action',
+        stepId: 'transaction_action',
         label: 'Roster/market action path',
         pass: hasTransactions || stage === 'idle',
         detail: hasTransactions ? `${transactionLog.length} transactions logged` : 'No transactions yet; fresh league accepted',
@@ -1717,21 +1790,34 @@ const api = {
 
       const saves = listSaveManifests();
       steps.push({
-        stepId: 'save_system',
+        stepId: 'save',
         label: 'Save system online',
-        pass: true,
+        pass: buildPersistedState() !== null,
         detail: `slots=${saves.length}`,
+      });
+
+      const loadProbe = saves[0] ? loadSave(saves[0].slotId) : null;
+      steps.push({
+        stepId: 'load',
+        label: 'Load path available',
+        pass: loadProbe ? loadProbe.success && Boolean(loadProbe.state) : false,
+        detail: loadProbe
+          ? `slot=${saves[0]?.slotId} ${loadProbe.success ? 'ok' : `failed (${loadProbe.error ?? 'unknown'})`}`
+          : 'No save manifest available to verify load',
       });
 
       const canContinue = stage === 'idle' || stage === 'season' || stage === 'postseason' || stage === 'awards';
       steps.push({
-        stepId: 'continue_after_load',
+        stepId: 'continue',
         label: 'Continuation stage valid',
         pass: canContinue,
         detail: `stage=${stage}`,
       });
 
       const blockers = steps.filter((step) => !step.pass).map((step) => step.stepId);
+      if (blockers.length === 0) {
+        lastSmokeOkAt = Date.now();
+      }
       return {
         ok: blockers.length === 0,
         generatedAt: Date.now(),
@@ -2142,7 +2228,7 @@ export interface TeamRosterCounts {
 
 export interface IntegrityAuditIssue {
   code: string;
-  severity: 'error' | 'warn';
+  severity: 'error' | 'warn' | 'info';
   count: number;
   detail: string;
 }
@@ -2155,6 +2241,11 @@ export interface IntegrityAuditReport {
     players: number;
     transactions: number;
     enabledFeatures: number;
+  };
+  buckets: {
+    blockers: IntegrityAuditIssue[];
+    warnings: IntegrityAuditIssue[];
+    notes: IntegrityAuditIssue[];
   };
   issues: IntegrityAuditIssue[];
 }
@@ -2181,7 +2272,8 @@ export interface PlayableReadinessGate {
   label: string;
   pass: boolean;
   blocker: boolean;
-  detail: string;
+  evidence: string;
+  recommendation: string;
 }
 
 export interface AlphaGateResult {
@@ -2189,8 +2281,8 @@ export interface AlphaGateResult {
   label: string;
   pass: boolean;
   blocker: boolean;
-  detail: string;
-  recommendation?: string;
+  evidence: string;
+  recommendation: string;
 }
 
 export interface PlayableReadinessReport {
@@ -2235,11 +2327,28 @@ export interface DiagnosticsSnapshot {
   manifest: {
     ok: boolean;
     issueCount: number;
+    statusCounts: Record<FeatureStatus, number>;
+    tierCounts: Record<FeatureTier, number>;
+  };
+  readiness: {
+    ok: boolean;
+    blockerCount: number;
+    gateCount: number;
+  };
+  smoke: {
+    ok: boolean;
+    blockerCount: number;
+    stepCount: number;
   };
   latency: {
     ok: boolean;
     issueCount: number;
     sampledEndpoints: number;
+  };
+  markers: {
+    lastIntegrityCleanAt: number | null;
+    lastReadinessOkAt: number | null;
+    lastSmokeOkAt: number | null;
   };
 }
 
@@ -2591,7 +2700,97 @@ function buildIntegrityAuditReport(): IntegrityAuditReport {
     });
   }
 
+  let teamsOverFortyMan = 0;
+  let teamsOverTwentySix = 0;
+  for (const team of teams) {
+    const fortyMan = countFortyMan(players, team.teamId);
+    const twentySixMan = countTwentySix(players, team.teamId);
+    if (fortyMan > 40) teamsOverFortyMan += 1;
+    if (twentySixMan > 26) teamsOverTwentySix += 1;
+  }
+  if (teamsOverFortyMan > 0) {
+    issues.push({
+      code: 'forty-man-overflow',
+      severity: 'error',
+      count: teamsOverFortyMan,
+      detail: 'One or more teams exceed the 40-man roster limit.',
+    });
+  }
+  if (teamsOverTwentySix > 0) {
+    issues.push({
+      code: 'active-roster-overflow',
+      severity: 'error',
+      count: teamsOverTwentySix,
+      detail: 'One or more teams exceed the 26-man active roster limit.',
+    });
+  }
+
+  const stage = computeSeasonStage();
+  if (!isStageStateCoherent(stage)) {
+    issues.push({
+      code: 'stage-state-mismatch',
+      severity: 'error',
+      count: 1,
+      detail: `Computed stage ${stage} is inconsistent with playoff/awards artifacts.`,
+    });
+  }
+
+  const missingFeatureVersionDefaults = FEATURE_MANIFEST.filter((feature) => {
+    const value = featureVersions[feature.id];
+    return typeof value !== 'number' || !Number.isFinite(value);
+  }).length;
+  if (missingFeatureVersionDefaults > 0) {
+    issues.push({
+      code: 'missing-feature-version-defaults',
+      severity: 'warn',
+      count: missingFeatureVersionDefaults,
+      detail: 'featureVersions missing defaults for one or more manifest entries.',
+    });
+  }
+
+  if (!buildFingerprint || !buildFingerprint.includes(`schema-${CURRENT_SCHEMA_VERSION}`)) {
+    issues.push({
+      code: 'build-fingerprint-invalid',
+      severity: 'warn',
+      count: 1,
+      detail: 'Build fingerprint missing schema marker.',
+    });
+  }
+
+  const manifestIssues = lintFeatureManifest().issues;
+  const manifestErrors = manifestIssues.filter((issue) => issue.severity === 'error');
+  if (manifestErrors.length > 0) {
+    issues.push({
+      code: 'manifest-errors',
+      severity: 'error',
+      count: manifestErrors.length,
+      detail: 'Feature manifest has error-level lint findings.',
+    });
+  }
+  const manifestWarnings = manifestIssues.filter((issue) => issue.severity === 'warn');
+  if (manifestWarnings.length > 0) {
+    issues.push({
+      code: 'manifest-warnings',
+      severity: 'warn',
+      count: manifestWarnings.length,
+      detail: 'Feature manifest has warning-level lint findings.',
+    });
+  }
+
+  issues.push({
+    code: 'integrity-audit-ran',
+    severity: 'info',
+    count: 1,
+    detail: `Audit completed at season=${currentSeason}, stage=${stage}.`,
+  });
+
   const ok = !issues.some((issue) => issue.severity === 'error');
+  const blockers = issues.filter((issue) => issue.severity === 'error');
+  const warnings = issues.filter((issue) => issue.severity === 'warn');
+  const notes = issues.filter((issue) => issue.severity === 'info');
+  if (ok) {
+    lastIntegrityCleanAt = Date.now();
+  }
 
   return {
     ok,
@@ -2602,8 +2801,29 @@ function buildIntegrityAuditReport(): IntegrityAuditReport {
       transactions: transactionLog.length,
       enabledFeatures: enabledFeatures.length,
     },
+    buckets: {
+      blockers,
+      warnings,
+      notes,
+    },
     issues,
   };
+}
+
+function isStageStateCoherent(stage: SeasonStage): boolean {
+  if (stage === 'postseason') {
+    return latestPlayoffBracket !== null;
+  }
+  if (stage === 'awards') {
+    return latestSeasonAwards !== null;
+  }
+  if (stage === 'season') {
+    return latestTeamSeasons.length > 0 && latestPlayoffBracket === null;
+  }
+  if (stage === 'idle') {
+    return latestTeamSeasons.length === 0 || latestPlayoffBracket === null;
+  }
+  return false;
 }
 
 function buildFeatureReadinessReport(featureId: string): FeatureReadinessReport {
