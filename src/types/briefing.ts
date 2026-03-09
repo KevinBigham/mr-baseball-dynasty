@@ -4,6 +4,11 @@
  * Never mutates game state directly.
  */
 
+// ─── Signal Source ───────────────────────────────────────────────────────────
+
+/** Indicates how trustworthy a displayed value is. */
+export type SignalSource = 'real' | 'heuristic' | 'unavailable';
+
 // ─── Top-line Dials ──────────────────────────────────────────────────────────
 
 export interface BriefingDial {
@@ -13,6 +18,8 @@ export interface BriefingDial {
   status: string;       // e.g. "PLEASED", "HOT SEAT"
   color: string;        // hex color for status
   desc: string;         // one-liner explanation
+  source: SignalSource; // how trustworthy this value is
+  sourceNote?: string;  // brief explanation of derivation
 }
 
 // ─── Story Threads ───────────────────────────────────────────────────────────

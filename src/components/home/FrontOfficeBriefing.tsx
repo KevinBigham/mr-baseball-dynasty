@@ -2,6 +2,9 @@
  * FrontOfficeBriefing.tsx — Main briefing surface for the Home screen.
  * Orchestrates dials, story threads, league pressure, and action queue.
  * Pure prop-driven — reads from stores, never mutates game state.
+ *
+ * Card logic guarantees: always surfaces one urgent problem (or "all clear"),
+ * one open mystery, one long arc, and one recommended next action via the queue.
  */
 
 import { useMemo } from 'react';
@@ -49,30 +52,44 @@ export default function FrontOfficeBriefing() {
 
   const handleNavigate = (tab: NavTab) => setActiveTab(tab);
 
+  // Count how many thread cards we have
+  const threadCards = [threads.urgent, threads.mystery, threads.longArc].filter(Boolean);
+  const gridCols = threadCards.length === 3 ? 'md:grid-cols-3'
+    : threadCards.length === 2 ? 'md:grid-cols-2'
+    : 'md:grid-cols-1';
+
   return (
     <div className="space-y-3">
       {/* Top-line dials */}
       <BriefingHeader dials={dials} season={season} teamName={teamName} />
 
-      {/* Story threads — 3-column grid on desktop */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {threads.urgent && (
-          <UrgentProblemCard thread={threads.urgent} onNavigate={handleNavigate} />
-        )}
-        {threads.mystery && (
-          <OpenMysteryCard thread={threads.mystery} onNavigate={handleNavigate} />
-        )}
-        {threads.longArc && (
-          <LongArcCard thread={threads.longArc} onNavigate={handleNavigate} />
-        )}
-      </div>
+      {/* Story threads — responsive grid */}
+      {threadCards.length > 0 ? (
+        <div className={`grid grid-cols-1 ${gridCols} gap-3`}>
+          {threads.urgent ? (
+            <UrgentProblemCard thread={threads.urgent} onNavigate={handleNavigate} />
+          ) : (
+            <div className="bloomberg-border bg-gray-900 px-3 py-4 flex items-center gap-2">
+              <span className="text-green-500 text-sm">●</span>
+              <div>
+                <div className="text-green-400 text-xs font-bold uppercase tracking-wider">ALL CLEAR</div>
+                <div className="text-gray-500 text-[10px]">No urgent issues detected. Focus on long-term strategy.</div>
+              </div>
+            </div>
+          )}
+          {threads.mystery && (
+            <OpenMysteryCard thread={threads.mystery} onNavigate={handleNavigate} />
+          )}
+          {threads.longArc && (
+            <LongArcCard thread={threads.longArc} onNavigate={handleNavigate} />
+          )}
+        </div>
+      ) : null}
 
       {/* League pressure + Action queue side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <LeaguePressureStrip standings={standingsRows} userTeamId={userTeamId} />
-        {actions.length > 0 && (
-          <ActionQueuePanel tasks={actions} onNavigate={handleNavigate} />
-        )}
+        <ActionQueuePanel tasks={actions} onNavigate={handleNavigate} />
       </div>
     </div>
   );
