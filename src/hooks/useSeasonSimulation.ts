@@ -97,9 +97,9 @@ export function useSeasonSimulation() {
       const result = await engine.simulateSeason(
         Comlink.proxy((pct: number) => setSimProgress(pct)),
       );
-      setLastResult(result);
-      setSeason(result.season + 1);
-      setLastSeasonStats(result.leagueERA, result.leagueBA, result.leagueRPG);
+      setLastResult(result as any);
+      setSeason((result as any).season + 1);
+      setLastSeasonStats((result as any).leagueERA, (result as any).leagueBA, (result as any).leagueRPG);
 
       const [standings, hrLeaders, bracket, awardRace, staffBonuses] = await Promise.all([
         engine.getStandings(),
@@ -108,19 +108,19 @@ export function useSeasonSimulation() {
         engine.getAwardRace(),
         engine.getStaffBonuses(),
       ]);
-      setStandings(standings);
-      setLeaderboard(hrLeaders);
-      setPlayoffBracket(bracket);
+      setStandings(standings as any);
+      setLeaderboard(hrLeaders as any);
+      setPlayoffBracket(bracket as any);
       setAwardRaceData(awardRace);
       setSimProgress(1);
 
       // Resolve MFSN predictions
-      if (mfsnReport && !mfsnReport.resolved && standings.standings) {
-        setMFSNReport(resolvePredictions(mfsnReport, standings.standings));
+      if (mfsnReport && !mfsnReport.resolved && (standings as any).standings) {
+        setMFSNReport(resolvePredictions(mfsnReport, (standings as any).standings));
       }
 
       // ── Narrative ──
-      const userTeamSeason = result.teamSeasons.find(ts => ts.teamId === userTeamId);
+      const userTeamSeason = ((result as any).teamSeasons ?? []).find((ts: any) => ts.teamId === userTeamId);
       const userWins       = userTeamSeason?.record.wins ?? 81;
       const userLosses     = userTeamSeason?.record.losses ?? 81;
 

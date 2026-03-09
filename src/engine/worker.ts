@@ -2088,7 +2088,7 @@ const api = {
   async getTeamNeeds(_teamId: number) { return {}; },
 
   // Season sim aliases
-  async simulateSeason() { return api.simulateCurrentSeason(); },
+  async simulateSeason(_onProgress?: any) { return api.simulateCurrentSeason(); },
   async simulatePlayoffs() { return api.simulatePostseason(); },
   async finalizeSeason() { /* TODO */ },
   async simNextChunk() { return { done: true, gamesPlayed: 0 }; },
@@ -2124,10 +2124,10 @@ const api = {
   async completeAnnualDraft() { /* TODO */ },
 
   // Awards/stats/leaderboards
-  async getLeaderboard() { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
+  async getLeaderboard(_category?: string, _limit?: number) { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
   async getLeaderboardFull(_category: string) { return [] as any[]; },
   async getAwardRace() { return {} as any; },
-  async getStaffBonuses(_teamId: number) { return {} as any; },
+  async getStaffBonuses(_teamId?: number) { return {} as any; },
   async getAdvancedStats(_playerId: number) { return {} as any; },
   async getCareerLeaderboard(_stat: string) { return [] as any[]; },
   async getPlayoffMVP() { return null; },

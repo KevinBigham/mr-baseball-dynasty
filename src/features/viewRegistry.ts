@@ -4,11 +4,11 @@ import type { FeatureLoaderKey } from './featureTypes.ts';
 type FeatureLoader = () => Promise<{ default: ComponentType }>;
 
 const FEATURE_LOADERS: Record<FeatureLoaderKey, FeatureLoader> = {
-  dashboard: () => import('../components/dashboard/Dashboard.tsx').then((mod) => ({ default: mod.Dashboard })),
-  standings: () => import('../components/dashboard/StandingsTable.tsx').then((mod) => ({ default: mod.StandingsTable })),
-  roster: () => import('../components/roster/RosterView.tsx').then((mod) => ({ default: mod.RosterView })),
-  leaderboards: () => import('../components/stats/Leaderboards.tsx').then((mod) => ({ default: mod.Leaderboards })),
-  player: () => import('../components/stats/PlayerProfile.tsx').then((mod) => ({ default: mod.PlayerProfile })),
+  dashboard: () => import('../components/dashboard/Dashboard.tsx').then((mod) => ({ default: (mod as any).Dashboard ?? mod.default })),
+  standings: () => import('../components/dashboard/StandingsTable.tsx').then((mod) => ({ default: (mod as any).StandingsTable ?? mod.default })),
+  roster: () => import('../components/roster/RosterView.tsx').then((mod) => ({ default: (mod as any).RosterView ?? mod.default })),
+  leaderboards: () => import('../components/stats/Leaderboards.tsx').then((mod) => ({ default: (mod as any).Leaderboards ?? mod.default })),
+  player: () => import('../components/stats/PlayerProfile.tsx').then((mod) => ({ default: (mod as any).PlayerProfile ?? mod.default })),
   playoffs: () => import('../components/playoffs/PlayoffBracketView.tsx').then((mod) => ({ default: mod.PlayoffBracketView })),
   awards: () => import('../components/awards/AwardsView.tsx').then((mod) => ({ default: mod.AwardsView })),
   history: () => import('../components/history/HistoryView.tsx').then((mod) => ({ default: mod.HistoryView })),
