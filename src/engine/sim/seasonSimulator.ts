@@ -418,7 +418,7 @@ export async function simulateSeasonForWorker(
   }
 
   // Build simplified game results
-  const gameResults = schedule.map((entry, i) => ({
+  const gameResults = schedule.map((entry, _i) => ({
     gameId: entry.gameId,
     homeTeam: entry.homeTeamId,
     awayTeam: entry.awayTeamId,

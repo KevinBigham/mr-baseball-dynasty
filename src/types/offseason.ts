@@ -36,7 +36,7 @@ export const OFFSEASON_PHASE_LABELS: Record<OffseasonPhase, string> = {
 };
 
 /** Worker-internal coaching staff (distinct from team.CoachingStaff). */
-export { CoachingStaff } from './team';
+export type { CoachingStaff } from './team';
 
 /** Draft pick record. */
 export interface DraftPick {

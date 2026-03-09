@@ -32,7 +32,7 @@ export function evaluateOwnersForSeason(input: EvaluationInput): OwnerEvaluation
 
 export function initializeOwnerProfiles(
   teamIds: number[],
-  season: number,
+  _season: number,
 ): Map<number, OwnerProfile> {
   const profiles = new Map<number, OwnerProfile>();
   for (const teamId of teamIds) {

@@ -22,7 +22,7 @@ export function getEventLog(): EventLog {
   const store = new Map<number, GameEvent[]>();
   let nextId = 1;
 
-  function push(season: number, gameDay: number, entry: EventLogEntry): void {
+  function _push(season: number, gameDay: number, entry: EventLogEntry): void {
     const arr = store.get(season) ?? [];
     arr.push({
       eventId: nextId++,

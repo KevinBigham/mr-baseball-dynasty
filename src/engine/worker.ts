@@ -225,7 +225,7 @@ const api = {
       injuryRiskMultipliers.set(team.teamId, coaching ? getInjuryRiskMultiplier(coaching) : 1);
     }
 
-    const result = simulateSeason(
+    const result = await simulateSeason(
       teams,
       players,
       currentSeason,
@@ -781,10 +781,13 @@ const api = {
           WAIVERS: 4,
           MINORS_AAA: 5,
           MINORS_AA: 6,
-          MINORS_ROOKIE: 7,
-          FREE_AGENT: 8,
-          RETIRED: 9,
-          DRAFT_ELIGIBLE: 10,
+          MINORS_APLUS: 7,
+          MINORS_AMINUS: 8,
+          MINORS_ROOKIE: 9,
+          MINORS_INTL: 10,
+          FREE_AGENT: 11,
+          RETIRED: 12,
+          DRAFT_ELIGIBLE: 13,
         };
         const statusDelta = statusSort[a.rosterStatus] - statusSort[b.rosterStatus];
         if (statusDelta !== 0) return statusDelta;
@@ -1844,8 +1847,8 @@ const api = {
         };
       }
 
-      const passA = runDeterminismPass(seed, boundedSeasons);
-      const passB = runDeterminismPass(seed, boundedSeasons);
+      const passA = await runDeterminismPass(seed, boundedSeasons);
+      const passB = await runDeterminismPass(seed, boundedSeasons);
       const mismatches: string[] = [];
 
       for (let i = 0; i < passA.length; i += 1) {
@@ -1934,7 +1937,7 @@ const api = {
         };
       }
 
-      const checkpoints = runDeterminismPass(seed, boundedSeasons);
+      const checkpoints = await runDeterminismPass(seed, boundedSeasons);
       const blockers: string[] = [];
 
       if (mode === 'core') {
@@ -2064,6 +2067,101 @@ const api = {
       };
     });
   },
+
+  // ─── Stub methods (Sprint 04 branch surgery) ──────────────────────
+
+  // State management
+  async loadState(_state: any): Promise<void> { /* TODO */ },
+  async getFullState(): Promise<any> { return null; },
+
+  // Team/roster queries
+  async getLeagueTeams() { return teams; },
+  async getTeamPlayers(teamId: number) { return players.filter(p => p.teamId === teamId); },
+  async getFullRoster(teamId: number) {
+    const roster = players.filter(p => p.teamId === teamId && p.rosterData.rosterStatus !== 'FREE_AGENT' && p.rosterData.rosterStatus !== 'RETIRED' && p.rosterData.rosterStatus !== 'DRAFT_ELIGIBLE');
+    const active = roster.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE');
+    const il = roster.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60');
+    const minors = roster.filter(p => !['MLB_ACTIVE', 'MLB_IL_10', 'MLB_IL_60', 'DFA', 'WAIVERS'].includes(p.rosterData.rosterStatus));
+    return { active, minors, il };
+  },
+  async getPlayerNameMap() { return players.map(p => [p.playerId, `${p.firstName} ${p.lastName}`] as [number, string]); },
+  async getTeamNeeds(_teamId: number) { return {}; },
+
+  // Season sim aliases
+  async simulateSeason() { return api.simulateCurrentSeason(); },
+  async simulatePlayoffs() { return api.simulatePostseason(); },
+  async finalizeSeason() { /* TODO */ },
+  async simNextChunk() { return { done: true, gamesPlayed: 0 }; },
+  async simRange(_start: number, _end: number) { return { done: true, gamesPlayed: 0 }; },
+  async simRemainingChunks() { return { done: true, gamesPlayed: 0 }; },
+
+  // Roster transactions
+  async promotePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'PROMOTE', playerId }); },
+  async demotePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'OPTION', playerId }); },
+  async dfaPlayer(playerId: number) { return api.submitRosterTransaction({ type: 'DFA', playerId }); },
+  async releasePlayer(playerId: number) { return api.submitRosterTransaction({ type: 'RELEASE', playerId }); },
+  async setLineupOrder(_teamId: number, _order: number[]) { /* TODO */ },
+  async setRotationOrder(_teamId: number, _order: number[]) { /* TODO */ },
+  async getLineupOrder(_teamId: number) { return [] as number[]; },
+  async getRotationOrder(_teamId: number) { return [] as number[]; },
+
+  // Free agency
+  async getFreeAgents() { return players.filter(p => p.rosterData.rosterStatus === 'FREE_AGENT'); },
+  async signFreeAgent(_playerId: number, _teamId: number, _years: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
+
+  // Trading
+  async getTradeOffers(_teamId: number) { return [] as any[]; },
+  async proposeTrade(_offer: any) { return { ok: false, reason: 'Not yet implemented' }; },
+  async acceptTradeOffer(_offerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async acceptCounterOffer(_offerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async shopPlayer(_playerId: number) { return [] as any[]; },
+
+  // Draft
+  async startDraft() { return api.getDraftBoard(); },
+  async startAnnualDraft() { return api.getDraftBoard(); },
+  async autoAdvanceDraft() { return { done: true, picks: [] as any[] }; },
+  async completeDraft() { /* TODO */ },
+  async completeAnnualDraft() { /* TODO */ },
+
+  // Awards/stats/leaderboards
+  async getLeaderboard() { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
+  async getLeaderboardFull(_category: string) { return [] as any[]; },
+  async getAwardRace() { return {} as any; },
+  async getStaffBonuses(_teamId: number) { return {} as any; },
+  async getAdvancedStats(_playerId: number) { return {} as any; },
+  async getCareerLeaderboard(_stat: string) { return [] as any[]; },
+  async getPlayoffMVP() { return null; },
+  async getHOFCandidates() { return [] as any[]; },
+  async getHallOfFame() { return [] as any[]; },
+  async getFranchiseRecords(_teamId: number) { return [] as any[]; },
+  async getPayrollReport(_teamId: number) { return {} as any; },
+
+  // Scouting/development
+  async scoutPlayer(_playerId: number) { return {} as any; },
+  async getScoutablePlayers(_teamId: number) { return [] as any[]; },
+  async assignDevProgram(_playerId: number, _program: string) { return { ok: false, reason: 'Not yet implemented' }; },
+  async removeDevProgram(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+
+  // Offseason phases
+  async startOffseason() { return {} as any; },
+  async startInSeason() { return {} as any; },
+  async startIntlSigning() { return {} as any; },
+  async finishIntlSigning() { /* TODO */ },
+  async finishOffseason() { /* TODO */ },
+  async processWaivers() { return [] as any[]; },
+  async resolveArbitrationCase(_playerId: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async getArbitrationCases() { return [] as any[]; },
+  async conductRule5Draft() { return [] as any[]; },
+  async userRule5Pick(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async getRule5Eligible() { return [] as any[]; },
+  async offerExtension(_playerId: number, _years: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async signIntlProspect(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async getAIRosterMoves() { return [] as any[]; },
+
+  // UI/misc
+  async getPennantRace() { return {} as any; },
+  async getCurrentScheduleInfo() { return {} as any; },
+  async standings() { return api.getStandings(); },
 };
 
 // ─── Helper Types ────────────────────────────────────────────────
@@ -2498,7 +2596,7 @@ function makeBuildFingerprint(): string {
   return `mrbd-worker-schema-${CURRENT_SCHEMA_VERSION}-features-${FEATURE_MANIFEST.length}`;
 }
 
-function runDeterminismPass(seed: number, seasons: number): DeterminismProbeSeasonMetrics[] {
+async function runDeterminismPass(seed: number, seasons: number): Promise<DeterminismProbeSeasonMetrics[]> {
   const localTeams = deepClone(teams);
   const localPlayers = deepClone(players);
   const metrics: DeterminismProbeSeasonMetrics[] = [];
@@ -2506,7 +2604,7 @@ function runDeterminismPass(seed: number, seasons: number): DeterminismProbeSeas
   for (let seasonIdx = 0; seasonIdx < seasons; seasonIdx += 1) {
     const simSeason = Math.max(1, currentSeason + seasonIdx);
     const simSeed = seed + simSeason * 97;
-    const result = simulateSeason(localTeams, localPlayers, simSeason, simSeed);
+    const result = await simulateSeason(localTeams, localPlayers, simSeason, simSeed);
 
     let totalRuns = 0;
     let homeRunsChecksum = 0;
@@ -2519,7 +2617,7 @@ function runDeterminismPass(seed: number, seasons: number): DeterminismProbeSeas
 
     const sorted = [...result.teamSeasons].sort((a, b) => b.wins - a.wins || a.teamId - b.teamId);
     const top = sorted[0];
-    const winsChecksum = result.teamSeasons.reduce((sum, season) => sum + season.wins * (season.teamId + 3), 0);
+    const winsChecksum = result.teamSeasons.reduce((sum: number, season: TeamSeason) => sum + season.wins * (season.teamId + 3), 0);
 
     metrics.push({
       season: simSeason,

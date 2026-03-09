@@ -3,10 +3,10 @@
  * Stub — Sprint 04 branch surgery.
  */
 
-import type { Player, PlayerSeason } from '../../types/player';
+import type { Player } from '../../types/player';
 import type { TeamSeason, CoachingStaff } from '../../types/team';
 import type { TransactionLogEntry } from '../../types/roster';
-import type { OffseasonRecap, DraftPick } from '../../types/offseason';
+import type { OffseasonRecap } from '../../types/offseason';
 import type { RandomGenerator } from '../math/prng';
 
 export interface TeamBidModifier {

@@ -15,8 +15,8 @@ import type { Team } from '../../src/types/team.ts';
 
 function makeState(seed: number, season: number): GameState {
   const teams: Team[] = [
-    { teamId: 1, city: 'Test', name: 'One', abbreviation: 'ONE', conferenceId: 0, divisionId: 0, parkFactor: 5 },
-    { teamId: 2, city: 'Test', name: 'Two', abbreviation: 'TWO', conferenceId: 1, divisionId: 1, parkFactor: 8 },
+    { teamId: 1, city: 'Test', name: 'One', abbreviation: 'ONE', conferenceId: 0, divisionId: 0, parkFactorId: 5 } as Team,
+    { teamId: 2, city: 'Test', name: 'Two', abbreviation: 'TWO', conferenceId: 1, divisionId: 1, parkFactorId: 8 } as Team,
   ];
 
   const gen = createPRNG(seed);
@@ -47,6 +47,7 @@ function makeState(seed: number, season: number): GameState {
     featureVersions: {},
     enabledFeatures: [],
     migrationNotes: [],
+    buildFingerprint: 'test',
   };
 }
 

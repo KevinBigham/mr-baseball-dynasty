@@ -16,7 +16,7 @@ describe('worker guard wrappers', () => {
     const result = await bridge.saveGameToSlotSafe('manual-1', 'Alpha Save');
 
     expect(result.ok).toBe(true);
-    expect((engine as { saveGameToSlot: ReturnType<typeof vi.fn> }).saveGameToSlot).toHaveBeenCalledWith('manual-1', 'Alpha Save');
+    expect((engine as unknown as { saveGameToSlot: ReturnType<typeof vi.fn> }).saveGameToSlot).toHaveBeenCalledWith('manual-1', 'Alpha Save');
   });
 
   it('wraps loadGameFromSlot failures with reason/code', async () => {

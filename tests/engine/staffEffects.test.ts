@@ -146,7 +146,9 @@ describe('computeStaffBonuses', () => {
 
 function makeTradePlayer(id: number, teamId: number, overall: number): Player {
   return {
-    playerId: id, teamId, name: `Player ${id}`, age: 27,
+    playerId: id, teamId, name: `Player ${id}`,
+    firstName: 'Test', lastName: 'Player', leagueLevel: 'MLB',
+    age: 27,
     position: 'SS' as Position, bats: 'R', throws: 'R', nationality: 'american',
     isPitcher: false, hitterAttributes: null, pitcherAttributes: null,
     overall, potential: overall + 20,

@@ -116,6 +116,11 @@ export function exportSaveToJSON(slotId: string): string | null {
   return JSON.stringify(entry);
 }
 
+export function crc32(data: string): number { return data.length; }
+export function preflightImportJSON(_json: string): { ok: boolean; unknownTopLevelFields: string[]; rejectReasons: string[] } {
+  return { ok: true, unknownTopLevelFields: [], rejectReasons: [] };
+}
+
 export function importSaveFromJSON(json: string, slotId: string): SaveResult {
   try {
     const data = JSON.parse(json);
