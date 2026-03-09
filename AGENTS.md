@@ -19,6 +19,8 @@ Build the greatest baseball franchise dynasty sim with a fast, trustworthy playa
 - Report: branch, commit, files changed, hot files touched, blockers, next move.
 - Never assume chat-only summaries are source of truth.
 - Small PRs beat giant PRs.
+- - `docs/collaboration/COMMAND_CENTER.md` is architect-owned. Agents may read it, but should not overwrite it unless explicitly assigned.
+- Agent status updates should go into agent-specific files under `docs/collaboration/`.
 
 ## Hot files
 - src/components/layout/Shell.tsx
