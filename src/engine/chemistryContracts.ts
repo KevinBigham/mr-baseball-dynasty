@@ -24,7 +24,7 @@ export const CHEMISTRY_VERSION = 1 as const;
  */
 export const ARCHETYPES = [
   'veteran_leader',
-  'clubhouse_cancer',
+  'clubhouse_disruptor',
   'quiet_professional',
   'hot_head',
   'young_star',
@@ -45,7 +45,7 @@ export const THRESHOLDS = {
     minWorkEthic: 70,
     minMentalToughness: 75,
   },
-  clubhouseCancer: {
+  clubhouseDisruptor: {
     maxWorkEthic: 30,
     maxMentalToughness: 40,
   },
@@ -90,7 +90,7 @@ export const POSITION_GROUP_MAP: Record<string, PositionGroup> = {
  */
 export const REASON_CODES = {
   veteran_leader: 'age_30_plus_high_ethic_tough',
-  clubhouse_cancer: 'low_ethic_low_tough',
+  clubhouse_disruptor: 'low_ethic_low_tough',
   quiet_professional: 'solid_ethic_solid_tough',
   hot_head: 'low_mental_toughness',
   young_star: 'young_high_overall_decent_ethic',

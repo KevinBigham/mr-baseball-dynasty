@@ -36,7 +36,7 @@ describe('chemistryContracts — constants', () => {
 
   it('ARCHETYPES includes all expected archetypes', () => {
     expect(ARCHETYPES).toContain('veteran_leader');
-    expect(ARCHETYPES).toContain('clubhouse_cancer');
+    expect(ARCHETYPES).toContain('clubhouse_disruptor');
     expect(ARCHETYPES).toContain('quiet_professional');
     expect(ARCHETYPES).toContain('hot_head');
     expect(ARCHETYPES).toContain('young_star');
@@ -121,14 +121,14 @@ describe('derivePersonality — archetype classification', () => {
     expect(result.reasonCode).toBe(REASON_CODES.veteran_leader);
   });
 
-  it('classifies Clubhouse Cancer: low ethic, low toughness', () => {
+  it('classifies Clubhouse Disruptor: low ethic, low toughness', () => {
     const result = derivePersonality(makeInput({
       workEthic: 20,
       mentalToughness: 25,
       age: 29,
       overall: 380,
     }));
-    expect(result.archetype).toBe('clubhouse_cancer');
+    expect(result.archetype).toBe('clubhouse_disruptor');
   });
 
   it('classifies Hot Head: very low mental toughness (but not cancer)', () => {
@@ -175,13 +175,13 @@ describe('derivePersonality — archetype classification', () => {
 // ─── Priority / edge cases ───────────────────────────────────────────────────
 
 describe('derivePersonality — priority and edge cases', () => {
-  it('Clubhouse Cancer wins over Hot Head when both could match', () => {
+  it('Clubhouse Disruptor wins over Hot Head when both could match', () => {
     // workEthic 25 (<=30) AND mentalToughness 25 (<=40 AND <=30)
     const result = derivePersonality(makeInput({
       workEthic: 25,
       mentalToughness: 25,
     }));
-    expect(result.archetype).toBe('clubhouse_cancer');
+    expect(result.archetype).toBe('clubhouse_disruptor');
   });
 
   it('Veteran Leader wins over Quiet Professional for age 30+ high-trait player', () => {
@@ -205,14 +205,14 @@ describe('derivePersonality — priority and edge cases', () => {
     expect(result.positionGroup).toBe('SP');
   });
 
-  it('low workEthic, low toughness → clubhouse_cancer regardless of age/overall', () => {
+  it('low workEthic, low toughness → clubhouse_disruptor regardless of age/overall', () => {
     const result = derivePersonality(makeInput({
       age: 22,
       workEthic: 10,
       mentalToughness: 15,
       overall: 500,
     }));
-    expect(result.archetype).toBe('clubhouse_cancer');
+    expect(result.archetype).toBe('clubhouse_disruptor');
   });
 
   it('young high-overall player with mediocre ethic → not young_star (ethic < 50)', () => {
@@ -242,7 +242,7 @@ describe('derivePersonality — priority and edge cases', () => {
       workEthic: 30,
       mentalToughness: 40,
     }));
-    expect(result.archetype).toBe('clubhouse_cancer');
+    expect(result.archetype).toBe('clubhouse_disruptor');
   });
 
   it('boundary: mentalToughness exactly at hot_head threshold (30) triggers hot_head', () => {
@@ -320,7 +320,7 @@ describe('derivePersonalities — batch', () => {
     const results = derivePersonalities(inputs);
     expect(results.length).toBe(3);
     expect(results[0].archetype).toBe('veteran_leader');
-    expect(results[1].archetype).toBe('clubhouse_cancer');
+    expect(results[1].archetype).toBe('clubhouse_disruptor');
   });
 
   it('returns empty array for empty input', () => {
@@ -334,7 +334,7 @@ describe('derivePersonality — trait normalization during derivation', () => {
   it('handles out-of-range workEthic (negative) gracefully', () => {
     const result = derivePersonality(makeInput({ workEthic: -10, mentalToughness: -5 }));
     // Both clamped to 0, which is <= cancer thresholds
-    expect(result.archetype).toBe('clubhouse_cancer');
+    expect(result.archetype).toBe('clubhouse_disruptor');
   });
 
   it('handles out-of-range traits (above 100) gracefully', () => {

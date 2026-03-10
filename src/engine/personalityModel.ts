@@ -8,7 +8,7 @@
  * (workEthic, mentalToughness) plus age, overall, and position.
  *
  * Archetype priority (first match wins):
- *   1. Clubhouse Cancer  — low ethic AND low toughness
+ *   1. Clubhouse Disruptor — low ethic AND low toughness
  *   2. Veteran Leader     — age 30+, high ethic, high toughness
  *   3. Hot Head           — very low mental toughness
  *   4. Young Star         — young, high overall, decent ethic
@@ -48,7 +48,7 @@ export function toPositionGroup(position: string): PositionGroup {
 /**
  * Derive a personality archetype from existing player data.
  *
- * Priority order matters: Clubhouse Cancer is checked first because its
+ * Priority order matters: Clubhouse Disruptor is checked first because its
  * negative effect is the strongest signal. Veteran Leader comes next because
  * it requires the most specific combination (age + ethic + toughness).
  */
@@ -63,9 +63,9 @@ export function derivePersonality(input: PersonalityInput): PersonalityProfile {
 
   let archetype: Archetype;
 
-  // 1. Clubhouse Cancer — toxic combo
-  if (we <= t.clubhouseCancer.maxWorkEthic && mt <= t.clubhouseCancer.maxMentalToughness) {
-    archetype = 'clubhouse_cancer';
+  // 1. Clubhouse Disruptor — toxic combo
+  if (we <= t.clubhouseDisruptor.maxWorkEthic && mt <= t.clubhouseDisruptor.maxMentalToughness) {
+    archetype = 'clubhouse_disruptor';
   }
   // 2. Veteran Leader — experienced, disciplined, tough
   else if (
@@ -75,7 +75,7 @@ export function derivePersonality(input: PersonalityInput): PersonalityProfile {
   ) {
     archetype = 'veteran_leader';
   }
-  // 3. Hot Head — low mental toughness (but not bad enough for cancer)
+  // 3. Hot Head — low mental toughness (but not bad enough for disruptor)
   else if (mt <= t.hotHead.maxMentalToughness) {
     archetype = 'hot_head';
   }

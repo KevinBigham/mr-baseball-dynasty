@@ -31,7 +31,7 @@ Per `docs/collaboration/player-personality-chemistry-rfc-v1.md`:
 | RFC Direction | Implementation |
 |---------------|----------------|
 | Derive archetypes from `workEthic` + `mentalToughness` | Yes — primary derivation inputs |
-| Archetypes: Veteran Leader, Clubhouse Cancer, Quiet Professional, Hot Head, Young Star | Yes — all five plus Neutral fallback |
+| Archetypes: Veteran Leader, Clubhouse Disruptor, Quiet Professional, Hot Head, Young Star | Yes — all five plus Neutral fallback |
 | Deterministic derivation | Yes — no `Math.random()`, no `Date.now()`, no ambient state |
 | Lightweight first | Yes — no new Player fields, no UI, no worker endpoints |
 | Position group mapping for future mentor bonds | Yes — `POSITION_GROUP_MAP` included |
@@ -57,7 +57,7 @@ Per `docs/collaboration/player-personality-chemistry-rfc-v1.md`:
 Slice 1B should cover:
 
 1. **Player-to-profile bridge** — helper function that extracts `PersonalityInput` from a full `Player` object (requires reading from `hitterAttributes` or `pitcherAttributes` to get `workEthic`/`mentalToughness`)
-2. **Team archetype aggregation** — function to compute archetype distribution for a full roster (e.g., count of Veteran Leaders, Clubhouse Cancers)
+2. **Team archetype aggregation** — function to compute archetype distribution for a full roster (e.g., count of Veteran Leaders, Clubhouse Disruptors)
 3. **Cohesion/morale calculation stub** — initial `advanceTeamChemistry()` function skeleton that uses archetype distribution to compute cohesion delta
 4. **Role conflict detection** — compare player overall vs roster slot to detect mismatches per RFC Section 4
 5. **Tests for all of the above**
