@@ -34,12 +34,11 @@ Nothing is "done" until reported.
 Nothing is "promoted" until reviewed.
 
 ## Current blockers
-- P0: Front Office setup flow can fail to advance after “Confirm Staff and Start Dynasty”.
-- Rookie front-office budget is too tight for onboarding goals and should be raised to 30M.
-- Front-office candidate pool is too thin for first-session agency and should be expanded.
-- Latest off-target Claude response was from the wrong project and is non-canonical.
+- None on the Front Office onboarding path.
+- Chemistry v1 has two competing design directions unless architect lock is enforced.
 
 ## Next architect decision
-- Claude owns the Front Office setup bug fix and Rookie tuning.
-- Codex owns the Front Office Setup Fix Packet v1.
-- No Personality & Chemistry implementation begins until the start flow is reliable.
+- Canonical Chemistry v1 uses existing hidden player traits (`workEthic`, `mentalToughness`) plus derived archetypes.
+- Claude owns Chemistry v1 Slice 1A implementation.
+- Codex owns Chemistry Slice 1A review/guard packet.
+- No broad personality schema expansion and no UI promotion in Slice 1A.
