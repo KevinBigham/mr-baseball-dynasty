@@ -34,11 +34,16 @@ Nothing is "done" until reported.
 Nothing is "promoted" until reviewed.
 
 ## Current blockers
-- None on the Front Office onboarding path.
-- Chemistry v1 has two competing design directions unless architect lock is enforced.
+- Chemistry v1 Slice 1A is on the Claude collaboration branch, not public main.
+- Internal archetype naming needs one cleanup before wider chemistry rollout:
+  - `clubhouse_cancer` -> `clubhouse_disruptor`
 
 ## Next architect decision
-- Canonical Chemistry v1 uses existing hidden player traits (`workEthic`, `mentalToughness`) plus derived archetypes.
-- Claude owns Chemistry v1 Slice 1A implementation.
-- Codex owns Chemistry Slice 1A review/guard packet.
+- Slice 1A approved.
+- Claude owns Chemistry v1 Slice 1B:
+  - player bridge
+  - roster aggregation
+  - snapshot skeleton
+- Codex owns the Slice 1B review guard.
+- No UI, worker, or gameplay effect wiring in Slice 1B.
 - No broad personality schema expansion and no UI promotion in Slice 1A.
