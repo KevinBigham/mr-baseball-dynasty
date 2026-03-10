@@ -54,7 +54,7 @@ Computed from existing attributes, not stored:
 | Archetype | Criteria | Chemistry Effect |
 |-----------|----------|------------------|
 | **Veteran Leader** | Age 30+, workEthic 70+, mentalToughness 75+ | +cohesion to young teammates |
-| **Clubhouse Cancer** | workEthic < 30, mentalToughness < 40 | -cohesion to entire team |
+| **Clubhouse Disruptor** | workEthic < 30, mentalToughness < 40 | -cohesion to entire team |
 | **Quiet Professional** | workEthic 60+, mentalToughness 60+ | Neutral; stabilizes cohesion |
 | **Hot Head** | mentalToughness < 30, workEthic varies | -cohesion when losing; +morale when winning |
 | **Young Star** | Age < 26, overall 400+, workEthic 50+ | +morale boost on breakout performances |
@@ -107,7 +107,7 @@ When a **Veteran Leader** and a young player (age < 26) share the same position 
 
 Tension arises from:
 - **Roster competition:** Two players with similar overall competing for one spot → tension probability 20%
-- **Personality clash:** Veteran Leader + Clubhouse Cancer on same team → automatic tension
+- **Personality clash:** Veteran Leader + Clubhouse Disruptor on same team → automatic tension
 - **Losing streak:** 8+ game losing streak → 15% chance of `blowup` event
 
 Tension effects:
