@@ -34,13 +34,12 @@ Nothing is "done" until reported.
 Nothing is "promoted" until reviewed.
 
 ## Current blockers
-- PR #11 is not merge-ready.
-- `npm run typecheck` fails on the shared branch (334 TS errors reported by Claude).
-- `npm run test` fails due to a stale `tests/engine/pythagoreanWins.test.ts` assertion and smoke coverage drift.
-- `npm run build` is blocked by the current typecheck failures.
-- Codex environment has no `origin`, so Codex cannot push or open a PR directly.
+- P0: Front Office setup flow can fail to advance after “Confirm Staff and Start Dynasty”.
+- Rookie front-office budget is too tight for onboarding goals and should be raised to 30M.
+- Front-office candidate pool is too thin for first-session agency and should be expanded.
+- Latest off-target Claude response was from the wrong project and is non-canonical.
 
 ## Next architect decision
-- Claude owns branch surgery until `typecheck`, `test`, and `build` are all green.
-- Codex owns a docs-first `Player Personality & Chemistry RFC v1`.
-- No new feature implementation begins until branch health is green.
+- Claude owns the Front Office setup bug fix and Rookie tuning.
+- Codex owns the Front Office Setup Fix Packet v1.
+- No Personality & Chemistry implementation begins until the start flow is reliable.
