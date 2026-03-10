@@ -34,9 +34,8 @@ Nothing is "done" until reported.
 Nothing is "promoted" until reviewed.
 
 ## Current blockers
-- Chemistry v1 Slice 1A is on the Claude collaboration branch, not public main.
-- Internal archetype naming needs one cleanup before wider chemistry rollout:
-  - `clubhouse_cancer` -> `clubhouse_disruptor`
+- Chemistry v1 Slice 1A is merged to public main (PR #15).
+- Archetype rename (`clubhouse_cancer` → `clubhouse_disruptor`) is complete and live.
 
 ## Next architect decision
 - Slice 1A approved.
