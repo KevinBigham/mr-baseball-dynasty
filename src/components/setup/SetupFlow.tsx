@@ -3,8 +3,9 @@ import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
-import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, generateFOCandidates } from '../../data/frontOffice';
+import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, FO_CANDIDATES_PER_ROLE, generateFOCandidates } from '../../data/frontOffice';
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
+import type { StandingsRow } from '../../types/league';
 import type { OwnerArchetype } from '../../engine/narrative';
 import DraftRoom from '../draft/DraftRoom';
 
@@ -303,7 +304,7 @@ const DIFFICULTIES: Array<{
   patience: string;
   desc: string;
 }> = [
-  { id: 'rookie', label: 'ROOKIE', icon: '🟢', foBudget: 22, patience: 'Forgiving', desc: 'Training wheels — generous budget, patient ownership. Learn the ropes without pressure.' },
+  { id: 'rookie', label: 'ROOKIE', icon: '🟢', foBudget: 30, patience: 'Forgiving', desc: 'Training wheels — generous budget, patient ownership. Learn the ropes without pressure.' },
   { id: 'normal', label: 'NORMAL', icon: '🟡', foBudget: 15, patience: 'Moderate', desc: 'The real deal — balanced budget and expectations. A fair challenge for any GM.' },
   { id: 'hard',   label: 'HARD',   icon: '🔴', foBudget: 10, patience: 'Demanding', desc: 'Prove yourself — tight budget, impatient owner. Every decision matters.' },
 ];
@@ -438,7 +439,7 @@ function DifficultyScreen() {
 
 // ─── Screen: Front Office Setup ────────────────────────────────────────────────
 
-function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
+function FrontOfficeScreen({ onStartGame, startError }: { onStartGame: () => void; startError: string | null }) {
   const {
     userTeamId, startMode, frontOffice, difficulty,
     addFOStaff, removeFOStaff, setSetupScreen,
@@ -609,7 +610,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
                 return (
                   <div
                     key={role.id}
-                    onClick={() => canAffordMin && setCandidatesFor({ roleId: role.id, candidates: generateFOCandidates(role.id, 4) })}
+                    onClick={() => canAffordMin && setCandidatesFor({ roleId: role.id, candidates: generateFOCandidates(role.id, FO_CANDIDATES_PER_ROLE[difficulty] ?? 6) })}
                     className="rounded-lg p-3 flex items-center gap-3 transition-all duration-100"
                     style={{
                       cursor:     canAffordMin ? 'pointer' : 'default',
@@ -654,6 +655,14 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
           {statusMsg.text}
         </div>
 
+        {/* Error display */}
+        {startError && (
+          <div className="rounded-lg p-3 text-center text-xs font-bold"
+            style={{ background: 'rgba(239,68,68,0.08)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }}>
+            ⚠ DYNASTY START FAILED: {startError}
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="flex flex-col gap-3 pb-6">
           <button
@@ -683,7 +692,7 @@ function FrontOfficeScreen({ onStartGame }: { onStartGame: () => void }) {
 // ─── Main SetupFlow ────────────────────────────────────────────────────────────
 
 export default function SetupFlow() {
-  const { setupScreen, userTeamId, startMode, frontOffice, setGameStarted, setSeason, setUserTeamId, setSetupScreen } = useGameStore();
+  const { setupScreen, userTeamId, startMode, setGameStarted, setSeason, setUserTeamId, setSetupScreen } = useGameStore();
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
   const [loading, setLoading] = useState(false);
@@ -697,19 +706,13 @@ export default function SetupFlow() {
     try {
       const engine = getEngine();
       const seed   = Date.now() % 2147483647;
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      await engine.newGame(seed, userTeamId);
+      await engine.newGame(seed);
 
-      // Send FO staff to worker
-      if (frontOffice.length > 0) {
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        await engine.setFrontOffice(frontOffice);
-      }
+      // FO staff lives in Zustand gameStore — no worker call needed.
 
       if (isDraftMode) {
         // Start the draft and transition to draft screen
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        await engine.startDraft(startMode);
+        await engine.startDraft();
         setUserTeamId(userTeamId);
         setSelectedTeam(userTeamId);
         setSeason(2026);
@@ -719,17 +722,19 @@ export default function SetupFlow() {
         setUserTeamId(userTeamId);
         setSelectedTeam(userTeamId);
         setSeason(2026);
+
+        // Fetch standings and wrap into StandingsData shape
+        const rows = await engine.getStandings();
+        setStandings({ season: 2026, standings: rows as unknown as StandingsRow[] });
+
         setGameStarted(true);
-        const standings = await engine.getStandings();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setStandings(standings);
       }
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [userTeamId, startMode, frontOffice, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
+  }, [userTeamId, startMode, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
 
   if (loading) {
     return (
@@ -751,7 +756,7 @@ export default function SetupFlow() {
     case 'teamSelect':  return <TeamSelectScreen />;
     case 'startMode':   return <StartModeScreen />;
     case 'difficulty':  return <DifficultyScreen />;
-    case 'frontOffice': return <FrontOfficeScreen onStartGame={handleStartGame} />;
+    case 'frontOffice': return <FrontOfficeScreen onStartGame={handleStartGame} startError={error} />;
     case 'draft':       return <DraftRoom />;
     default:            return <TitleScreen />;
   }

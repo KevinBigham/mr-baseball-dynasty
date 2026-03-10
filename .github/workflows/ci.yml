@@ -21,13 +21,10 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        continue-on-error: true
         run: npm run typecheck
 
       - name: Test
-        continue-on-error: true
         run: npm test
 
       - name: Build
-        continue-on-error: true
         run: npm run build
