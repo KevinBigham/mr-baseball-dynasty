@@ -1,168 +1,388 @@
 /**
- * News feed generation.
- * Stub — Sprint 04 branch surgery.
+ * newsFeed.ts — League news story generation for the Front Office Command Loop.
+ *
+ * Converts raw engine events (injuries, transactions, awards, etc.) into
+ * structured NewsStory objects for display in the Front Office Briefing and
+ * End-of-Day Digest.
+ *
+ * All story generators use only real data — no faked precision.
+ * If a field is unavailable, the story degrades gracefully.
  */
 
+import type { InjuryEvent } from '../injuries';
 import type { PlayoffSeries } from './playoffs';
 import type { AwardWinner } from './awards';
 import type { ClubhouseEvent } from '../../types/chemistry';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type NewsPriority = 'breaking' | 'major' | 'minor' | 'routine';
+
+export type NewsCategory =
+  | 'injury'
+  | 'transaction'
+  | 'trade'
+  | 'signing'
+  | 'award'
+  | 'development'
+  | 'standings'
+  | 'playoff'
+  | 'draft'
+  | 'clubhouse'
+  | 'ownership';
+
 export interface NewsStory {
   id: string;
   season: number;
+  gameDay: number;     // 0 = offseason, 1-162 = regular season, 163+ = postseason
+  category: NewsCategory;
+  priority: NewsPriority;
   headline: string;
   body: string;
-  category: string;
-  playerIds: number[];
-  teamIds: number[];
-  timestamp: number;
+  teamIds: number[];   // referenced teams
+  playerIds: number[]; // referenced players
 }
 
-export function sortNewsFeed(stories: NewsStory[]): NewsStory[] {
-  return [...stories].sort((a, b) => b.timestamp - a.timestamp);
+// ─── News ID counter ──────────────────────────────────────────────────────────
+
+let _newsIdSeq = 1;
+
+function nextId(): string {
+  return `news_${_newsIdSeq++}`;
 }
+
+export function resetNewsIdCounter(): void {
+  _newsIdSeq = 1;
+}
+
+// ─── Injury story generators ──────────────────────────────────────────────────
+
+/**
+ * Generate a single NewsStory from an InjuryEvent.
+ */
+export function generateInjuryStory(
+  event: InjuryEvent,
+  teamName: string,
+  season: number,
+  gameDay: number,
+): NewsStory {
+  const priority: NewsPriority =
+    event.injury.severity === 'severe'
+      ? 'breaking'
+      : event.injury.severity === 'moderate'
+        ? 'major'
+        : 'minor';
+
+  const ilType = event.injury.ilDays >= 60 ? '60-day IL' : '10-day IL';
+
+  return {
+    id: nextId(),
+    season,
+    gameDay,
+    category: 'injury',
+    priority,
+    headline: `${event.playerName} Placed on ${ilType}`,
+    body: `${teamName} placed ${event.playerName} on the ${ilType} with ${event.injury.type.toLowerCase()}. Expected to miss approximately ${event.injury.ilDays} days.`,
+    teamIds: [event.teamId],
+    playerIds: [event.playerId],
+  };
+}
+
+/**
+ * Convert an array of InjuryEvents into NewsStory objects.
+ * Deduplicates by player — only the first injury per player is represented so
+ * the feed doesn't flood with repeats for the same player.
+ */
+export function generateInjuryNewsItems(
+  events: InjuryEvent[],
+  teamNames: Map<number, string>,
+  season: number,
+): NewsStory[] {
+  const seen = new Set<number>();
+  const stories: NewsStory[] = [];
+
+  for (const evt of events) {
+    if (seen.has(evt.playerId)) continue;
+    seen.add(evt.playerId);
+
+    const teamName = teamNames.get(evt.teamId) ?? `Team #${evt.teamId}`;
+    stories.push(generateInjuryStory(evt, teamName, season, evt.injury.gameInjured ?? 0));
+  }
+
+  return stories;
+}
+
+// ─── Trade story generator ────────────────────────────────────────────────────
+
+export function generateTradeStory(
+  season: number,
+  gameDay: number,
+  fromTeamName: string,
+  toTeamName: string,
+  playersOffered: string[],
+  playersReceived: string[],
+  playerIds: number[],
+  teamIds: number[],
+): NewsStory {
+  const offeredStr = playersOffered.length > 0 ? playersOffered.join(', ') : 'draft considerations';
+  const receivedStr = playersReceived.length > 0 ? playersReceived.join(', ') : 'draft considerations';
+  return {
+    id: nextId(),
+    season,
+    gameDay,
+    category: 'trade',
+    priority: 'major',
+    headline: `${fromTeamName} and ${toTeamName} Complete Trade`,
+    body: `${fromTeamName} acquired ${receivedStr} from ${toTeamName} in exchange for ${offeredStr}.`,
+    teamIds,
+    playerIds,
+  };
+}
+
+// ─── Playoff story generator ──────────────────────────────────────────────────
 
 export function generatePlayoffStory(
   season: number,
-  _series: PlayoffSeries,
+  series: PlayoffSeries,
   round: string,
   winnerName: string,
-  _loserName: string,
+  loserName: string,
 ): NewsStory {
+  const wins = Math.max(series.higherSeedWins, series.lowerSeedWins);
+  const losses = Math.min(series.higherSeedWins, series.lowerSeedWins);
+
+  const roundLabel =
+    round === 'WS' ? 'World Series'
+    : round === 'CS' ? 'Championship Series'
+    : round === 'DS' ? 'Division Series'
+    : 'Wild Card Round';
+
+  const isChampionship = round === 'WS';
+
   return {
-    id: `playoff-${season}-${round}`,
+    id: nextId(),
     season,
-    headline: `${winnerName} advances in ${round}`,
-    body: '',
-    category: 'playoffs',
+    gameDay: 163, // postseason = after game 162
+    category: 'playoff',
+    priority: isChampionship ? 'breaking' : 'major',
+    headline: isChampionship
+      ? `${winnerName} Win the World Series`
+      : `${winnerName} Advance in ${roundLabel}`,
+    body: `${winnerName} defeated ${loserName} in the ${roundLabel}, ${wins}–${losses}.`,
+    teamIds: [series.winnerTeamId, series.loserTeamId],
     playerIds: [],
-    teamIds: [],
-    timestamp: Date.now(),
   };
 }
 
-export function generateAwardStory(season: number, award: AwardWinner, _teamName: string): NewsStory {
+// ─── Award story generator ────────────────────────────────────────────────────
+
+export function generateAwardStory(
+  season: number,
+  award: AwardWinner,
+  teamName: string,
+): NewsStory {
   return {
-    id: `award-${season}-${award.awardName}`,
+    id: nextId(),
     season,
-    headline: `${award.playerName} wins ${award.awardName}`,
-    body: '',
-    category: 'awards',
-    playerIds: [award.playerId],
+    gameDay: 0,
+    category: 'award',
+    priority: 'major',
+    headline: `${award.playerName} Wins ${award.awardName}`,
+    body: `${award.playerName} of the ${teamName} has been named the ${season} ${award.awardName} winner.`,
     teamIds: [award.teamId],
-    timestamp: Date.now(),
+    playerIds: [award.playerId],
   };
 }
+
+// ─── Retirement story generator ───────────────────────────────────────────────
 
 export function generateRetirementStory(
-  season: number, name: string, _pos: string, _team: string,
-  _years: number, playerId: number, teamId: number,
+  season: number,
+  playerName: string,
+  position: string,
+  teamName: string,
+  careerYears: number,
+  playerId: number,
+  teamId: number,
 ): NewsStory {
   return {
-    id: `retire-${season}-${playerId}`,
+    id: nextId(),
     season,
-    headline: `${name} retires`,
-    body: '',
-    category: 'retirement',
-    playerIds: [playerId],
+    gameDay: 0,
+    category: 'development',
+    priority: 'major',
+    headline: `${playerName} Announces Retirement`,
+    body: `${playerName} (${position}) has announced his retirement after ${careerYears} year${careerYears !== 1 ? 's' : ''} in the league. He spent his final season with the ${teamName}.`,
     teamIds: [teamId],
-    timestamp: Date.now(),
+    playerIds: [playerId],
   };
 }
+
+// ─── Signing story generator ──────────────────────────────────────────────────
 
 export function generateSigningStory(
-  season: number, name: string, _team: string,
-  _years: number, _salary: number, playerId: number, teamId: number,
+  season: number,
+  playerName: string,
+  teamName: string,
+  years: number,
+  annualSalary: number,
+  playerId: number,
+  teamId: number,
 ): NewsStory {
+  const salaryStr =
+    annualSalary >= 1_000_000
+      ? `$${(annualSalary / 1_000_000).toFixed(1)}M`
+      : `$${(annualSalary / 1_000).toFixed(0)}K`;
+
   return {
-    id: `signing-${season}-${playerId}`,
+    id: nextId(),
     season,
-    headline: `${name} signs`,
-    body: '',
+    gameDay: 0,
     category: 'signing',
-    playerIds: [playerId],
+    priority: annualSalary >= 10_000_000 ? 'major' : 'minor',
+    headline: `${teamName} Signs ${playerName}`,
+    body: `${teamName} has signed ${playerName} to a ${years}-year deal worth ${salaryStr}/year.`,
     teamIds: [teamId],
-    timestamp: Date.now(),
+    playerIds: [playerId],
   };
 }
 
+// ─── Clubhouse story generator ────────────────────────────────────────────────
+
 export function generateClubhouseStory(
-  season: number, _teamName: string, event: ClubhouseEvent,
+  season: number,
+  teamName: string,
+  event: ClubhouseEvent,
 ): NewsStory {
   return {
     id: `clubhouse-${season}-${event.eventId}`,
     season,
-    headline: event.description,
-    body: '',
+    gameDay: 0,
     category: 'clubhouse',
-    playerIds: [],
+    priority: 'routine',
+    headline: `${teamName}: Clubhouse Update`,
+    body: event.description,
     teamIds: [event.teamId],
-    timestamp: Date.now(),
+    playerIds: [],
   };
 }
+
+// ─── Owner mandate story generator ───────────────────────────────────────────
 
 export function generateOwnerMandateStory(
-  season: number, ownerName: string, _teamName: string,
-  _score: number, _security: string, _summary: string, teamId: number,
+  season: number,
+  ownerName: string,
+  teamName: string,
+  score: number,
+  jobSecurity: string,
+  summary: string,
+  teamId: number,
 ): NewsStory {
+  const securityLabel =
+    jobSecurity === 'hot' ? 'under pressure'
+    : jobSecurity === 'warm' ? 'cautiously optimistic'
+    : 'in good standing';
+
   return {
-    id: `owner-${season}-${teamId}`,
+    id: nextId(),
     season,
-    headline: `${ownerName} sets new mandate`,
-    body: '',
-    category: 'owner',
-    playerIds: [],
+    gameDay: 0,
+    category: 'ownership',
+    priority: jobSecurity === 'hot' ? 'major' : 'routine',
+    headline: `${teamName} Owner Sets ${season} Expectations`,
+    body: `${ownerName} enters ${season} ${securityLabel} (approval: ${score}/100). ${summary}`,
     teamIds: [teamId],
-    timestamp: Date.now(),
+    playerIds: [],
   };
 }
+
+// ─── Draft story generator ────────────────────────────────────────────────────
 
 export function generateDraftStory(
-  season: number, _pick: number, name: string, _pos: string,
-  _team: string, _type: string, playerId: number, teamId: number,
+  season: number,
+  pickNumber: number,
+  playerName: string,
+  position: string,
+  teamName: string,
+  prospectType: string,
+  playerId: number,
+  teamId: number,
 ): NewsStory {
+  const priority: NewsPriority =
+    pickNumber <= 5 ? 'breaking' : pickNumber <= 20 ? 'major' : 'minor';
+
   return {
-    id: `draft-${season}-${playerId}`,
+    id: nextId(),
     season,
-    headline: `${name} drafted`,
-    body: '',
+    gameDay: 0,
     category: 'draft',
-    playerIds: [playerId],
+    priority,
+    headline: `${teamName} Selects ${playerName} at Pick #${pickNumber}`,
+    body: `With pick #${pickNumber}, ${teamName} selected ${playerName} (${position}), a ${prospectType.toLowerCase()} prospect.`,
     teamIds: [teamId],
-    timestamp: Date.now(),
+    playerIds: [playerId],
   };
 }
+
+// ─── Transaction pulse story generator ───────────────────────────────────────
 
 export function generateTransactionPulseStory(
-  season: number, _gameDay: number, _teamName: string,
-  _type: string, _desc: string, _playerName: string | null,
-  playerIds: number[], teamId: number,
+  season: number,
+  gameDay: number,
+  teamName: string,
+  transactionType: string,
+  description: string,
+  playerName: string | null,
+  playerIds: number[],
+  teamId: number,
 ): NewsStory {
+  const typeLabel = transactionType.replace(/_/g, ' ');
+  const headline = playerName
+    ? `${teamName}: ${typeLabel} — ${playerName}`
+    : `${teamName}: ${typeLabel}`;
+
   return {
-    id: `tx-${season}-${Date.now()}`,
+    id: nextId(),
     season,
-    headline: 'Transaction update',
-    body: '',
+    gameDay,
     category: 'transaction',
-    playerIds,
+    priority: 'minor',
+    headline,
+    body: description,
     teamIds: [teamId],
-    timestamp: Date.now(),
+    playerIds,
   };
 }
 
-export function generateTradeStory(
-  season: number, _gameDay: number, _fromTeam: string, _toTeam: string,
-  _offeredNames: string[], _requestedNames: string[],
-  playerIds: number[], teamIds: number[],
-): NewsStory {
-  return {
-    id: `trade-${season}-${Date.now()}`,
-    season,
-    headline: 'Trade completed',
-    body: '',
-    category: 'trade',
-    playerIds,
-    teamIds,
-    timestamp: Date.now(),
-  };
+// ─── Feed utilities ───────────────────────────────────────────────────────────
+
+const PRIORITY_WEIGHT: Record<NewsPriority, number> = {
+  breaking: 100,
+  major: 50,
+  minor: 20,
+  routine: 5,
+};
+
+/**
+ * Sort stories by recency (most recent game day first), then by priority.
+ */
+export function sortNewsFeed(stories: NewsStory[]): NewsStory[] {
+  return [...stories].sort((a, b) => {
+    if (b.gameDay !== a.gameDay) return b.gameDay - a.gameDay;
+    return PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority];
+  });
+}
+
+/**
+ * Filter stories that involve a specific team.
+ */
+export function filterByTeam(stories: NewsStory[], teamId: number): NewsStory[] {
+  return stories.filter(s => s.teamIds.includes(teamId));
+}
+
+/**
+ * Return the top N stories after sorting by recency + priority.
+ */
+export function getTopStories(stories: NewsStory[], limit = 10): NewsStory[] {
+  return sortNewsFeed(stories).slice(0, limit);
 }

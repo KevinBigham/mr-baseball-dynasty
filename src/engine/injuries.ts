@@ -191,3 +191,68 @@ export function processSeasonInjuries(
 
   return events;
 }
+
+// ─── Query Helpers ────────────────────────────────────────────────────────────
+
+export interface InjurySummary {
+  teamId: number;
+  totalOnIL: number;
+  minorCount: number;
+  moderateCount: number;
+  severeCount: number;
+  /** Description of the highest-OVR injured player, or null if nobody on IL. */
+  topConcern: string | null;
+  topConcernPlayerId: number | null;
+}
+
+/**
+ * Returns all players for a team currently on IL (10-day or 60-day).
+ */
+export function getTeamInjuries(players: Player[], teamId: number): Player[] {
+  return players.filter(
+    p =>
+      p.teamId === teamId &&
+      p.rosterData.currentInjury !== undefined &&
+      (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60'),
+  );
+}
+
+/**
+ * Returns a summary of current IL state for a team. Suitable for briefing
+ * surfaces — uses only real state, no faked precision.
+ */
+export function getInjurySummary(players: Player[], teamId: number): InjurySummary {
+  const ilPlayers = getTeamInjuries(players, teamId);
+
+  let minorCount = 0;
+  let moderateCount = 0;
+  let severeCount = 0;
+
+  for (const p of ilPlayers) {
+    const sev = p.rosterData.currentInjury?.severity;
+    if (sev === 'minor') minorCount++;
+    else if (sev === 'moderate') moderateCount++;
+    else if (sev === 'severe') severeCount++;
+  }
+
+  // Top concern = highest OVR player currently on IL
+  let topConcern: string | null = null;
+  let topConcernPlayerId: number | null = null;
+  if (ilPlayers.length > 0) {
+    const topPlayer = [...ilPlayers].sort((a, b) => b.overall - a.overall)[0];
+    if (topPlayer.rosterData.currentInjury) {
+      topConcern = topPlayer.rosterData.currentInjury.description;
+      topConcernPlayerId = topPlayer.playerId;
+    }
+  }
+
+  return {
+    teamId,
+    totalOnIL: ilPlayers.length,
+    minorCount,
+    moderateCount,
+    severeCount,
+    topConcern,
+    topConcernPlayerId,
+  };
+}
