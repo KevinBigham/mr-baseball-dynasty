@@ -2,20 +2,12 @@ import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
 import type { GameResult, ScheduleEntry } from '../../types/game';
-import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
-import type { Team, TeamSeasonStats } from '../../types/team';
-import type { SeasonResult } from '../../types/league';
+import type { Player, PlayerSeason, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
+import type { Team, TeamSeason, TeamSeasonStats } from '../../types/team';
+import type { SeasonResult } from '../../types/league'; // used internally by simulateSeasonFromSchedule
+import type { RandomGenerator } from '../math/prng';
 import { processSeasonInjuries, type InjuryEvent } from '../injuries';
-
-// ─── Season simulation result ─────────────────────────────────────────────────
-
-/**
- * SeasonSimResult extends SeasonResult with injury events captured during
- * the season. Injury events are piped to the news feed by the worker.
- */
-export type SeasonSimResult = SeasonResult & {
-  injuryEvents: InjuryEvent[];
-};
+import { generateScheduleTemplate } from '../../data/scheduleTemplate';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -115,9 +107,9 @@ export function stddev(values: number[]): number {
   return Math.sqrt(variance);
 }
 
-// ─── Main season simulator ────────────────────────────────────────────────────
+// ─── Main season simulator (schedule-based, internal) ────────────────────────
 
-export async function simulateSeason(
+async function simulateSeasonFromSchedule(
   teams: Team[],
   players: Player[],
   schedule: ScheduleEntry[],
@@ -131,7 +123,7 @@ export async function simulateSeason(
     injuryRateMultiplier?: number;
     recoverySpeedMultiplier?: number;
   },
-): Promise<SeasonSimResult> {
+): Promise<SeasonResult> {
   const season = options?.season ?? new Date().getFullYear();
 
   // Build lookup maps for player metadata
@@ -353,25 +345,20 @@ export function resetSeasonCounters(players: Player[]): void {
 // ─── Worker-compatible season sim result ─────────────────────────────────────
 // The worker uses a richer result shape with TeamSeason[] and Map<number, PlayerSeason>.
 
-import type { TeamSeason } from '../../types/team';
-import type { PlayerSeason } from '../../types/player';
-import type { RandomGenerator } from '../math/prng';
-import { generateScheduleTemplate } from '../../data/scheduleTemplate';
-
 export interface SeasonSimResult {
   teamSeasons: TeamSeason[];
   playerSeasons: Map<number, PlayerSeason>;
   gameResults: GameResult[];
   gen: RandomGenerator;
   leagueGamesOnIL: number;
+  injuryEvents: InjuryEvent[];
 }
 
 /**
- * Worker-compatible overload of simulateSeason.
- * Accepts (teams, players, season, seed, progressCallback?, options?) and
- * returns a SeasonSimResult with the shape the worker expects.
+ * Worker-facing simulateSeason. Generates the schedule internally and returns
+ * a SeasonSimResult (worker-compatible shape) including injury events.
  */
-export async function simulateSeasonForWorker(
+export async function simulateSeason(
   teams: Team[],
   players: Player[],
   _season: number,
@@ -382,7 +369,7 @@ export async function simulateSeasonForWorker(
   const schedule = generateScheduleTemplate();
   const total = schedule.length;
 
-  const result = await simulateSeason(teams, players, schedule, baseSeed, onProgress
+  const result = await simulateSeasonFromSchedule(teams, players, schedule, baseSeed, onProgress
     ? (pct: number) => onProgress(Math.round(pct * total), total)
     : undefined,
     { season: _season },
@@ -465,5 +452,9 @@ export async function simulateSeasonForWorker(
     gameResults,
     gen: createPRNG(baseSeed + _season + 99),
     leagueGamesOnIL: 0,
+    injuryEvents: result.injuryEvents ?? [],
   };
 }
+
+// Backward-compat alias used by smoke tests and older imports
+export { simulateSeason as simulateSeasonForWorker };
