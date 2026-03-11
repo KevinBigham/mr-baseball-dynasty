@@ -96,6 +96,7 @@ import type {
 } from '../features/catalog.ts';
 import { lintFeatureManifest } from '../features/manifestLint.ts';
 import { getInjuryRiskMultiplier } from '../data/frontOffice.ts';
+import { bonusesFromCoaching, DEFAULT_BONUSES } from './staffEffects.ts';
 import {
   createDraftBoardState,
   makeUserDraftPick,
@@ -2145,7 +2146,12 @@ const api = {
   async getLeaderboard(_category?: string, _limit?: number) { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
   async getLeaderboardFull(_category: string) { return [] as any[]; },
   async getAwardRace() { return {} as any; },
-  async getStaffBonuses(_teamId?: number) { return {} as any; },
+  async getStaffBonuses(_teamId?: number) {
+    const targetTeamId = _teamId ?? 1;
+    const coaching = coachingStaffs.get(targetTeamId);
+    if (!coaching) return DEFAULT_BONUSES;
+    return bonusesFromCoaching(coaching);
+  },
   async getAdvancedStats(_playerId: number) { return {} as any; },
   async getCareerLeaderboard(_stat: string) { return [] as any[]; },
   async getPlayoffMVP() { return null; },
