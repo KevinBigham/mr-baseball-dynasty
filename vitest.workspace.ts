@@ -10,6 +10,7 @@ export default defineWorkspace([
         'tests/engine/**/*.test.ts',
         'tests/validation/**/*.test.ts',
         'tests/store/**/*.test.ts',
+        'tests/utils/**/*.test.ts',
       ],
     },
   },

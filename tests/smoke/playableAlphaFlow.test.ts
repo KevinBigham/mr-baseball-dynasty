@@ -6,7 +6,7 @@ import { clearAllSaves, createSave, loadSave, type GameState } from '../../src/e
 import { advanceOffseason } from '../../src/engine/roster/offseason.ts';
 import { executeTransaction, validateTransaction } from '../../src/engine/roster/rosterManager.ts';
 import { generateAllPlayers } from '../../src/engine/player/generation.ts';
-import { simulateSeason } from '../../src/engine/sim/seasonSimulator.ts';
+import { simulateSeasonForWorker, type SeasonSimResult } from '../../src/engine/sim/seasonSimulator.ts';
 import type { Player } from '../../src/types/player.ts';
 import type { TransactionLogEntry } from '../../src/types/roster.ts';
 
@@ -15,7 +15,7 @@ function toGameState(
   rngSeed: number,
   gen: ReturnType<typeof createPRNG>,
   players: Player[],
-  sim: ReturnType<typeof simulateSeason>,
+  sim: SeasonSimResult,
   transactionLog: TransactionLogEntry[],
   coachingStaffs: ReturnType<typeof generateAllCoachingStaffs>[0],
 ): GameState {
@@ -53,7 +53,7 @@ describe('playable alpha smoke flow', () => {
     clearAllSaves();
   });
 
-  it('covers new game -> simulate -> transaction -> save -> load -> continue', () => {
+  it('covers new game -> simulate -> transaction -> save -> load -> continue', async () => {
     const seed = 77;
     let gen = createPRNG(seed);
     const teams = [...TEAMS];
@@ -67,7 +67,7 @@ describe('playable alpha smoke flow', () => {
     const coachingStaffs = coaching[0];
     gen = coaching[1];
 
-    const sim = simulateSeason(teams, players, 1, seed);
+    const sim = await simulateSeasonForWorker(teams, players, 1, seed);
     expect(sim.gameResults.length).toBeGreaterThan(2000);
     expect(sim.teamSeasons).toHaveLength(30);
 

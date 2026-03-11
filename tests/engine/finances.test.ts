@@ -14,6 +14,9 @@ function makePlayer(overrides: Partial<Player> & { playerId: number; position: P
     playerId: overrides.playerId,
     teamId: overrides.teamId ?? 1,
     name: overrides.name ?? `Player ${overrides.playerId}`,
+    firstName: 'Test',
+    lastName: 'Player',
+    leagueLevel: 'MLB',
     age: overrides.age ?? 27,
     position: overrides.position,
     bats: 'R', throws: 'R', nationality: 'american', isPitcher,
@@ -41,7 +44,7 @@ function makePlayer(overrides: Partial<Player> & { playerId: number; position: P
 function makeTeam(teamId: number, budget: number): Team {
   return {
     teamId, name: 'Test Team', abbreviation: 'TST', city: 'Test City',
-    league: 'AL', division: 'East', parkFactorId: 0, budget,
+    league: 'AL', division: 'East', conferenceId: 0, divisionId: 0, parkFactorId: 0, budget,
     scoutingQuality: 0.7,
     coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.5 },
     strategy: 'fringe',

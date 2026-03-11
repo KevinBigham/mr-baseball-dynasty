@@ -24,10 +24,13 @@ function createFillerPlayer(teamId: number, isPitcher: boolean): Player {
     playerId: id,
     teamId,
     name: `Filler ${isPitcher ? 'P' : 'H'} #${id % 1000}`,
+    firstName: 'Filler',
+    lastName: `${isPitcher ? 'P' : 'H'} #${id % 1000}`,
     age: 25,
     position,
     bats: 'R',
     throws: 'R',
+    leagueLevel: 'MLB',
     nationality: 'american',
     isPitcher,
     hitterAttributes: isPitcher ? null : {

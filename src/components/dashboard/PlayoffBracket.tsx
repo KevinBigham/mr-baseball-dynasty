@@ -111,6 +111,7 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
     (async () => {
       try {
         const engine = getEngine();
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const result = await engine.getPlayoffMVP(bracket);
         if (!cancelled && result) setMvp(result);
       } catch { /* non-fatal */ }

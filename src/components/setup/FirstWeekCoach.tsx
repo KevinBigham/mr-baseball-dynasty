@@ -1,7 +1,8 @@
 /**
  * FirstWeekCoach.tsx — "Coach me through week one" onboarding layer.
- * Teaches through real baseball decisions, not a boring tutorial museum.
+ * Teaches through real baseball decisions that are actually possible right now.
  * Only shows for first-season players. Dismissable.
+ * Steps target only actions available on the current branch.
  */
 
 import { useState, useMemo } from 'react';
@@ -10,6 +11,8 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 import { buildCoachSteps } from '../../utils/briefingAdapter';
 import NextBestActionPanel from './NextBestActionPanel';
+import GlossaryInlineTip from '../shared/GlossaryInlineTip';
+import { GLOSSARY } from '../../utils/briefingAdapter';
 
 export default function FirstWeekCoach() {
   const { gamePhase, seasonsManaged } = useGameStore();
@@ -72,6 +75,17 @@ export default function FirstWeekCoach() {
               </span>
             </div>
           ))}
+        </div>
+
+        {/* Key terms for new GMs */}
+        <div className="pt-2 border-t border-gray-800">
+          <div className="text-gray-500 text-[10px] uppercase tracking-wider mb-1.5">KEY TERMS</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            <GlossaryInlineTip term="40-Man" definition={GLOSSARY['40-man']} />
+            <GlossaryInlineTip term="DFA" definition={GLOSSARY['dfa']} />
+            <GlossaryInlineTip term="Option" definition={GLOSSARY['option']} />
+            <GlossaryInlineTip term="Owner Patience" definition={GLOSSARY['owner patience']} />
+          </div>
         </div>
 
         {/* Next best action */}

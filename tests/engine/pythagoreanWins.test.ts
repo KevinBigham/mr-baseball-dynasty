@@ -7,21 +7,22 @@ import { resolve } from 'node:path';
 // rather than a hardcoded 162-game schedule.
 
 describe('pythagorean wins uses actual games played', () => {
-  it('_buildStandings uses actual games played', () => {
+  it('buildStandings uses actual games played', () => {
     const src = readFileSync(
       resolve('src/engine/worker.ts'),
       'utf-8',
     );
 
-    // The old pattern was: pythagenpatWinPct(runsScored, runsAllowed) * 162)
-    // The new pattern uses: (wins + losses) || 162
-    // Verify the hardcoded * 162) pattern for pythagenpatWinPct no longer exists.
+    // The old buggy pattern was: pythagenpatWinPct(runsScored, runsAllowed) * 162)
+    // Verify no hardcoded * 162) multiplication remains.
     const hardcodedPattern = /pythagenpatWinPct\([^)]+\)\s*\*\s*162\)/;
     expect(src).not.toMatch(hardcodedPattern);
 
-    // Verify the _buildStandings function uses actual games played
-    // by checking for the (wins + losses) || 162 pattern
-    expect(src).toContain('(t.seasonRecord.wins + t.seasonRecord.losses) || 162');
+    // buildStandings computes totalGames = ts.wins + ts.losses
+    // and passes it as the third arg to pythagoreanWins.
+    // Assert: the function receives actual games, not a hardcoded constant.
+    expect(src).toMatch(/totalGames\s*=\s*ts\.wins\s*\+\s*ts\.losses/);
+    expect(src).toMatch(/pythagoreanWins\(.*totalGames\)/);
   });
 
   it('aiTeamIntelligence uses actual games', () => {
@@ -31,10 +32,10 @@ describe('pythagorean wins uses actual games played', () => {
     );
 
     // Verify no hardcoded * 162) for pythagenpatWinPct
-    const hardcodedPattern = /pythagenpatWinPct\([^)]+\)\s*\*\s*162\)/;
+    const hardcodedPattern = /pythagenpatWinPct\([^)]+\)\s*\*\s*162\b[^|]/;
     expect(src).not.toMatch(hardcodedPattern);
 
-    // Verify it uses actual games played via (wins + losses) || 162
-    expect(src).toContain('(team.seasonRecord.wins + team.seasonRecord.losses) || 162');
+    // Uses actual games played: (wins + losses) || 162 as a fallback
+    expect(src).toMatch(/\(team\.seasonRecord\.wins\s*\+\s*team\.seasonRecord\.losses\)\s*\|\|\s*162/);
   });
 });

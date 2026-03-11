@@ -149,7 +149,9 @@ export default function FranchiseRecordsView() {
     if (!gameStarted) return;
     setLoading(true);
     getEngine()
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       .getFranchiseRecords()
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
       .then((data: FranchiseRecordBook) => setRecords(data))
       .finally(() => setLoading(false));
   }, [gameStarted]);

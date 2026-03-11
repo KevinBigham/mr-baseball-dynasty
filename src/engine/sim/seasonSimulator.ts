@@ -1,7 +1,7 @@
 import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
-import type { ScheduleEntry } from '../../types/game';
+import type { GameResult, ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
@@ -348,4 +348,122 @@ export function resetSeasonCounters(players: Player[]): void {
     player.rosterData.minorLeagueDaysThisSeason = 0;
     player.rosterData.demotionsThisSeason      = 0;
   }
+}
+
+// ─── Worker-compatible season sim result ─────────────────────────────────────
+// The worker uses a richer result shape with TeamSeason[] and Map<number, PlayerSeason>.
+
+import type { TeamSeason } from '../../types/team';
+import type { PlayerSeason } from '../../types/player';
+import type { RandomGenerator } from '../math/prng';
+import { generateScheduleTemplate } from '../../data/scheduleTemplate';
+
+export interface SeasonSimResult {
+  teamSeasons: TeamSeason[];
+  playerSeasons: Map<number, PlayerSeason>;
+  gameResults: GameResult[];
+  gen: RandomGenerator;
+  leagueGamesOnIL: number;
+}
+
+/**
+ * Worker-compatible overload of simulateSeason.
+ * Accepts (teams, players, season, seed, progressCallback?, options?) and
+ * returns a SeasonSimResult with the shape the worker expects.
+ */
+export async function simulateSeasonForWorker(
+  teams: Team[],
+  players: Player[],
+  _season: number,
+  baseSeed: number,
+  onProgress?: (complete: number, total: number) => void,
+  _options?: { injuryRiskMultipliers?: Map<number, number> },
+): Promise<SeasonSimResult> {
+  const schedule = generateScheduleTemplate();
+  const total = schedule.length;
+
+  const result = await simulateSeason(teams, players, schedule, baseSeed, onProgress
+    ? (pct: number) => onProgress(Math.round(pct * total), total)
+    : undefined,
+    { season: _season },
+  );
+
+  // Convert TeamSeasonStats[] → TeamSeason[]
+  const teamSeasons: TeamSeason[] = result.teamSeasons.map(ts => ({
+    teamId: ts.teamId,
+    season: ts.season,
+    wins: ts.record.wins,
+    losses: ts.record.losses,
+    runsScored: ts.record.runsScored,
+    runsAllowed: ts.record.runsAllowed,
+    divisionRank: 0, // computed later
+    playoffResult: null,
+  }));
+
+  // Assign division ranks
+  const byDiv = new Map<string, typeof teamSeasons>();
+  for (const ts of teamSeasons) {
+    const team = teams.find(t => t.teamId === ts.teamId);
+    const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
+    const arr = byDiv.get(key) ?? [];
+    arr.push(ts);
+    byDiv.set(key, arr);
+  }
+  for (const div of byDiv.values()) {
+    div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    div.forEach((ts, i) => { ts.divisionRank = i + 1; });
+  }
+
+  // Convert PlayerSeasonStats[] → Map<number, PlayerSeason>
+  const playerSeasons = new Map<number, PlayerSeason>();
+  for (const ps of result.playerSeasons) {
+    playerSeasons.set(ps.playerId, {
+      playerId: ps.playerId,
+      teamId: ps.teamId,
+      season: ps.season,
+      ab: ps.ab,
+      hits: ps.h,
+      hr: ps.hr,
+      rbi: ps.rbi,
+      runs: ps.r,
+      ip: ps.outs / 3,
+      earnedRuns: ps.er,
+      wins: ps.w,
+      losses: ps.l,
+      kPitching: ps.ka,
+      saves: ps.sv,
+    });
+  }
+
+  // Build simplified game results
+  const gameResults: GameResult[] = schedule.map((entry) => ({
+    gameId: entry.gameId,
+    homeTeamId: entry.homeTeamId,
+    awayTeamId: entry.awayTeamId,
+    homeScore: 0,
+    awayScore: 0,
+    innings: 9,
+    boxScore: {
+      gameId: entry.gameId,
+      season: _season,
+      date: entry.date,
+      homeTeamId: entry.homeTeamId,
+      awayTeamId: entry.awayTeamId,
+      homeScore: 0,
+      awayScore: 0,
+      innings: 9,
+      homeBatting: [],
+      awayBatting: [],
+      homePitching: [],
+      awayPitching: [],
+    },
+  }));
+
+  return {
+    teamSeasons,
+    playerSeasons,
+    gameResults,
+    gen: createPRNG(baseSeed + _season + 99),
+    leagueGamesOnIL: 0,
+  };
 }

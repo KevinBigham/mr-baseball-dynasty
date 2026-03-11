@@ -10,6 +10,9 @@
  */
 
 import type { InjuryEvent } from '../injuries';
+import type { PlayoffSeries } from './playoffs';
+import type { AwardWinner } from './awards';
+import type { ClubhouseEvent } from '../../types/chemistry';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,31 +41,6 @@ export interface NewsStory {
   body: string;
   teamIds: number[];   // referenced teams
   playerIds: number[]; // referenced players
-}
-
-// ─── Minimal structural interfaces for external types ─────────────────────────
-// These use TypeScript structural typing so they remain compatible when the
-// canonical type files (playoffs.ts, awards.ts, chemistry.ts) are added.
-
-interface PlayoffSeriesLike {
-  winnerTeamId: number;
-  loserTeamId: number;
-  higherSeedWins: number;
-  lowerSeedWins: number;
-}
-
-interface AwardWinnerLike {
-  awardName: string;
-  teamId: number;
-  playerId: number;
-  playerName?: string;
-}
-
-interface ClubhouseEventLike {
-  teamId: number;
-  type?: string;
-  description?: string;
-  impactedPlayerId?: number;
 }
 
 // ─── News ID counter ──────────────────────────────────────────────────────────
@@ -165,7 +143,7 @@ export function generateTradeStory(
 
 export function generatePlayoffStory(
   season: number,
-  series: PlayoffSeriesLike,
+  series: PlayoffSeries,
   round: string,
   winnerName: string,
   loserName: string,
@@ -200,18 +178,17 @@ export function generatePlayoffStory(
 
 export function generateAwardStory(
   season: number,
-  award: AwardWinnerLike,
+  award: AwardWinner,
   teamName: string,
 ): NewsStory {
-  const playerLabel = award.playerName ?? `Player #${award.playerId}`;
   return {
     id: nextId(),
     season,
     gameDay: 0,
     category: 'award',
     priority: 'major',
-    headline: `${playerLabel} Wins ${award.awardName}`,
-    body: `${playerLabel} of the ${teamName} has been named the ${season} ${award.awardName} winner.`,
+    headline: `${award.playerName} Wins ${award.awardName}`,
+    body: `${award.playerName} of the ${teamName} has been named the ${season} ${award.awardName} winner.`,
     teamIds: [award.teamId],
     playerIds: [award.playerId],
   };
@@ -275,20 +252,18 @@ export function generateSigningStory(
 export function generateClubhouseStory(
   season: number,
   teamName: string,
-  event: ClubhouseEventLike,
+  event: ClubhouseEvent,
 ): NewsStory {
-  const body = event.description ?? `A clubhouse development has occurred within the ${teamName}.`;
-  const playerIds = event.impactedPlayerId !== undefined ? [event.impactedPlayerId] : [];
   return {
-    id: nextId(),
+    id: `clubhouse-${season}-${event.eventId}`,
     season,
     gameDay: 0,
     category: 'clubhouse',
     priority: 'routine',
     headline: `${teamName}: Clubhouse Update`,
-    body,
+    body: event.description,
     teamIds: [event.teamId],
-    playerIds,
+    playerIds: [],
   };
 }
 

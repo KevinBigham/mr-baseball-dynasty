@@ -34,6 +34,7 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
     (async () => {
       try {
         const engine = getEngine();
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const tradeOffers = await engine.getTradeOffers();
         const mapped: DeadlineOffer[] = tradeOffers.slice(0, 3).map(offer => ({
           partnerTeamId: offer.partnerTeamId,
@@ -61,6 +62,7 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
       const engine = getEngine();
       await engine.acceptTradeOffer(
         offer.partnerTeamId,
+        // @ts-expect-error Sprint 04 stub — contract alignment pending
         [offer.requestedId],
         [offer.offeredId],
       );

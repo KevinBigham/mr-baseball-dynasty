@@ -1,6 +1,7 @@
 /**
  * LeaguePressureStrip.tsx — Compact division/league context strip.
  * Shows where the user team sits relative to division rivals.
+ * Degrades honestly when standings are unavailable.
  */
 
 import type { StandingsRow } from '../../types/league';
@@ -13,9 +14,16 @@ interface Props {
 export default function LeaguePressureStrip({ standings, userTeamId }: Props) {
   if (!standings || standings.length === 0) {
     return (
-      <div className="bloomberg-border bg-gray-900 px-3 py-2">
-        <div className="text-gray-500 text-[10px] uppercase tracking-wider">
-          LEAGUE STANDINGS — Season has not started
+      <div className="bloomberg-border bg-gray-900">
+        <div className="bloomberg-header px-3 flex items-center justify-between">
+          <span>DIVISION RACE</span>
+          <span className="text-gray-500 font-normal text-[10px]">WAITING</span>
+        </div>
+        <div className="px-3 py-4 text-center">
+          <div className="text-gray-500 text-xs mb-1">No standings data yet.</div>
+          <div className="text-gray-700 text-[10px]">
+            Start the season to see your division race unfold here.
+          </div>
         </div>
       </div>
     );
