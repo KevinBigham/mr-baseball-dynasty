@@ -197,7 +197,7 @@ describe('P0-3 — FO staff PRNG determinism', () => {
 
 describe('P0-5 — Season year from game state', () => {
   it('simulateSeason uses provided season number, not wall clock', async () => {
-    const { simulateSeason } = await import('../../src/engine/sim/seasonSimulator');
+    const { simulateSeasonFromSchedule: simulateSeason } = await import('../../src/engine/sim/seasonSimulator');
     const teams = Array.from({ length: 2 }, (_, i) => makeTeam(i + 1));
     const players: Player[] = [];
     const hitterPositions: Position[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];

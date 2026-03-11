@@ -18,7 +18,7 @@ import { createPRNG } from '../../src/engine/math/prng';
 import { generateLeaguePlayers } from '../../src/engine/player/generation';
 import { buildInitialTeams } from '../../src/data/teams';
 import { generateScheduleTemplate } from '../../src/data/scheduleTemplate';
-import { simulateSeason } from '../../src/engine/sim/seasonSimulator';
+import { simulateSeasonFromSchedule as simulateSeason } from '../../src/engine/sim/seasonSimulator';
 import { simulateGame } from '../../src/engine/sim/gameSimulator';
 import { pearsonCorrelation } from '../../src/utils/helpers';
 import { GATES } from '../../src/utils/constants';

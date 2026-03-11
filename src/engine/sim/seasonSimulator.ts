@@ -458,3 +458,4 @@ export async function simulateSeason(
 
 // Backward-compat alias used by smoke tests and older imports
 export { simulateSeason as simulateSeasonForWorker };
+export { simulateSeasonFromSchedule };
