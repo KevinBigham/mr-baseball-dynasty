@@ -21,8 +21,9 @@ import { TEAMS } from '../data/teams.ts';
 import { calcBA, calcERA, formatIP, playerOverall, pythagoreanWins } from '../utils/helpers.ts';
 import { simulatePlayoffs, type PlayoffBracket } from './league/playoffs.ts';
 import { computeSeasonAwards, type SeasonAwards } from './league/awards.ts';
-import { sortNewsFeed, type NewsStory } from './league/newsFeed.ts';
+import { sortNewsFeed, generateInjuryNewsItems, type NewsStory } from './league/newsFeed.ts';
 import * as News from './league/newsFeed.ts';
+import { getTeamInjuries, getInjurySummary, type InjurySummary } from './injuries.ts';
 import {
   getEventLog,
   logAward,
@@ -252,6 +253,13 @@ const api = {
       });
     }
     eventLog.pruneOldSeasons(Math.max(1, currentSeason - 12));
+
+    // Wire injury events into the news feed
+    if (result.injuryEvents && result.injuryEvents.length > 0) {
+      const teamNameMap = buildTeamNameMap();
+      const injuryStories = generateInjuryNewsItems(result.injuryEvents, teamNameMap, currentSeason);
+      latestNewsFeed = sortNewsFeed([...latestNewsFeed, ...injuryStories]);
+    }
 
     // Invalidate cache (season data changed)
     cache.invalidate();
@@ -871,6 +879,16 @@ const api = {
 
   async getNewsFeed(): Promise<NewsStory[]> {
     return latestNewsFeed;
+  },
+
+  /**
+   * Return injury summary and IL roster for a specific team.
+   */
+  async getCurrentInjuries(teamId: number): Promise<{ summary: InjurySummary; roster: ReturnType<typeof getTeamInjuries> }> {
+    return {
+      summary: getInjurySummary(players, teamId),
+      roster: getTeamInjuries(players, teamId),
+    };
   },
 
   async getRecentEvents(limit = 40, teamId?: number): Promise<GameEvent[]> {

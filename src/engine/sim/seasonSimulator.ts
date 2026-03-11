@@ -5,6 +5,17 @@ import type { ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeasonStats } from '../../types/team';
 import type { SeasonResult } from '../../types/league';
+import { processSeasonInjuries, type InjuryEvent } from '../injuries';
+
+// ─── Season simulation result ─────────────────────────────────────────────────
+
+/**
+ * SeasonSimResult extends SeasonResult with injury events captured during
+ * the season. Injury events are piped to the news feed by the worker.
+ */
+export type SeasonSimResult = SeasonResult & {
+  injuryEvents: InjuryEvent[];
+};
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
@@ -117,8 +128,10 @@ export async function simulateSeason(
     userTeamId?: number;
     userLineupOrder?: number[];
     userRotationOrder?: number[];
+    injuryRateMultiplier?: number;
+    recoverySpeedMultiplier?: number;
   },
-): Promise<SeasonResult> {
+): Promise<SeasonSimResult> {
   const season = options?.season ?? new Date().getFullYear();
 
   // Build lookup maps for player metadata
@@ -288,6 +301,18 @@ export async function simulateSeason(
 
   const playerSeasons = Array.from(playerStatsMap.values());
 
+  // ── Post-process injuries ─────────────────────────────────────────────────
+  // Run injury simulation after the game loop using a deterministic seed.
+  // Results are returned so the worker can generate news stories for the feed.
+  const injuryEvents = processSeasonInjuries(
+    players,
+    schedule.length,
+    baseSeed,
+    season,
+    options?.injuryRateMultiplier,
+    options?.recoverySpeedMultiplier,
+  );
+
   return {
     season,
     teamSeasons,
@@ -297,6 +322,7 @@ export async function simulateSeason(
     leagueERA,
     leagueRPG,
     teamWinsSD,
+    injuryEvents,
   };
 }
 
