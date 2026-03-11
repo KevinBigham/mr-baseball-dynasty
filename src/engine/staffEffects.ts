@@ -138,3 +138,34 @@ export function computeStaffBonuses(staff: FOStaffMember[]): StaffBonuses {
     moraleBonus,
   };
 }
+
+// ─── Bridge: Simple CoachingStaff → StaffBonuses ─────────────────────────────
+// The game currently stores coaching as two quality numbers (0.3–0.7).
+// This bridge maps those into the full StaffBonuses interface until the
+// full FOStaffMember[] system is wired into the UI.
+
+import type { CoachingStaff } from '../types/team';
+
+/**
+ * Derive approximate StaffBonuses from the simple CoachingStaff quality numbers.
+ * Quality 0.3 → below average (penalties), 0.5 → neutral, 0.7 → above average (bonuses).
+ */
+export function bonusesFromCoaching(coaching: CoachingStaff): StaffBonuses {
+  const avgQuality = (coaching.hittingCoachQuality + coaching.pitchingCoachQuality) / 2;
+
+  // Map 0.3–0.7 quality range to bonus multipliers
+  // 0.3 → -0.2 shift, 0.5 → 0 shift, 0.7 → +0.2 shift
+  const shift = (avgQuality - 0.5) * 1.0;
+
+  return {
+    scoutingAccuracy: Math.max(0.5, Math.min(1.5, 1.0 + shift * 0.5)),
+    draftBoardQuality: Math.max(0, Math.min(1, 0.5 + shift * 0.5)),
+    hitterDevMultiplier: Math.max(0.7, Math.min(1.3, 1.0 + (coaching.hittingCoachQuality - 0.5) * 0.6)),
+    pitcherDevMultiplier: Math.max(0.7, Math.min(1.3, 1.0 + (coaching.pitchingCoachQuality - 0.5) * 0.6)),
+    injuryRateMultiplier: Math.max(0.7, Math.min(1.3, 1.0 - shift * 0.3)),
+    recoverySpeedMultiplier: Math.max(0.7, Math.min(1.3, 1.0 - shift * 0.3)),
+    tradeValueBonus: Math.round(shift * 10),
+    freeAgencyDiscount: Math.max(0, shift * 0.15),
+    moraleBonus: Math.max(0, Math.min(5, Math.round(shift * 5))),
+  };
+}
