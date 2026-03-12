@@ -107,7 +107,7 @@ export default function DevGradeCard({
       {/* Header */}
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>DEVELOPMENT GRADE</span>
-        <span className="text-gray-600 text-xs normal-case font-normal">
+        <span className="text-gray-500 text-xs normal-case font-normal">
           {DEV_SOURCES[sourceIdx]}
         </span>
       </div>

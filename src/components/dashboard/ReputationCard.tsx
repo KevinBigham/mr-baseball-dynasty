@@ -22,7 +22,7 @@ export default function ReputationCard() {
       {/* Header */}
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>FRANCHISE REPUTATION</span>
-        <span className="text-gray-600 text-xs normal-case font-normal">
+        <span className="text-gray-500 text-xs normal-case font-normal">
           {history.length} season{history.length !== 1 ? 's' : ''} evaluated
         </span>
       </div>
@@ -68,7 +68,7 @@ export default function ReputationCard() {
         <div className="grid grid-cols-4 gap-2">
           {rep.dimensions.map(dim => (
             <div key={dim.label} className="bloomberg-border bg-gray-900 px-2 py-2">
-              <div className="text-gray-600 text-xs">{dim.label}</div>
+              <div className="text-gray-500 text-xs">{dim.label}</div>
               <div className="font-black tabular-nums text-lg" style={{ color: dim.color }}>
                 {dim.score}
                 <span className="text-gray-700 font-normal text-xs">/{dim.max}</span>

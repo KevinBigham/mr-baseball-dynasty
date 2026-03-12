@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Shell from './components/layout/Shell';
 import SetupFlow from './components/setup/SetupFlow';
+import ToastContainer from './components/layout/ToastContainer';
 import { acquireTabLock } from './db/tabGuard';
 import { listSaves, loadGame } from './db/schema';
 import { getEngine } from './engine/engineClient';
@@ -76,5 +77,10 @@ export default function App() {
   }
 
   // Show setup wizard for new games; Shell for active dynasties
-  return gameStarted ? <Shell /> : <SetupFlow />;
+  return (
+    <>
+      {gameStarted ? <Shell /> : <SetupFlow />}
+      <ToastContainer />
+    </>
+  );
 }

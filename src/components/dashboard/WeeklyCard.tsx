@@ -150,6 +150,39 @@ function buildLeagueBuzz(result: SeasonResult): WeeklyStory {
   };
 }
 
+function buildSeasonOutlook(userWins: number, isChampion: boolean, isPlayoff: boolean): WeeklyStory {
+  if (isChampion) return {
+    column: 'SEASON OUTLOOK', icon: '🏆', color: '#fbbf24',
+    headline: 'Coming Off a Championship Season — Expectations Are Sky-High',
+    body: `Last year's title run changed everything. The organization is now the standard. Every move this offseason will be judged through the lens of defending a championship. Can the front office keep the machine running?`,
+  };
+  if (isPlayoff && userWins >= 95) return {
+    column: 'SEASON OUTLOOK', icon: '🔥', color: '#f97316',
+    headline: `${userWins} Wins Last Year — The Window Is Wide Open`,
+    body: `A dominant regular season and an October appearance. The core is intact. The pipeline is flowing. This franchise is positioned to make another deep run if the front office stays aggressive.`,
+  };
+  if (isPlayoff) return {
+    column: 'SEASON OUTLOOK', icon: '📈', color: '#4ade80',
+    headline: `Playoff Experience in the Bank — Build on It`,
+    body: `October baseball last season. The roster tasted the postseason and wants more. The offseason priorities are clear: shore up weaknesses and push for a deeper run.`,
+  };
+  if (userWins >= 82) return {
+    column: 'SEASON OUTLOOK', icon: '🎯', color: '#60a5fa',
+    headline: `A Winning Record — But October Was Missing`,
+    body: `A ${userWins}-win season without a playoff berth. The front office knows what the roster needs. The margin between watching October and playing in it was razor-thin.`,
+  };
+  if (userWins >= 72) return {
+    column: 'SEASON OUTLOOK', icon: '🔄', color: '#9ca3af',
+    headline: `Middling Finish — The Direction Must Clarify`,
+    body: `Last season's ${userWins}-win campaign put the franchise at a crossroads. Commit to contention or invest in the future? The offseason will reveal the front office's true philosophy.`,
+  };
+  return {
+    column: 'SEASON OUTLOOK', icon: '🏗️', color: '#6b7280',
+    headline: `After ${userWins} Wins — The Rebuild Demands Patience`,
+    body: `A rough campaign. But the front office is playing a longer game. Draft capital, prospect development, and payroll flexibility are the priorities now. The standings will follow.`,
+  };
+}
+
 // ─── Main generator ───────────────────────────────────────────────────────────
 
 export function buildWeeklyCard(
@@ -162,6 +195,7 @@ export function buildWeeklyCard(
 ): WeeklyStory[] {
   return [
     buildTopStory(result, userWins, isChampion, isPlayoff),
+    buildSeasonOutlook(userWins, isChampion, isPlayoff),
     buildPowerRankings(standings, userTeamId),
     buildProspectPipeline(result),
     buildHotSeatWatch(result, userWins),

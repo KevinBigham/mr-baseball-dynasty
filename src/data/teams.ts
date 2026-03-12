@@ -3,7 +3,7 @@ import type { Team } from '../types/team';
 // ─── 30 teams: 15 AL, 15 NL, 3 divisions each, 5 teams per division ─────────
 // Teams use fictional names and cities to avoid IP issues.
 
-export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullpenReliefCounter' | 'strategy'>[] = [
+export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullpenReliefCounter' | 'strategy' | 'conferenceId' | 'divisionId'>[] = [
   // ─── AMERICAN LEAGUE EAST ──────────────────────────────────────────
   { teamId: 1,  name: 'Admirals',   abbreviation: 'ADM', city: 'New Harbor',    league: 'AL', division: 'East', parkFactorId: 3,  budget: 200_000_000, scoutingQuality: 0.85, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.7 } },
   { teamId: 2,  name: 'Colonials',  abbreviation: 'COL', city: 'Capitol City',  league: 'AL', division: 'East', parkFactorId: 5,  budget: 185_000_000, scoutingQuality: 0.80, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.5 } },
@@ -15,7 +15,7 @@ export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullp
   { teamId: 7,  name: 'Crushers',   abbreviation: 'CRU', city: 'South City',    league: 'AL', division: 'Central', parkFactorId: 10, budget: 165_000_000, scoutingQuality: 0.75, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.5 } },
   { teamId: 8,  name: 'Foxes',      abbreviation: 'FOX', city: 'Prairie City',  league: 'AL', division: 'Central', parkFactorId: 13, budget: 115_000_000, scoutingQuality: 0.60, coaching: { hittingCoachQuality: 0.3, pitchingCoachQuality: 0.5 } },
   { teamId: 9,  name: 'Miners',     abbreviation: 'MIN', city: 'Twin Peaks',    league: 'AL', division: 'Central', parkFactorId: 9,  budget: 125_000_000, scoutingQuality: 0.65, coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.3 } },
-  { teamId: 10, name: 'Monarchs',   abbreviation: 'MON', city: 'Crown City',    league: 'AL', division: 'Central', parkFactorId: 21, budget: 155_000_000, scoutingQuality: 0.75, coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.7 } },
+  { teamId: 10, name: 'Stockyards', abbreviation: 'KCS', city: 'Kansas City',   league: 'AL', division: 'Central', parkFactorId: 21, budget: 155_000_000, scoutingQuality: 0.75, coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.7 } },
   // ─── AMERICAN LEAGUE WEST ───────────────────────────────────────────
   { teamId: 11, name: 'Gulls',      abbreviation: 'GUL', city: 'Bay City',      league: 'AL', division: 'West', parkFactorId: 1,  budget: 175_000_000, scoutingQuality: 0.85, coaching: { hittingCoachQuality: 0.7, pitchingCoachQuality: 0.7 } },
   { teamId: 12, name: 'Rattlers',   abbreviation: 'RAT', city: 'Desert City',   league: 'AL', division: 'West', parkFactorId: 17, budget: 115_000_000, scoutingQuality: 0.60, coaching: { hittingCoachQuality: 0.3, pitchingCoachQuality: 0.5 } },
@@ -42,12 +42,25 @@ export const INITIAL_TEAMS: Omit<Team, 'seasonRecord' | 'rotationIndex' | 'bullp
   { teamId: 30, name: 'Diamondbacks',abbreviation:'DIA', city: 'Sandstone Park', league: 'NL', division: 'West', parkFactorId: 17, budget: 145_000_000, scoutingQuality: 0.70, coaching: { hittingCoachQuality: 0.5, pitchingCoachQuality: 0.5 } },
 ];
 
+function conferenceIdForLeague(league: string): number {
+  return league === 'AL' ? 0 : 1;
+}
+
+function divisionIdForDivision(division: string): number {
+  return division === 'East' ? 0 : division === 'Central' ? 1 : 2;
+}
+
 export function buildInitialTeams(): Team[] {
   return INITIAL_TEAMS.map(t => ({
     ...t,
+    conferenceId: conferenceIdForLeague(t.league),
+    divisionId: divisionIdForDivision(t.division),
     seasonRecord: { wins: 0, losses: 0, runsScored: 0, runsAllowed: 0 },
     rotationIndex: 0,
     bullpenReliefCounter: 0,
     strategy: 'fringe' as const,
   }));
 }
+
+/** Pre-built initial teams array — used by the worker. */
+export const TEAMS: Team[] = buildInitialTeams();

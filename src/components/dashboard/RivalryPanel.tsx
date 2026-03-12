@@ -27,6 +27,10 @@ function RivalCard({ rival }: { rival: RivalRecord }) {
       <div
         className="px-3 py-2.5 flex items-center gap-3 cursor-pointer"
         onClick={() => setExpanded(e => !e)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={expanded}
       >
         {/* Team abbr */}
         <div
@@ -56,7 +60,7 @@ function RivalCard({ rival }: { rival: RivalRecord }) {
         {/* Heat + delta */}
         <div className="text-right shrink-0 min-w-[40px]">
           <div className="font-black text-sm tabular-nums" style={{ color: tier.color }}>
-            {rival.heat}<span className="text-gray-600 font-normal text-xs">/15</span>
+            {rival.heat}<span className="text-gray-500 font-normal text-xs">/15</span>
           </div>
           {rival.lastDelta !== 0 && (
             <div className="text-xs font-bold tabular-nums" style={{ color: deltaColor }}>
@@ -69,7 +73,7 @@ function RivalCard({ rival }: { rival: RivalRecord }) {
       {/* Expanded moments */}
       {expanded && (
         <div className="px-3 pb-3 space-y-1.5 border-t" style={{ borderColor: `${tier.color}22` }}>
-          <div className="text-gray-600 text-xs pt-2">{tier.desc}</div>
+          <div className="text-gray-500 text-xs pt-2">{tier.desc}</div>
           {rival.moments.length > 0 && (
             <div className="space-y-1 mt-1">
               <div className="text-gray-700 text-xs uppercase tracking-widest">Recent Moments</div>

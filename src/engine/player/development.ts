@@ -6,6 +6,8 @@ import {
 } from './attributes';
 import type { AgingCurve } from './attributes';
 import { gaussian } from '../math/prng';
+import type { DevAssignment } from '../devPrograms';
+import { DEV_PROGRAMS } from '../devPrograms';
 
 // ─── Aging delta for a single attribute ──────────────────────────────────────
 // Returns the deterministic component: positive = improvement, negative = decline.
@@ -56,10 +58,16 @@ function developHitterAttrs(
   age: number,
   sigma: number,
   workEthicFactor: number,
+  devAssignment?: DevAssignment,
 ): [HitterAttributes, RandomGenerator] {
   // Per-attribute noise is a fraction of player-level sigma
   const attrSigma = sigma * 0.55;
   const newAttrs  = { ...attrs };
+
+  // Look up the assigned dev program (if any and not 'balanced')
+  const program = devAssignment && devAssignment.program !== 'balanced'
+    ? DEV_PROGRAMS.find(p => p.id === devAssignment.program)
+    : undefined;
 
   // Standard numeric attributes on 0–550 scale
   const numericKeys: Array<keyof HitterAttributes> = [
@@ -72,7 +80,13 @@ function developHitterAttrs(
     if (!curve || (curve.riseRate === 0 && curve.declineRate === 0)) continue;
 
     const current = attrs[key] as number;
-    const delta   = agingDelta(curve, age);
+    let delta   = agingDelta(curve, age);
+
+    // Apply dev program boost/penalty
+    if (program) {
+      if (key === program.boostAttr) delta += program.boostAmount;
+      if (key === program.penaltyAttr) delta += program.penaltyAmount;
+    }
 
     let newVal: number;
     [newVal, gen] = developNumericAttr(gen, current, delta, attrSigma, workEthicFactor);
@@ -104,9 +118,15 @@ function developPitcherAttrs(
   age: number,
   sigma: number,
   workEthicFactor: number,
+  devAssignment?: DevAssignment,
 ): [PitcherAttributes, RandomGenerator] {
   const attrSigma = sigma * 0.55;
   const newAttrs  = { ...attrs, pitchTypeMix: { ...attrs.pitchTypeMix } };
+
+  // Look up the assigned dev program (if any and not 'balanced')
+  const program = devAssignment && devAssignment.program !== 'balanced'
+    ? DEV_PROGRAMS.find(p => p.id === devAssignment.program)
+    : undefined;
 
   const numericKeys: Array<keyof PitcherAttributes> = [
     'stuff', 'movement', 'command', 'stamina',
@@ -118,7 +138,13 @@ function developPitcherAttrs(
     if (!curve || (curve.riseRate === 0 && curve.declineRate === 0)) continue;
 
     const current = attrs[key] as number;
-    const delta   = agingDelta(curve, age);
+    let delta   = agingDelta(curve, age);
+
+    // Apply dev program boost/penalty
+    if (program) {
+      if (key === program.boostAttr) delta += program.boostAmount;
+      if (key === program.penaltyAttr) delta += program.penaltyAmount;
+    }
 
     let newVal: number;
     [newVal, gen] = developNumericAttr(gen, current, delta, attrSigma, workEthicFactor);
@@ -201,6 +227,8 @@ export interface DevelopmentEvent {
 export function developPlayer(
   player: Player,
   gen: RandomGenerator,
+  staffDevBonus?: { hitter: number; pitcher: number },
+  devAssignment?: DevAssignment,
 ): [Player, RandomGenerator, DevelopmentEvent | null] {
   // Already retired — no-op
   if (
@@ -217,7 +245,11 @@ export function developPlayer(
     ? (player.pitcherAttributes?.workEthic ?? 50)
     : (player.hitterAttributes?.workEthic  ?? 50);
   // workEthicFactor: 0.6 (low=20) → 1.4 (high=80), centered at 1.0 for 50
-  const workEthicFactor = 0.60 + (workEthic / 100) * 0.80;
+  let workEthicFactor = 0.60 + (workEthic / 100) * 0.80;
+  // Apply FO staff coaching bonus (e.g., 1.1 = 10% dev boost)
+  if (staffDevBonus) {
+    workEthicFactor *= player.isPitcher ? staffDevBonus.pitcher : staffDevBonus.hitter;
+  }
 
   // ── Retirement check ──────────────────────────────────────────────────────
   // Consume two RNG draws deterministically (one float, one float)
@@ -228,7 +260,7 @@ export function developPlayer(
   const overallDrop = Math.max(0, player.potential - player.overall);
   const retireProb  = retirementProbability(newAge, overallDrop);
 
-  if (newAge >= 35 && retireRoll < retireProb) {
+  if (newAge >= 45 || (newAge >= 35 && retireRoll < retireProb)) {
     const retired: Player = {
       ...player,
       age:         newAge,
@@ -248,11 +280,11 @@ export function developPlayer(
 
   if (player.hitterAttributes) {
     [newHitterAttrs, gen] = developHitterAttrs(
-      gen, player.hitterAttributes, newAge, sigma, workEthicFactor,
+      gen, player.hitterAttributes, newAge, sigma, workEthicFactor, devAssignment,
     );
   } else if (player.pitcherAttributes) {
     [newPitcherAttrs, gen] = developPitcherAttrs(
-      gen, player.pitcherAttributes, newAge, sigma, workEthicFactor,
+      gen, player.pitcherAttributes, newAge, sigma, workEthicFactor, devAssignment,
     );
   }
 
@@ -305,6 +337,8 @@ export function developPlayer(
 export function advanceOffseason(
   players: Player[],
   gen: RandomGenerator,
+  staffDevBonus?: { hitter: number; pitcher: number },
+  devAssignments?: Record<number, DevAssignment>,
 ): { players: Player[]; events: DevelopmentEvent[]; gen: RandomGenerator } {
   const events: DevelopmentEvent[] = [];
   const newPlayers: Player[] = [];
@@ -312,7 +346,8 @@ export function advanceOffseason(
   for (const player of players) {
     let event: DevelopmentEvent | null;
     let newPlayer: Player;
-    [newPlayer, gen, event] = developPlayer(player, gen);
+    const assignment = devAssignments?.[player.playerId];
+    [newPlayer, gen, event] = developPlayer(player, gen, staffDevBonus, assignment);
     newPlayers.push(newPlayer);
     if (event) events.push(event);
   }

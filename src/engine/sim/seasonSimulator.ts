@@ -1,14 +1,17 @@
 import { createPRNG } from '../math/prng';
 import { simulateGame } from './gameSimulator';
 import type { SimulateGameInput } from './gameSimulator';
-import type { ScheduleEntry } from '../../types/game';
-import type { Player, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
-import type { Team, TeamSeasonStats } from '../../types/team';
-import type { SeasonResult } from '../../types/league';
+import type { GameResult, ScheduleEntry } from '../../types/game';
+import type { Player, PlayerSeason, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
+import type { Team, TeamSeason, TeamSeasonStats } from '../../types/team';
+import type { SeasonResult } from '../../types/league'; // used internally by simulateSeasonFromSchedule
+import type { RandomGenerator } from '../math/prng';
+import { processSeasonInjuries, type InjuryEvent } from '../injuries';
+import { generateScheduleTemplate } from '../../data/scheduleTemplate';
 
 // ─── Blank stat accumulators ──────────────────────────────────────────────────
 
-function blankPlayerSeason(playerId: number, teamId: number, season: number): PlayerSeasonStats {
+export function blankPlayerSeason(playerId: number, teamId: number, season: number): PlayerSeasonStats {
   return {
     playerId,
     teamId,
@@ -23,7 +26,7 @@ function blankPlayerSeason(playerId: number, teamId: number, season: number): Pl
   };
 }
 
-function getOrCreate(
+export function getOrCreate(
   map: Map<number, PlayerSeasonStats>,
   playerId: number,
   teamId: number,
@@ -37,10 +40,10 @@ function getOrCreate(
 
 // ─── Season accumulation helpers ──────────────────────────────────────────────
 
-function accumulateBatting(
+export function accumulateBatting(
   statsMap: Map<number, PlayerSeasonStats>,
   playerGameStats: Array<{ playerId: number; pa: number; ab: number; r: number; h: number;
-    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number }>,
+    doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number; hbp?: number }>,
   playerTeamMap: Map<number, number>,
   season: number,
 ): void {
@@ -58,10 +61,11 @@ function accumulateBatting(
     s.rbi   += gs.rbi;
     s.bb    += gs.bb;
     s.k     += gs.k;
+    s.hbp   += gs.hbp ?? 0;
   }
 }
 
-function accumulatePitching(
+export function accumulatePitching(
   statsMap: Map<number, PlayerSeasonStats>,
   pitcherGameStats: PitcherGameStats[],
   playerTeamMap: Map<number, number>,
@@ -96,23 +100,31 @@ function accumulatePitching(
 
 // ─── Standard deviation helper ────────────────────────────────────────────────
 
-function stddev(values: number[]): number {
+export function stddev(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
   return Math.sqrt(variance);
 }
 
-// ─── Main season simulator ────────────────────────────────────────────────────
+// ─── Main season simulator (schedule-based, internal) ────────────────────────
 
-export async function simulateSeason(
+async function simulateSeasonFromSchedule(
   teams: Team[],
   players: Player[],
   schedule: ScheduleEntry[],
   baseSeed: number,
   onProgress?: (pct: number) => void,
+  options?: {
+    season?: number;
+    userTeamId?: number;
+    userLineupOrder?: number[];
+    userRotationOrder?: number[];
+    injuryRateMultiplier?: number;
+    recoverySpeedMultiplier?: number;
+  },
 ): Promise<SeasonResult> {
-  const season = new Date().getFullYear(); // Caller should pass season number; use current year as fallback
+  const season = options?.season ?? new Date().getFullYear();
 
   // Build lookup maps for player metadata
   const playerTeamMap = new Map<number, number>();
@@ -181,6 +193,9 @@ export async function simulateSeason(
       bullpenReliefCounter: bullpenOffset.get(entry.awayTeamId) ?? 0,
     };
 
+    const isUserGame = options?.userTeamId !== undefined &&
+      (entry.homeTeamId === options.userTeamId || entry.awayTeamId === options.userTeamId);
+
     const input: SimulateGameInput = {
       gameId: entry.gameId,
       season,
@@ -189,6 +204,11 @@ export async function simulateSeason(
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      ...(isUserGame ? {
+        userTeamId: options!.userTeamId,
+        userLineupOrder: options!.userLineupOrder,
+        userRotationOrder: options!.userRotationOrder,
+      } : {}),
     };
 
     const result = simulateGame(input);
@@ -273,6 +293,18 @@ export async function simulateSeason(
 
   const playerSeasons = Array.from(playerStatsMap.values());
 
+  // ── Post-process injuries ─────────────────────────────────────────────────
+  // Run injury simulation after the game loop using a deterministic seed.
+  // Results are returned so the worker can generate news stories for the feed.
+  const injuryEvents = processSeasonInjuries(
+    players,
+    schedule.length,
+    baseSeed,
+    season,
+    options?.injuryRateMultiplier,
+    options?.recoverySpeedMultiplier,
+  );
+
   return {
     season,
     teamSeasons,
@@ -282,6 +314,7 @@ export async function simulateSeason(
     leagueERA,
     leagueRPG,
     teamWinsSD,
+    injuryEvents,
   };
 }
 
@@ -308,3 +341,121 @@ export function resetSeasonCounters(players: Player[]): void {
     player.rosterData.demotionsThisSeason      = 0;
   }
 }
+
+// ─── Worker-compatible season sim result ─────────────────────────────────────
+// The worker uses a richer result shape with TeamSeason[] and Map<number, PlayerSeason>.
+
+export interface SeasonSimResult {
+  teamSeasons: TeamSeason[];
+  playerSeasons: Map<number, PlayerSeason>;
+  gameResults: GameResult[];
+  gen: RandomGenerator;
+  leagueGamesOnIL: number;
+  injuryEvents: InjuryEvent[];
+}
+
+/**
+ * Worker-facing simulateSeason. Generates the schedule internally and returns
+ * a SeasonSimResult (worker-compatible shape) including injury events.
+ */
+export async function simulateSeason(
+  teams: Team[],
+  players: Player[],
+  _season: number,
+  baseSeed: number,
+  onProgress?: (complete: number, total: number) => void,
+  _options?: { injuryRiskMultipliers?: Map<number, number> },
+): Promise<SeasonSimResult> {
+  const schedule = generateScheduleTemplate();
+  const total = schedule.length;
+
+  const result = await simulateSeasonFromSchedule(teams, players, schedule, baseSeed, onProgress
+    ? (pct: number) => onProgress(Math.round(pct * total), total)
+    : undefined,
+    { season: _season },
+  );
+
+  // Convert TeamSeasonStats[] → TeamSeason[]
+  const teamSeasons: TeamSeason[] = result.teamSeasons.map(ts => ({
+    teamId: ts.teamId,
+    season: ts.season,
+    wins: ts.record.wins,
+    losses: ts.record.losses,
+    runsScored: ts.record.runsScored,
+    runsAllowed: ts.record.runsAllowed,
+    divisionRank: 0, // computed later
+    playoffResult: null,
+  }));
+
+  // Assign division ranks
+  const byDiv = new Map<string, typeof teamSeasons>();
+  for (const ts of teamSeasons) {
+    const team = teams.find(t => t.teamId === ts.teamId);
+    const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
+    const arr = byDiv.get(key) ?? [];
+    arr.push(ts);
+    byDiv.set(key, arr);
+  }
+  for (const div of byDiv.values()) {
+    div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    div.forEach((ts, i) => { ts.divisionRank = i + 1; });
+  }
+
+  // Convert PlayerSeasonStats[] → Map<number, PlayerSeason>
+  const playerSeasons = new Map<number, PlayerSeason>();
+  for (const ps of result.playerSeasons) {
+    playerSeasons.set(ps.playerId, {
+      playerId: ps.playerId,
+      teamId: ps.teamId,
+      season: ps.season,
+      ab: ps.ab,
+      hits: ps.h,
+      hr: ps.hr,
+      rbi: ps.rbi,
+      runs: ps.r,
+      ip: ps.outs / 3,
+      earnedRuns: ps.er,
+      wins: ps.w,
+      losses: ps.l,
+      kPitching: ps.ka,
+      saves: ps.sv,
+    });
+  }
+
+  // Build simplified game results
+  const gameResults: GameResult[] = schedule.map((entry) => ({
+    gameId: entry.gameId,
+    homeTeamId: entry.homeTeamId,
+    awayTeamId: entry.awayTeamId,
+    homeScore: 0,
+    awayScore: 0,
+    innings: 9,
+    boxScore: {
+      gameId: entry.gameId,
+      season: _season,
+      date: entry.date,
+      homeTeamId: entry.homeTeamId,
+      awayTeamId: entry.awayTeamId,
+      homeScore: 0,
+      awayScore: 0,
+      innings: 9,
+      homeBatting: [],
+      awayBatting: [],
+      homePitching: [],
+      awayPitching: [],
+    },
+  }));
+
+  return {
+    teamSeasons,
+    playerSeasons,
+    gameResults,
+    gen: createPRNG(baseSeed + _season + 99),
+    leagueGamesOnIL: 0,
+    injuryEvents: result.injuryEvents ?? [],
+  };
+}
+
+// Backward-compat alias used by smoke tests and older imports
+export { simulateSeason as simulateSeasonForWorker };
+export { simulateSeasonFromSchedule };

@@ -24,6 +24,7 @@ export interface SeasonArc {
   chapterDesc:  string;       // one-liner for this season's chapter
   resolution:   string | null; // Post-sim narrative resolution (null if pre-sim)
   arcType:      ArcType;
+  reasoning:    string[];     // 2-4 short sentences explaining why this arc
 }
 
 export type ArcType =
@@ -370,6 +371,69 @@ export function detectArcType(
   return avgWins >= 81 ? 'contender' : 'rebuild_begins';
 }
 
+// ─── Arc reasoning builder ────────────────────────────────────────────────────
+
+export function buildArcReasoning(
+  arcType:        ArcType,
+  history:        SeasonSummary[],
+  ownerPatience:  number,
+  seasonsManaged: number,
+): string[] {
+  const titles   = history.filter(s => s.playoffResult === 'Champion').length;
+  const playoffs = history.filter(s => s.playoffResult !== null).length;
+  const totalWins = history.reduce((s, x) => s + x.wins, 0);
+  const avgWins   = history.length > 0 ? Math.round(totalWins / history.length) : 0;
+  const lastWins  = history[0]?.wins;
+
+  const lines: string[] = [];
+
+  // Tenure line
+  if (seasonsManaged === 0) {
+    lines.push('First season at the helm — everything starts here.');
+  } else {
+    lines.push(`${seasonsManaged} season${seasonsManaged > 1 ? 's' : ''} managed under your watch.`);
+  }
+
+  // Championships
+  if (titles > 0) lines.push(`${titles} championship${titles > 1 ? 's' : ''} in franchise history.`);
+  if (playoffs > 0 && titles === 0) lines.push(`${playoffs} playoff appearance${playoffs > 1 ? 's' : ''}, still chasing the first ring.`);
+
+  // Winning trajectory
+  if (history.length >= 2) {
+    lines.push(`Average wins: ${avgWins} over tenure.`);
+  }
+
+  // Last season context
+  if (lastWins !== undefined && history.length > 0) {
+    if (lastWins >= 95) lines.push(`Coming off a dominant ${lastWins}-win campaign.`);
+    else if (lastWins >= 85) lines.push(`Last season: solid ${lastWins}-win year.`);
+    else if (lastWins < 70) lines.push(`Coming off a tough ${lastWins}-win season.`);
+  }
+
+  // Owner patience
+  if (ownerPatience <= 30) lines.push(`Owner patience critically low at ${ownerPatience}%.`);
+  else if (ownerPatience >= 80) lines.push(`Strong ownership confidence at ${ownerPatience}%.`);
+
+  // Arc-specific
+  const arcSpecific: Partial<Record<ArcType, string>> = {
+    dynasty_rising:  'Rising trajectory — the organization is ascending.',
+    dynasty_peak:    'Multiple titles define the era.',
+    dynasty_defense: 'Defending champions carry the weight of expectations.',
+    contender:       'Roster is built to compete right now.',
+    window_closing:  'Core aging — the competitive window narrows.',
+    last_stand:      'Ownership demands immediate results.',
+    rebuild_begins:  'Franchise is investing in the future, not the present.',
+    rebuild_progress:'The rebuild is producing tangible results.',
+    dark_horse:      'Low expectations externally, high belief internally.',
+    underdog:        'Competing against bigger payrolls and louder rosters.',
+    bounce_back:     'Last season demands a better response.',
+    transition:      'Between eras — the next identity is being forged.',
+  };
+  if (arcSpecific[arcType]) lines.push(arcSpecific[arcType]!);
+
+  return lines.slice(0, 4);
+}
+
 // ─── Arc generation ───────────────────────────────────────────────────────────
 
 export function generateSeasonArc(
@@ -403,6 +467,8 @@ export function generateSeasonArc(
     }
   }
 
+  const reasoning = buildArcReasoning(arcType, history, ownerPatience, seasonsManaged);
+
   return {
     title: def.title,
     subtitle,
@@ -412,5 +478,6 @@ export function generateSeasonArc(
     chapterDesc,
     resolution,
     arcType,
+    reasoning,
   };
 }

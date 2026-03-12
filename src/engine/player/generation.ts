@@ -245,7 +245,7 @@ function initRosterData(
 }
 
 // ─── Generate single player ────────────────────────────────────────────────────
-function generatePlayer(
+export function generatePlayer(
   gen: RandomGenerator,
   teamId: number,
   pos: Position,
@@ -315,15 +315,31 @@ function generatePlayer(
     : age <= 32 ? 'prime'
     : 'decline';
 
+  const nameParts = name.split(' ');
+  const firstName = nameParts[0] ?? name;
+  const lastName = nameParts.slice(1).join(' ') || name;
+
+  const leagueLevel = level === 'MLB' ? 'MLB'
+    : level === 'AAA' ? 'AAA'
+    : level === 'AA' ? 'AA'
+    : level === 'APLUS' ? 'A+'
+    : level === 'AMINUS' ? 'A-'
+    : level === 'ROOKIE' ? 'Rookie'
+    : level === 'INTL' ? 'Intl'
+    : 'MLB';
+
   const player: Player = {
     playerId:          id,
     teamId,
     name,
+    firstName,
+    lastName,
     age,
     position:          pos,
     bats,
     throws,
     nationality,
+    leagueLevel,
     isPitcher,
     hitterAttributes,
     pitcherAttributes,
@@ -449,4 +465,24 @@ export function generateLeaguePlayers(
   }
 
   return [allPlayers, gen];
+}
+
+/**
+ * Generate a full league roster given team IDs.
+ * Worker-compatible interface: returns { players, gen }.
+ */
+export function generateAllPlayers(
+  gen: RandomGenerator,
+  teamIds: number[],
+): { players: Player[]; gen: RandomGenerator } {
+  resetPlayerIdCounter(1);
+  const allPlayers: Player[] = [];
+
+  for (const teamId of teamIds) {
+    let roster: Player[];
+    [roster, gen] = generateTeamRoster(gen, teamId, 1);
+    allPlayers.push(...roster);
+  }
+
+  return { players: allPlayers, gen };
 }

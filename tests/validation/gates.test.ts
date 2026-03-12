@@ -18,7 +18,7 @@ import { createPRNG } from '../../src/engine/math/prng';
 import { generateLeaguePlayers } from '../../src/engine/player/generation';
 import { buildInitialTeams } from '../../src/data/teams';
 import { generateScheduleTemplate } from '../../src/data/scheduleTemplate';
-import { simulateSeason } from '../../src/engine/sim/seasonSimulator';
+import { simulateSeasonFromSchedule as simulateSeason } from '../../src/engine/sim/seasonSimulator';
 import { simulateGame } from '../../src/engine/sim/gameSimulator';
 import { pearsonCorrelation } from '../../src/utils/helpers';
 import { GATES } from '../../src/utils/constants';
@@ -177,8 +177,13 @@ describe('Gate 11 — Determinism', () => {
     const [p] = generateLeaguePlayers(createPRNG(42), t, 2026);
     const schedule = generateScheduleTemplate();
 
-    const r1 = await simulateSeason(t, p, schedule, 99);
-    const r2 = await simulateSeason(t, p, schedule, 99);
+    // Deep-clone players for each run so injury mutations from run 1
+    // don't contaminate run 2's starting state.
+    const p1 = JSON.parse(JSON.stringify(p));
+    const p2 = JSON.parse(JSON.stringify(p));
+
+    const r1 = await simulateSeason(t, p1, schedule, 99);
+    const r2 = await simulateSeason(t, p2, schedule, 99);
 
     const wins1 = r1.teamSeasons.map(ts => ts.record.wins).join(',');
     const wins2 = r2.teamSeasons.map(ts => ts.record.wins).join(',');

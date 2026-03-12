@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import type { FOStaffMember, StartModeId } from '../types/frontOffice';
 import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 
-export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'frontOffice';
+export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
+export type GamePhase = 'preseason' | 'in_season' | 'simulating' | 'postseason' | 'offseason' | 'fired';
+export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
 interface GameStore {
   // ── Core game state ──────────────────────────────────────────────────────────
@@ -12,6 +14,8 @@ interface GameStore {
   simProgress:   number;   // 0–1
   gameStarted:   boolean;
   seasonsManaged: number;
+  gamePhase:     GamePhase;
+  seasonPhase:   SeasonPhase;
 
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
@@ -30,12 +34,25 @@ interface GameStore {
   // ── Breakout Watch ───────────────────────────────────────────────────────────
   breakoutWatch:   BreakoutCandidate[];
 
+  // ── In-Season Pacing ────────────────────────────────────────────────────────
+  currentSegment:    number;           // 0-4 (which segment was just completed)
+  inSeasonPaused:    boolean;          // true when awaiting user action between chunks
+  segmentUserRecord: { wins: number; losses: number } | null;
+  currentSeasonDate: string | null;    // ISO date of next unplayed game (e.g., "2026-04-15")
+  gamesCompleted:    number;           // total schedule entries completed
+  totalGames:        number;           // total schedule entries in season
+
+  // ── Tutorial ───────────────────────────────────────────────────────────────────
+  tutorialActive:  boolean;
+
   // ── Setters ───────────────────────────────────────────────────────────────────
   setSeason:          (s: number) => void;
   setUserTeamId:      (id: number) => void;
   setSimulating:      (v: boolean) => void;
   setSimProgress:     (v: number) => void;
   setGameStarted:     (v: boolean) => void;
+  setGamePhase:       (p: GamePhase) => void;
+  setSeasonPhase:     (p: SeasonPhase) => void;
   incrementSeasonsManaged: () => void;
 
   setSetupScreen:     (s: SetupScreen) => void;
@@ -55,6 +72,18 @@ interface GameStore {
   adjustTeamMorale:   (delta: number) => void;
 
   setBreakoutWatch:   (candidates: BreakoutCandidate[]) => void;
+
+  setCurrentSegment:    (n: number) => void;
+  setInSeasonPaused:    (v: boolean) => void;
+  setSegmentUserRecord: (r: { wins: number; losses: number } | null) => void;
+  setCurrentSeasonDate: (d: string | null) => void;
+  setGamesCompleted:    (n: number) => void;
+  setTotalGames:        (n: number) => void;
+
+  setTutorialActive:  (v: boolean) => void;
+
+  // ── Reset ───────────────────────────────────────────────────────────────────
+  resetAll:           () => void;
 }
 
 export const useGameStore = create<GameStore>(set => ({
@@ -65,6 +94,8 @@ export const useGameStore = create<GameStore>(set => ({
   simProgress:     0,
   gameStarted:     false,
   seasonsManaged:  0,
+  gamePhase:       'preseason',
+  seasonPhase:     'early',
 
   setupScreen:     'title',
   startMode:       'instant',
@@ -79,12 +110,23 @@ export const useGameStore = create<GameStore>(set => ({
 
   breakoutWatch:   [],
 
+  currentSegment:    -1,
+  inSeasonPaused:    false,
+  segmentUserRecord: null,
+  currentSeasonDate: null,
+  gamesCompleted:    0,
+  totalGames:        0,
+
+  tutorialActive:  false,
+
   // ── Core setters ─────────────────────────────────────────────────────────────
   setSeason:       season      => set({ season }),
   setUserTeamId:   id          => set({ userTeamId: id }),
   setSimulating:   v           => set({ isSimulating: v }),
   setSimProgress:  v           => set({ simProgress: v }),
   setGameStarted:  v           => set({ gameStarted: v }),
+  setGamePhase:    p           => set({ gamePhase: p }),
+  setSeasonPhase:  p           => set({ seasonPhase: p }),
   incrementSeasonsManaged: ()  => set(state => ({ seasonsManaged: state.seasonsManaged + 1 })),
 
   // ── Setup setters ─────────────────────────────────────────────────────────────
@@ -119,4 +161,43 @@ export const useGameStore = create<GameStore>(set => ({
 
   // ── Breakout watch ────────────────────────────────────────────────────────────
   setBreakoutWatch: candidates => set({ breakoutWatch: candidates }),
+
+  // ── In-season pacing ──────────────────────────────────────────────────────────
+  setCurrentSegment:    n => set({ currentSegment: n }),
+  setInSeasonPaused:    v => set({ inSeasonPaused: v }),
+  setSegmentUserRecord: r => set({ segmentUserRecord: r }),
+  setCurrentSeasonDate: d => set({ currentSeasonDate: d }),
+  setGamesCompleted:    n => set({ gamesCompleted: n }),
+  setTotalGames:        n => set({ totalGames: n }),
+
+  // ── Tutorial ────────────────────────────────────────────────────────────────────
+  setTutorialActive: v => set({ tutorialActive: v }),
+
+  // ── Reset all (new game) ──────────────────────────────────────────────────────
+  resetAll: () => set({
+    season: 2026,
+    userTeamId: 6,
+    isSimulating: false,
+    simProgress: 0,
+    gameStarted: false,
+    seasonsManaged: 0,
+    gamePhase: 'preseason' as GamePhase,
+    seasonPhase: 'early' as SeasonPhase,
+    setupScreen: 'title' as SetupScreen,
+    startMode: 'instant' as StartModeId,
+    frontOffice: [],
+    foBudget: 15,
+    difficulty: 'normal' as const,
+    ownerArchetype: 'patient_builder' as OwnerArchetype,
+    ownerPatience: 70,
+    teamMorale: 65,
+    breakoutWatch: [],
+    currentSegment: -1,
+    inSeasonPaused: false,
+    segmentUserRecord: null,
+    currentSeasonDate: null,
+    gamesCompleted: 0,
+    totalGames: 0,
+    tutorialActive: false,
+  }),
 }));

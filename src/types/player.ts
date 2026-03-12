@@ -53,6 +53,20 @@ export interface DevelopmentData {
   phase: 'prospect' | 'ascent' | 'prime' | 'decline' | 'retirement';
 }
 
+// ─── Injury data ─────────────────────────────────────────────────────────────
+
+export type InjurySeverity = 'minor' | 'moderate' | 'severe';
+
+export interface InjuryRecord {
+  type: string;                   // e.g. "Hamstring strain", "UCL tear"
+  description: string;            // Narrative sentence
+  severity: InjurySeverity;
+  ilDays: number;                 // 10, 60, or 120+
+  recoveryDaysRemaining: number;  // Ticks down each game day
+  gameInjured: number;            // Game number in the schedule (0–2429)
+  season: number;
+}
+
 // ─── Roster / contract data ───────────────────────────────────────────────────
 export type RosterStatus =
   | 'MLB_ACTIVE'
@@ -89,6 +103,7 @@ export interface PlayerRosterData {
   arbitrationEligible: boolean;
   freeAgentEligible: boolean;
   hasTenAndFive: boolean;
+  currentInjury?: InjuryRecord;
 }
 
 // ─── Full Player type ─────────────────────────────────────────────────────────
@@ -96,11 +111,14 @@ export interface Player {
   playerId: number;
   teamId: number;       // -1 = free agent
   name: string;
+  firstName: string;
+  lastName: string;
   age: number;
   position: Position;
   bats: BatSide;
   throws: ThrowSide;
   nationality: 'american' | 'latin' | 'asian';
+  leagueLevel: string;  // e.g. 'MLB', 'AAA', 'AA', 'Rookie'
 
   // Attributes: exactly one set populated based on isPitcher
   isPitcher: boolean;
@@ -121,6 +139,7 @@ export interface PlayerGameStats {
   pa: number; ab: number; r: number; h: number;
   doubles: number; triples: number; hr: number;
   rbi: number; bb: number; k: number; sb: number; cs: number;
+  hbp: number;
 }
 
 export interface PitcherGameStats {
@@ -145,4 +164,27 @@ export interface PlayerSeasonStats {
   gp: number; gs: number; outs: number; // outs pitched
   ha: number; ra: number; er: number; bba: number; ka: number; hra: number;
   pitchCount: number;
+}
+
+/**
+ * Worker-internal season stats shape (richer than PlayerSeasonStats).
+ * Maps to the latestPlayerSeasons accumulator in the worker.
+ */
+export interface PlayerSeason {
+  playerId: number;
+  teamId: number;
+  season: number;
+  // Batting
+  ab: number;
+  hits: number;
+  hr: number;
+  rbi: number;
+  runs: number;
+  // Pitching
+  ip: number;          // innings pitched (fractional)
+  earnedRuns: number;
+  wins: number;
+  losses: number;
+  kPitching: number;
+  saves: number;
 }

@@ -145,6 +145,24 @@ _userTeamId: number,
       isUserTeam: false, weight: 4,
     });
   }
+  if (result.awards?.cyYoungAL) {
+    const cy = result.awards.cyYoungAL;
+    moments.push({
+      id: mid(s, 'cy-al'), season: s, category: 'record', icon: '📈',
+      headline: `${cy.name} Claims AL Cy Young`,
+      detail: `Dominant pitching earns AL Cy Young honors. ${cy.statLine}`,
+      isUserTeam: false, weight: 4,
+    });
+  }
+  if (result.awards?.cyYoungNL) {
+    const cy = result.awards.cyYoungNL;
+    moments.push({
+      id: mid(s, 'cy-nl'), season: s, category: 'record', icon: '📈',
+      headline: `${cy.name} Wins NL Cy Young`,
+      detail: `NL Cy Young — an arm that carried the staff all season. ${cy.statLine}`,
+      isUserTeam: false, weight: 4,
+    });
+  }
   if (result.awards?.royAL) {
     const roy = result.awards.royAL;
     moments.push({

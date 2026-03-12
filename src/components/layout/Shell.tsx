@@ -1,46 +1,135 @@
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 import { useGameStore } from '../../store/gameStore';
+import { useLeagueStore } from '../../store/leagueStore';
 import Dashboard from '../dashboard/Dashboard';
-import StandingsView from '../dashboard/StandingsTable';
-import RosterView from '../roster/RosterView';
-import Leaderboards from '../stats/Leaderboards';
-import PlayerProfile from '../stats/PlayerProfile';
+import { getEngine } from '../../engine/engineClient';
+import { saveGame } from '../../db/schema';
+import SaveManager from './SaveManager';
+import CompareModal from '../stats/CompareModal';
+import ErrorBoundary from './ErrorBoundary';
+import OfflineIndicator from './OfflineIndicator';
+import FiredScreen from '../dashboard/FiredScreen';
+import MobileNav from './MobileNav';
+import LoadingFallback from './LoadingFallback';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+
+// Lazy-load tab-level route components for bundle optimization
+const StandingsView = lazy(() => import('../dashboard/StandingsTable'));
+const RosterView    = lazy(() => import('../roster/RosterView'));
+const Leaderboards  = lazy(() => import('../stats/Leaderboards'));
+const PlayerProfile = lazy(() => import('../stats/PlayerProfile'));
+const FinanceView   = lazy(() => import('../stats/FinanceView'));
+const HistoryView   = lazy(() => import('../stats/HistoryView'));
 
 const NAV_TABS: Array<{ id: NavTab; label: string }> = [
   { id: 'dashboard',  label: 'HOME' },
   { id: 'standings',  label: 'STANDINGS' },
   { id: 'roster',     label: 'ROSTER' },
   { id: 'stats',      label: 'LEADERBOARDS' },
+  { id: 'finance',    label: 'FINANCES' },
+  { id: 'history',    label: 'HISTORY' },
   { id: 'profile',    label: 'PLAYER' },
 ];
 
 export default function Shell() {
   const { activeTab, setActiveTab } = useUIStore();
-  const { season, isSimulating, simProgress } = useGameStore();
+  const { season, userTeamId, isSimulating, simProgress, gamePhase, resetAll: resetGame } = useGameStore();
+  const { resetAll: resetLeague } = useLeagueStore();
+  const [saveFlash, setSaveFlash] = useState(false);
+  const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [showSaveManager, setShowSaveManager] = useState(false);
+
+  // ESC to close topmost modal
+  useEscapeKey(useCallback(() => {
+    if (showSaveManager) setShowSaveManager(false);
+    else if (showNewGameConfirm) setShowNewGameConfirm(false);
+  }, [showSaveManager, showNewGameConfirm]));
+
+  const handleSave = useCallback(async () => {
+    try {
+      const engine = getEngine();
+      const state = await engine.getFullState();
+      if (state) {
+        await saveGame(state, `Manual Save — S${season}`, `Team ${userTeamId}`);
+        setSaveFlash(true);
+        setTimeout(() => setSaveFlash(false), 2000);
+      }
+    } catch {
+      useUIStore.getState().addToast('Save failed', 'error');
+    }
+  }, [season, userTeamId]);
+
+  const handleNewGame = useCallback(() => {
+    resetGame();
+    resetLeague();
+    setShowNewGameConfirm(false);
+  }, [resetGame, resetLeague]);
 
   const renderContent = () => {
+    const wrap = (child: JSX.Element) => (
+      <ErrorBoundary partial>
+        <Suspense fallback={<LoadingFallback />}>{child}</Suspense>
+      </ErrorBoundary>
+    );
     switch (activeTab) {
       case 'dashboard':  return <Dashboard />;
-      case 'standings':  return <StandingsView />;
-      case 'roster':     return <RosterView />;
-      case 'stats':      return <Leaderboards />;
-      case 'profile':    return <PlayerProfile />;
+      case 'standings':  return wrap(<StandingsView />);
+      case 'roster':     return wrap(<RosterView />);
+      case 'stats':      return wrap(<Leaderboards />);
+      case 'finance':    return wrap(<FinanceView />);
+      case 'history':    return wrap(<HistoryView />);
+      case 'profile':    return wrap(<PlayerProfile />);
       default:           return <Dashboard />;
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
+      {/* ── Skip to content (a11y) ────────────────────────────────── */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-orange-600 focus:text-black focus:px-4 focus:py-2 focus:text-xs focus:font-bold"
+      >
+        Skip to content
+      </a>
+
+      {/* ── New Game Confirmation Modal ────────────────────────────── */}
+      {showNewGameConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="new-game-title">
+          <div className="bloomberg-border bg-gray-900 p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
+            <div id="new-game-title" className="text-orange-500 font-bold text-xs tracking-widest mb-4">NEW GAME</div>
+            <p className="text-gray-400 text-sm mb-6">
+              Are you sure? This will end your current dynasty. Make sure you've saved first.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleNewGame}
+                className="flex-1 bg-red-700 hover:bg-red-600 text-white font-bold text-xs py-3 uppercase tracking-widest"
+              >
+                START OVER
+              </button>
+              <button
+                onClick={() => setShowNewGameConfirm(false)}
+                className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-3 uppercase tracking-widest"
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header bar ──────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-2 bg-black border-b border-gray-800 shrink-0">
-        <div className="flex items-center gap-4">
-          <span className="text-orange-500 font-bold text-sm tracking-widest">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-600 text-xs">⚾</span>
-          <span className="text-gray-500 text-xs">SEASON {season}</span>
+      <header className="flex items-center justify-between px-2 sm:px-4 py-2 bg-black border-b border-gray-800 shrink-0" role="banner">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <span className="text-orange-500 font-bold text-xs sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
+          <span className="text-gray-500 text-xs hidden sm:inline">⚾</span>
+          <span className="text-gray-500 text-xs">S{season}</span>
         </div>
         {isSimulating && (
-          <div className="flex items-center gap-2">
-            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden">
+          <div className="flex items-center gap-2" aria-live="polite" role="status">
+            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden" role="progressbar" aria-valuenow={Math.round(simProgress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Simulation progress">
               <div
                 className="h-full bg-orange-500 transition-all duration-200"
                 style={{ width: `${Math.round(simProgress * 100)}%` }}
@@ -49,13 +138,42 @@ export default function Shell() {
             <span className="text-orange-400 text-xs animate-pulse">SIMULATING…</span>
           </div>
         )}
-        <span className="text-gray-600 text-xs hidden sm:block">
-          v0.1 — ENGINE PROOF
-        </span>
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          <OfflineIndicator />
+          <span aria-live="assertive">
+            {saveFlash && (
+              <span className="text-green-400 text-xs font-bold tracking-wider animate-pulse">SAVED</span>
+            )}
+          </span>
+          <button
+            onClick={handleSave}
+            className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            aria-label="Save game"
+          >
+            SAVE
+          </button>
+          <button
+            onClick={() => setShowSaveManager(true)}
+            className="border border-gray-700 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            aria-label="Load game"
+          >
+            LOAD
+          </button>
+          <button
+            onClick={() => setShowNewGameConfirm(true)}
+            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0 hidden sm:block"
+            aria-label="Start new game"
+          >
+            NEW GAME
+          </button>
+        </div>
       </header>
 
-      {/* ── Nav bar ─────────────────────────────────────────────────── */}
-      <nav className="flex border-b border-gray-800 bg-gray-950 shrink-0">
+      {/* ── Mobile Nav (hamburger) ─────────────────────────────────── */}
+      <MobileNav onNewGame={() => setShowNewGameConfirm(true)} />
+
+      {/* ── Desktop Nav bar ─────────────────────────────────────────── */}
+      <nav className="hidden sm:flex border-b border-gray-800 bg-gray-950 shrink-0" role="navigation" aria-label="Main navigation">
         {NAV_TABS.map(tab => (
           <button
             key={tab.id}
@@ -66,6 +184,7 @@ export default function Shell() {
                 ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
                 : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
             ].join(' ')}
+            aria-current={activeTab === tab.id ? 'page' : undefined}
           >
             {tab.label}
           </button>
@@ -73,9 +192,20 @@ export default function Shell() {
       </nav>
 
       {/* ── Main content ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-auto">
+      <main id="main-content" className="flex-1 overflow-auto" role="main">
         {renderContent()}
       </main>
+
+      {/* ── Save/Load Manager Modal ────────────────────────────────── */}
+      {showSaveManager && (
+        <SaveManager onClose={() => setShowSaveManager(false)} />
+      )}
+
+      {/* ── Player Comparison Modal ──────────────────────────────── */}
+      <CompareModal />
+
+      {/* ── Fired Screen ──────────────────────────────────────────── */}
+      {gamePhase === 'fired' && <FiredScreen />}
     </div>
   );
 }

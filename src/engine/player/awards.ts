@@ -20,6 +20,10 @@ export interface SeasonAwards {
   cyYoungNL:   AwardWinner | null;
   royAL:       AwardWinner | null;  // Rookie of the Year
   royNL:       AwardWinner | null;
+  goldGloveAL: AwardWinner[];       // One per position (up to 9)
+  goldGloveNL: AwardWinner[];
+  silverSluggerAL: AwardWinner[];   // One per position (up to 9)
+  silverSluggerNL: AwardWinner[];
 }
 
 // ─── Division champion shape ──────────────────────────────────────────────────
@@ -76,6 +80,26 @@ function royPitcherScore(s: PlayerSeasonStats): number {
   const era  = s.outs > 0 ? (s.er / s.outs) * 27 : 99;
   const whip = ip > 0 ? (s.bba + s.ha) / ip : 99;
   return -era * 5 + s.w * 2 - whip * 7 + ip * 0.03;
+}
+
+function goldGloveScore(p: Player, s: PlayerSeasonStats): number {
+  if (p.isPitcher) return -Infinity;
+  if (s.pa < 300) return -Infinity;
+  const fielding = p.hitterAttributes?.fielding ?? 0;
+  // Heavily weighted on fielding attribute, with a small contact bonus (good gloves tend to be solid players)
+  return fielding * 2 + (p.hitterAttributes?.contact ?? 0) * 0.1;
+}
+
+function silverSluggerScore(s: PlayerSeasonStats): number {
+  if (s.pa < 250) return -Infinity;
+  const avg = s.ab > 0 ? s.h / s.ab : 0;
+  const obp = s.pa > 0 ? (s.h + s.bb + s.hbp) / s.pa : 0;
+  const slg = s.ab > 0
+    ? (s.h - s.doubles - s.triples - s.hr
+       + s.doubles * 2 + s.triples * 3 + s.hr * 4) / s.ab
+    : 0;
+  const ops = obp + slg;
+  return ops * 60 + s.hr * 0.3 + avg * 15 + s.rbi * 0.05;
 }
 
 // ─── Stat line builders ───────────────────────────────────────────────────────
@@ -189,6 +213,73 @@ export function computeAwards(
     };
   }
 
+  // ── Gold Glove: best fielder at each position ──────────────────────────────
+  const GG_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'SP'];
+
+  function bestFieldersByPosition(candidates: Player[]): AwardWinner[] {
+    const winners: AwardWinner[] = [];
+    for (const pos of GG_POSITIONS) {
+      let best: { player: Player; score: number } | null = null;
+      for (const p of candidates) {
+        if (p.position !== pos) continue;
+        const s = stats.get(p.playerId);
+        if (!s) continue;
+        const score = pos === 'SP' ? cyYoungScore(s) : goldGloveScore(p, s);
+        if (!isFinite(score)) continue;
+        if (!best || score > best.score) best = { player: p, score };
+      }
+      if (best) {
+        const p = best.player;
+        const s = stats.get(p.playerId)!;
+        const team = teamMap.get(p.teamId);
+        winners.push({
+          playerId: p.playerId,
+          name: p.name,
+          teamId: p.teamId,
+          teamAbbr: team?.abbreviation ?? '---',
+          position: p.position,
+          age: p.age,
+          statLine: p.isPitcher ? pitcherStatLine(s) : hitterStatLine(s),
+        });
+      }
+    }
+    return winners;
+  }
+
+  // ── Silver Slugger: best hitter at each position ──────────────────────────
+  const SS_POSITIONS = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
+
+  function bestSluggersByPosition(candidates: Player[]): AwardWinner[] {
+    const winners: AwardWinner[] = [];
+    for (const pos of SS_POSITIONS) {
+      let best: { player: Player; score: number } | null = null;
+      for (const p of candidates) {
+        if (p.isPitcher) continue;
+        if (p.position !== pos) continue;
+        const s = stats.get(p.playerId);
+        if (!s) continue;
+        const score = silverSluggerScore(s);
+        if (!isFinite(score)) continue;
+        if (!best || score > best.score) best = { player: p, score };
+      }
+      if (best) {
+        const p = best.player;
+        const s = stats.get(p.playerId)!;
+        const team = teamMap.get(p.teamId);
+        winners.push({
+          playerId: p.playerId,
+          name: p.name,
+          teamId: p.teamId,
+          teamAbbr: team?.abbreviation ?? '---',
+          position: p.position,
+          age: p.age,
+          statLine: hitterStatLine(s),
+        });
+      }
+    }
+    return winners;
+  }
+
   return {
     mvpAL:     bestHitter(alPlayers),
     mvpNL:     bestHitter(nlPlayers),
@@ -196,6 +287,10 @@ export function computeAwards(
     cyYoungNL: bestPitcher(nlPlayers),
     royAL:     bestRookie(alPlayers),
     royNL:     bestRookie(nlPlayers),
+    goldGloveAL:     bestFieldersByPosition(alPlayers),
+    goldGloveNL:     bestFieldersByPosition(nlPlayers),
+    silverSluggerAL: bestSluggersByPosition(alPlayers),
+    silverSluggerNL: bestSluggersByPosition(nlPlayers),
   };
 }
 

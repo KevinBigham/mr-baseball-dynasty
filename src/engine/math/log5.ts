@@ -54,7 +54,7 @@ export function log5MultiOutcome(
 export const PITCHER_WEIGHTS = {
   strikeout:   0.75, // Pitchers dominate K
   walk:        0.35, // Batters dominate BB
-  homeRun:     0.55, // Slight pitcher edge on HR
+  homeRun:     0.50, // Neutral pitcher/batter HR control
   hitByPitch:  0.60, // Pitcher controls HBP
   ballInPlay:  0.50, // Neutral
   gbPercent:   0.55, // Slight pitcher edge on batted ball type

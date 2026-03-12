@@ -37,14 +37,26 @@ function OwnerPatiencePanel() {
               <div className="font-bold text-xs" style={{ color: archetype.color }}>
                 {archetype.label.toUpperCase()}
               </div>
-              <div className="text-gray-600 text-xs">{archetype.mandate}</div>
+              <div className="text-gray-500 text-xs">{archetype.mandate}</div>
             </div>
           </div>
           <div className="text-right">
             <div className="font-black text-lg tabular-nums" style={{ color: status.color }}>
               {ownerPatience}
             </div>
-            <div className="text-gray-600 text-xs">/ 100</div>
+            <div className="text-gray-500 text-xs">/ 100</div>
+          </div>
+        </div>
+
+        {/* Owner expectation */}
+        <div className="px-2.5 py-1.5 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500 text-[10px] uppercase">Expects</span>
+            <span className="text-xs font-bold" style={{ color: archetype.color }}>
+              {ownerArchetype === 'win_now' ? 'Playoff appearance' :
+               ownerArchetype === 'patient_builder' ? 'Development progress' :
+               'Stay under budget'}
+            </span>
           </div>
         </div>
 
@@ -54,7 +66,7 @@ function OwnerPatiencePanel() {
             <span className="text-xs font-bold tracking-widest" style={{ color: status.color }}>
               {status.emoji} {status.label}
             </span>
-            <span className="text-gray-600 text-xs capitalize">{difficulty} mode</span>
+            <span className="text-gray-500 text-xs capitalize">{difficulty} mode</span>
           </div>
           <div className="h-2 rounded-full overflow-hidden bg-gray-800">
             <div
@@ -92,7 +104,7 @@ function MoralePanel() {
             <div className="font-bold text-xs tracking-widest" style={{ color: status.color }}>
               {status.emoji} {status.label}
             </div>
-            <div className="text-gray-600 text-xs mt-0.5">Team chemistry & confidence</div>
+            <div className="text-gray-500 text-xs mt-0.5">Team chemistry & confidence</div>
           </div>
           <div className="font-black text-2xl tabular-nums" style={{ color: status.color }}>
             {teamMorale}
@@ -255,6 +267,10 @@ function NewsCard({ item, isUserTeam }: { item: NewsItem; isUserTeam?: boolean }
         borderLeft:  `3px solid ${isUserTeam ? '#f97316' : style.border}`,
       }}
       onClick={() => setExpanded(e => !e)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(v => !v); } }}
+      tabIndex={0}
+      role="button"
+      aria-expanded={expanded}
     >
       <div className="flex items-start gap-2">
         <span className="text-base shrink-0 mt-0.5">{item.icon}</span>
@@ -296,7 +312,7 @@ function NewsFeedPanel() {
     <div className="bloomberg-border bg-gray-900">
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>LEAGUE DISPATCH</span>
-        <span className="text-gray-600 text-xs normal-case font-normal">{newsItems.length} items</span>
+        <span className="text-gray-500 text-xs normal-case font-normal">{newsItems.length} items</span>
       </div>
       <div className="px-4 py-3 space-y-2">
         {displayed.map(item => (
