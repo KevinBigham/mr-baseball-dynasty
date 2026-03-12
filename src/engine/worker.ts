@@ -136,6 +136,8 @@ let latestPlayoffBracket: PlayoffBracket | null = null;
 let latestSeasonAwards: SeasonAwards | null = null;
 let latestNewsFeed: NewsStory[] = [];
 let rngSeed = 42;
+/** The user's team — set during newGame, persisted through save/load */
+let userTeamId = 1;
 let gen: RandomGenerator | null = null;
 let coachingStaffs: Map<number, CoachingStaff> = new Map();
 let transactionLog: TransactionLogEntry[] = [];
@@ -214,8 +216,9 @@ const api = {
   /**
    * Initialize a new league. Generates all teams + players.
    */
-  async newGame(seed: number): Promise<{ teamCount: number; playerCount: number }> {
+  async newGame(seed: number, chosenTeamId = 1): Promise<{ teamCount: number; playerCount: number }> {
     rngSeed = seed;
+    userTeamId = chosenTeamId;
     teams = [...TEAMS];
     currentSeason = 1;
     latestNewsFeed = [];
@@ -524,7 +527,7 @@ const api = {
     // ── Update franchise records ─────────────────────────────────────────
     try {
       const { updateFranchiseRecords, emptyRecordBook } = await import('./franchiseRecords.ts');
-      const userTeamId = 1;
+      // userTeamId from module-level state
       const userTeamSeason = latestTeamSeasons.find(ts => ts.teamId === userTeamId);
       if (userTeamSeason) {
         const playerMap = new Map(players.map(p => [p.playerId, p]));
@@ -677,7 +680,7 @@ const api = {
         nextDraftPlayerId: maxPlayerId + 1,
         ownerBidModifiers,
         teams,
-        userTeamId: 1,
+        userTeamId,
       });
 
       gen = offseason.gen;
@@ -1127,6 +1130,10 @@ const api = {
     return currentSeason;
   },
 
+  async getUserTeamId(): Promise<number> {
+    return userTeamId;
+  },
+
   async getSimProgress() {
     if (!incrementalSimState) {
       return { active: false, gamesCompleted: 0, totalGames: 0, currentSegment: -1, isComplete: false, segments: SEGMENTS };
@@ -1152,6 +1159,113 @@ const api = {
 
   async getLeagueHistory() {
     return leagueHistory;
+  },
+
+  async getYearInReview() {
+    const yir = await import('./yearInReview.ts');
+
+    const userTeam = teams.find(t => t.teamId === userTeamId);
+    const userTeamSeason = latestTeamSeasons.find(ts => ts.teamId === userTeamId);
+
+    if (!userTeam || !userTeamSeason) return null;
+
+    // Find user's top hitter and pitcher
+    let topHitter: { name: string; statLine: string } | null = null;
+    let topPitcher: { name: string; statLine: string } | null = null;
+    let bestHR = 0;
+    let bestWins = 0;
+
+    for (const [pid, ps] of latestPlayerSeasons) {
+      const p = players.find(pl => pl.playerId === pid);
+      if (!p || p.teamId !== userTeamId) continue;
+      if (!p.isPitcher && ps.hr > bestHR) {
+        bestHR = ps.hr;
+        const avg = ps.ab > 0 ? (ps.hits / ps.ab).toFixed(3).replace('0.', '.') : '.000';
+        topHitter = { name: p.name, statLine: `${avg} / ${ps.hr} HR / ${ps.rbi} RBI` };
+      }
+      if (p.isPitcher && ps.wins > bestWins && ps.ip > 30) {
+        bestWins = ps.wins;
+        const era = ps.ip > 0 ? ((ps.earnedRuns / ps.ip) * 9).toFixed(2) : '0.00';
+        topPitcher = { name: p.name, statLine: `${ps.wins}-${ps.losses}, ${era} ERA, ${ps.kPitching} K` };
+      }
+    }
+
+    // Get current arc type
+    let arcType = 'transition';
+    try {
+      const { detectArcType } = await import('./storyboard.ts');
+      const dummyHistory = leagueHistory.map(lh => ({
+        season: lh.season,
+        wins: lh.topWins.wins,
+        losses: 162 - lh.topWins.wins,
+        playoffResult: lh.champion ? 'Champion' as any : null,
+      }));
+      arcType = detectArcType(dummyHistory as any, 60, leagueHistory.length);
+    } catch { /* non-fatal */ }
+
+    // Get milestones from news
+    const milestoneNews = latestNewsFeed
+      .filter(n => n.headline.startsWith('MILESTONE:'))
+      .map(n => n.headline.replace('MILESTONE: ', ''));
+
+    // Get retirements from recap
+    const retirements = latestOffseasonRecap?.retirements
+      ? latestOffseasonRecap.retirements.map(pid => {
+          const p = players.find(pl => pl.playerId === pid);
+          return p?.name ?? `Player #${pid}`;
+        })
+      : [];
+
+    // Get FA signings from recap
+    const faSignings = (latestOffseasonRecap?.faSignings ?? []).slice(0, 5).map(s => {
+      const p = players.find(pl => pl.playerId === s.playerId);
+      const t = teams.find(tm => tm.teamId === s.teamId);
+      return { playerName: p?.name ?? '???', teamName: t?.name ?? '???' };
+    });
+
+    // Get latest league history entry
+    const lhEntry = leagueHistory.length > 0 ? leagueHistory[leagueHistory.length - 1] : null;
+
+    // Get top prospect
+    let topProspect: { name: string; grade: string } | null = null;
+    try {
+      const { generateTop100 } = await import('./league/prospects.ts');
+      const playerMap = new Map(players.map(p => [p.playerId, p]));
+      const [rankings] = generateTop100(playerMap, gen!, currentSeason);
+      const userProspect = rankings.find(r => r.teamId === userTeamId);
+      if (userProspect) topProspect = { name: userProspect.name, grade: userProspect.grade };
+    } catch { /* non-fatal */ }
+
+    // Count new franchise records from news
+    const newRecordCount = latestNewsFeed.filter(n => n.headline.startsWith('NEW FRANCHISE RECORD')).length;
+
+    const input = {
+      season: currentSeason,
+      teamName: userTeam.name,
+      teamAbbr: userTeam.abbreviation,
+      record: { wins: userTeamSeason.wins, losses: userTeamSeason.losses },
+      divisionRank: userTeamSeason.divisionRank,
+      playoffResult: userTeamSeason.playoffResult ?? null,
+      arcType,
+      awards: latestSeasonAwards,
+      userTeamId,
+      topHitter,
+      topPitcher,
+      newRecordCount,
+      milestonesReached: milestoneNews.slice(0, 5),
+      retirements: retirements.slice(0, 5),
+      topProspect,
+      ownerPatienceChange: 0, // TODO: track delta
+      rivalryUpdate: null, // TODO: from rivalry system
+      faSignings,
+      leagueHistoryEntry: lhEntry ? {
+        champion: lhEntry.champion,
+        topWins: lhEntry.topWins,
+        topHR: lhEntry.topHR,
+      } : null,
+    };
+
+    return yir.generateYearInReview(input);
   },
 
   async getTeams(): Promise<Team[]> {
@@ -2263,16 +2377,16 @@ const api = {
     return timedEndpointCall('getLatencyBudgetReport', async () => buildLatencyBudgetReportInternal());
   },
 
-  async getDraftBoard(userTeamId = 1): Promise<DraftBoardListing> {
+  async getDraftBoard(teamId = userTeamId): Promise<DraftBoardListing> {
     return timedEndpointCall('getDraftBoard', async () => {
-      if (!activeDraftState || activeDraftState.userTeamId !== userTeamId) {
-        refreshDraftBoard(userTeamId);
+      if (!activeDraftState || activeDraftState.userTeamId !== teamId) {
+        refreshDraftBoard(teamId);
       }
 
       if (!activeDraftState) {
         return {
           season: currentSeason,
-          userTeamId,
+          userTeamId: teamId,
           totalRounds: 10,
           currentRound: 1,
           currentPickInRound: 1,
@@ -2295,9 +2409,9 @@ const api = {
 
   async makeDraftPick(playerId: number): Promise<DraftPickResponse> {
     return timedEndpointCall('makeDraftPick', async () => {
-      const userTeamId = activeDraftState?.userTeamId ?? 1;
+      const draftTeamId = activeDraftState?.userTeamId ?? userTeamId;
       if (!activeDraftState) {
-        refreshDraftBoard(userTeamId);
+        refreshDraftBoard(draftTeamId);
       }
 
       if (!activeDraftState) {
@@ -2405,57 +2519,21 @@ const api = {
       teams,
       players,
       cachedSchedule,
-      { userTeamId: 1 },
+      { userTeamId },
     );
 
-    // If season complete, sync to main sim state
-    if (result.isSeasonComplete) {
-      // Convert partial result to the format latestTeamSeasons expects
-      latestTeamSeasons = result.partialResult.teamSeasons.map(ts => ({
-        teamId: ts.teamId,
-        season: ts.season,
-        wins: ts.record.wins,
-        losses: ts.record.losses,
-        runsScored: ts.record.runsScored,
-        runsAllowed: ts.record.runsAllowed,
-        divisionRank: 0,
-        playoffResult: null,
-      }));
-      // Assign division ranks
-      const byDiv = new Map<string, typeof latestTeamSeasons>();
-      for (const ts of latestTeamSeasons) {
-        const team = teams.find(t => t.teamId === ts.teamId);
-        const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
-        const arr = byDiv.get(key) ?? [];
-        arr.push(ts);
-        byDiv.set(key, arr);
-      }
-      for (const div of byDiv.values()) {
-        div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
-        div.forEach((ts, i) => { ts.divisionRank = i + 1; });
-      }
-      // Convert player stats
-      latestPlayerSeasons = new Map();
-      for (const ps of result.partialResult.playerSeasons) {
-        latestPlayerSeasons.set(ps.playerId, {
-          playerId: ps.playerId,
-          teamId: ps.teamId,
-          season: ps.season,
-          ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
-          ip: ps.outs / 3, earnedRuns: ps.er,
-          wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
-        });
-      }
-    }
-
+    // Always sync to main state so getStandings() reads live data
+    syncIncrementalToMainState(result.partialResult);
     cache.invalidate();
+
     return {
-      done: result.isSeasonComplete,
-      gamesPlayed: result.partialResult.gamesCompleted,
+      partialResult: result.partialResult,
       segment: result.segment,
       segmentLabel: result.segmentLabel,
       event: result.event,
       userRecord: result.userRecord,
+      isSeasonComplete: result.isSeasonComplete,
+      gamesPlayed: result.partialResult.gamesCompleted,
     };
   },
   async simRange(mode: string, _end?: number) {
@@ -2488,22 +2566,133 @@ const api = {
       players,
       cachedSchedule,
       target,
-      { userTeamId: 1 },
+      { userTeamId },
     );
 
+    // Always sync to main state so getStandings() reads live data
+    syncIncrementalToMainState(result.partialResult);
     cache.invalidate();
+
+    // ── Auto-pause trigger detection ─────────────────────────────────────
+    const interrupts: Array<{ type: string; headline: string; detail: string }> = [];
+
+    // Check for career milestones
+    try {
+      const { detectMilestones } = await import('./milestones.ts');
+      // Build temporary career totals including this range's stats
+      const tempCareer = new Map(careerHistory);
+      for (const ps of result.partialResult.playerSeasons) {
+        const existing = tempCareer.get(ps.playerId) ?? [];
+        // Only add if this season isn't already tracked
+        if (!existing.find((s: any) => s.season === ps.season)) {
+          tempCareer.set(ps.playerId, [...existing, {
+            playerId: ps.playerId, teamId: ps.teamId, season: ps.season,
+            ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
+            ip: ps.outs / 3, earnedRuns: ps.er,
+            wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
+          }]);
+        }
+      }
+      const nameMap = new Map(players.map(p => [p.playerId, p.name]));
+      const milestones = detectMilestones(tempCareer, nameMap, currentSeason, firedMilestones);
+      for (const m of milestones) {
+        const isUserPlayer = players.find(p => p.playerId === m.playerId)?.teamId === userTeamId;
+        interrupts.push({
+          type: 'milestone',
+          headline: `MILESTONE: ${m.playerName} — ${m.milestone}`,
+          detail: isUserPlayer ? 'Your player reached a career milestone!' : 'A league-wide career milestone was reached.',
+        });
+      }
+    } catch { /* milestone detection non-fatal */ }
+
+    // Check for notable user team performances this range
+    if (result.userRecord.wins >= 5 && result.userRecord.losses <= 1) {
+      interrupts.push({
+        type: 'hot_streak',
+        headline: 'HOT STREAK',
+        detail: `Your team went ${result.userRecord.wins}-${result.userRecord.losses} in this stretch!`,
+      });
+    }
+    if (result.userRecord.losses >= 5 && result.userRecord.wins <= 1) {
+      interrupts.push({
+        type: 'cold_streak',
+        headline: 'LOSING SKID',
+        detail: `Your team went ${result.userRecord.wins}-${result.userRecord.losses}. Time to make a move?`,
+      });
+    }
+
     return {
-      done: result.isSeasonComplete,
+      partialResult: result.partialResult,
       gamesPlayed: result.gamesSimulated,
       startDate: result.startDate,
       endDate: result.endDate,
-      event: result.crossedEvent,
-      segment: result.crossedSegment,
+      crossedEvent: result.crossedEvent,
+      crossedSegment: result.crossedSegment,
       userRecord: result.userRecord,
+      isSeasonComplete: result.isSeasonComplete,
+      interrupts, // NEW: auto-pause trigger reasons
+    };
+  },
+
+  /** Sim forward until the next meaningful event (auto-pause on interrupts) */
+  async simToNextEvent() {
+    if (!incrementalSimState) {
+      cachedSchedule = generateScheduleTemplate();
+      incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
+    }
+    if (!cachedSchedule) cachedSchedule = generateScheduleTemplate();
+
+    // Sim day by day until something interesting happens
+    let totalGames = 0;
+    const MAX_DAYS = 30; // Safety valve — don't sim forever
+    let days = 0;
+    let lastResult: any = null;
+
+    while (days < MAX_DAYS && !incrementalSimState.isComplete) {
+      const target = computeSim1DayTarget(incrementalSimState, cachedSchedule);
+      if (target <= incrementalSimState.gamesCompleted) break; // No more games
+
+      const dayResult = simulateRange(
+        incrementalSimState, teams, players, cachedSchedule, target, { userTeamId },
+      );
+      totalGames += dayResult.gamesSimulated;
+      days++;
+      lastResult = dayResult;
+
+      // Stop on segment boundary
+      if (dayResult.crossedEvent) break;
+
+      // Stop on season complete
+      if (dayResult.isSeasonComplete) break;
+    }
+
+    if (lastResult) {
+      syncIncrementalToMainState(lastResult.partialResult);
+    }
+    cache.invalidate();
+
+    // Run the same interrupt detection as simRange
+    const result = lastResult ?? {
+      partialResult: buildPartialResult(incrementalSimState, teams),
+      gamesSimulated: 0, startDate: '', endDate: '',
+      crossedEvent: null, crossedSegment: null,
+      userRecord: { wins: 0, losses: 0 },
+      isSeasonComplete: incrementalSimState.isComplete,
+    };
+
+    return {
+      partialResult: result.partialResult,
+      gamesPlayed: totalGames,
+      startDate: result.startDate ?? '',
+      endDate: result.endDate ?? '',
+      crossedEvent: result.crossedEvent,
+      crossedSegment: result.crossedSegment,
+      userRecord: result.userRecord,
+      isSeasonComplete: result.isSeasonComplete,
+      interrupts: [] as Array<{ type: string; headline: string; detail: string }>,
     };
   },
   async simRemainingChunks() {
-    // Simulate all remaining chunks until season complete
     if (!incrementalSimState) {
       cachedSchedule = generateScheduleTemplate();
       incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
@@ -2512,57 +2701,31 @@ const api = {
 
     let totalGamesPlayed = 0;
     while (!incrementalSimState.isComplete) {
-      const result = simulateChunk(incrementalSimState, teams, players, cachedSchedule, { userTeamId: 1 });
+      const result = simulateChunk(incrementalSimState, teams, players, cachedSchedule, { userTeamId });
       totalGamesPlayed += result.partialResult.gamesCompleted;
       if (result.isSeasonComplete) break;
     }
 
-    // Sync final state (same as simNextChunk completion)
     const partial = buildPartialResult(incrementalSimState, teams);
-    latestTeamSeasons = partial.teamSeasons.map(ts => ({
-      teamId: ts.teamId, season: ts.season,
-      wins: ts.record.wins, losses: ts.record.losses,
-      runsScored: ts.record.runsScored, runsAllowed: ts.record.runsAllowed,
-      divisionRank: 0, playoffResult: null,
-    }));
-    const byDiv = new Map<string, typeof latestTeamSeasons>();
-    for (const ts of latestTeamSeasons) {
-      const team = teams.find(t => t.teamId === ts.teamId);
-      const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
-      const arr = byDiv.get(key) ?? [];
-      arr.push(ts);
-      byDiv.set(key, arr);
-    }
-    for (const div of byDiv.values()) {
-      div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
-      div.forEach((ts, i) => { ts.divisionRank = i + 1; });
-    }
-    latestPlayerSeasons = new Map();
-    for (const ps of partial.playerSeasons) {
-      latestPlayerSeasons.set(ps.playerId, {
-        playerId: ps.playerId, teamId: ps.teamId, season: ps.season,
-        ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
-        ip: ps.outs / 3, earnedRuns: ps.er,
-        wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
-      });
-    }
-
+    syncIncrementalToMainState(partial);
     cache.invalidate();
     return { done: true, gamesPlayed: totalGamesPlayed };
   },
 
-  // Roster transactions
-  async promotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'CALL_UP', playerId }); },
-  async demotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'OPTION', playerId }); },
-  async dfaPlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'DFA', playerId }); },
-  async releasePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'RELEASE', playerId }); },
+  // Roster transactions — use worker-owned userTeamId as default
+  async promotePlayer(playerId: number, teamId = userTeamId) { return api.submitRosterTransaction(teamId, { type: 'CALL_UP', playerId }); },
+  async demotePlayer(playerId: number, teamId = userTeamId) { return api.submitRosterTransaction(teamId, { type: 'OPTION', playerId }); },
+  async dfaPlayer(playerId: number, teamId = userTeamId) { return api.submitRosterTransaction(teamId, { type: 'DFA', playerId }); },
+  async releasePlayer(playerId: number, teamId = userTeamId) { return api.submitRosterTransaction(teamId, { type: 'RELEASE', playerId }); },
   async setLineupOrder(teamId: number, order: number[]) {
     lineupOrders.set(teamId, order);
     cache.invalidate();
+    return { ok: true };
   },
   async setRotationOrder(teamId: number, order: number[]) {
     rotationOrders.set(teamId, order);
     cache.invalidate();
+    return { ok: true };
   },
   async getLineupOrder(teamId: number) { return lineupOrders.get(teamId) ?? []; },
   async getRotationOrder(teamId: number) { return rotationOrders.get(teamId) ?? []; },
@@ -2898,7 +3061,7 @@ const api = {
   async getPennantRace() {
     if (latestTeamSeasons.length === 0) return null;
     const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
-    const userTeamId = 1; // TODO: get from game state
+    // userTeamId from module-level state
 
     const userRow = standings.find(r => r.teamId === userTeamId);
     if (!userRow) return null;
@@ -2966,14 +3129,26 @@ const api = {
     };
   },
   async getCurrentScheduleInfo() {
+    const gamesCompleted = incrementalSimState?.gamesCompleted ?? latestGameResults.length;
+    const totalGames = incrementalSimState?.totalGames ?? 2430;
+
+    // Derive current date from cached schedule
+    let currentDate = `${currentSeason}-04-01`;
+    if (cachedSchedule && gamesCompleted < cachedSchedule.length) {
+      currentDate = cachedSchedule[gamesCompleted]?.date ?? currentDate;
+    } else if (cachedSchedule && gamesCompleted > 0 && cachedSchedule.length > 0) {
+      currentDate = cachedSchedule[cachedSchedule.length - 1]?.date ?? currentDate;
+    }
+
     return {
       season: currentSeason,
-      gamesPlayed: latestGameResults.length,
-      gamesCompleted: latestGameResults.length,
-      totalGames: 2430,
+      gamesPlayed: gamesCompleted,
+      gamesCompleted,
+      totalGames,
       teamCount: teams.length,
       playerCount: players.length,
-      currentDate: `${currentSeason}-04-01`,
+      currentDate,
+      currentSegment: incrementalSimState?.currentSegment ?? -1,
     };
   },
   async standings() { return api.getStandings(); },
@@ -4044,17 +4219,68 @@ function estimateFreeAgentMarketInterest(
   return interestedTeams;
 }
 
+/**
+ * Reconstruct a Map from either a Map instance or a serialized Record/object.
+ * Handles the case where JSON.stringify turned a Map into {} or an Object.
+ * Keys are coerced to numbers if they look numeric (for teamId/playerId maps).
+ */
+/**
+ * Sync incremental sim state to main display state (latestTeamSeasons, latestPlayerSeasons).
+ * Called after every sim operation so getStandings() and other endpoints read live data.
+ */
+function syncIncrementalToMainState(partial: import('./sim/incrementalSimulator.ts').PartialSeasonResult): void {
+  latestTeamSeasons = partial.teamSeasons.map(ts => ({
+    teamId: ts.teamId, season: ts.season,
+    wins: ts.record.wins, losses: ts.record.losses,
+    runsScored: ts.record.runsScored, runsAllowed: ts.record.runsAllowed,
+    divisionRank: 0, playoffResult: null,
+  }));
+  // Assign division ranks
+  const byDiv = new Map<string, typeof latestTeamSeasons>();
+  for (const ts of latestTeamSeasons) {
+    const team = teams.find(t => t.teamId === ts.teamId);
+    const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
+    const arr = byDiv.get(key) ?? [];
+    arr.push(ts);
+    byDiv.set(key, arr);
+  }
+  for (const div of byDiv.values()) {
+    div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    div.forEach((ts, i) => { ts.divisionRank = i + 1; });
+  }
+  // Convert player stats
+  latestPlayerSeasons = new Map();
+  for (const ps of partial.playerSeasons) {
+    latestPlayerSeasons.set(ps.playerId, {
+      playerId: ps.playerId, teamId: ps.teamId, season: ps.season,
+      ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
+      ip: ps.outs / 3, earnedRuns: ps.er,
+      wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
+    });
+  }
+}
+
+function reconstructMap<V>(data: any): Map<number, V> {
+  if (data instanceof Map) return data;
+  if (!data || typeof data !== 'object') return new Map();
+  const entries = Object.entries(data);
+  return new Map(entries.map(([k, v]) => [Number(k), v as V]));
+}
+
 function buildPersistedState(): PersistedGameState | null {
   if (!gen) return null;
 
   return {
     season: currentSeason,
     rngSeed,
+    userTeamId,
     gen,
     teams,
     players,
     teamSeasons: latestTeamSeasons,
-    playerSeasons: latestPlayerSeasons,
+    playerSeasons: Object.fromEntries(
+      Array.from(latestPlayerSeasons.entries()).map(([k, v]) => [k, v]),
+    ),
     gameResults: latestGameResults,
     playoffBracket: latestPlayoffBracket,
     seasonAwards: latestSeasonAwards,
@@ -4071,10 +4297,25 @@ function buildPersistedState(): PersistedGameState | null {
     firedMilestones: Array.from(firedMilestones),
     newsFeed: latestNewsFeed,
     transactionLog,
-    coachingStaffs,
+    coachingStaffs: Object.fromEntries(
+      Array.from(coachingStaffs.entries()).map(([k, v]) => [k, v]),
+    ),
     latestOffseasonRecap,
-    ownerProfiles,
-    teamChemistry,
+    ownerProfiles: Object.fromEntries(
+      Array.from(ownerProfiles.entries()).map(([k, v]) => [k, v]),
+    ),
+    teamChemistry: Object.fromEntries(
+      Array.from(teamChemistry.entries()).map(([k, v]) => [k, v]),
+    ),
+    lineupOrders: Object.fromEntries(
+      Array.from(lineupOrders.entries()).map(([k, v]) => [k, v]),
+    ),
+    rotationOrders: Object.fromEntries(
+      Array.from(rotationOrders.entries()).map(([k, v]) => [k, v]),
+    ),
+    devAssignments: Object.fromEntries(
+      Array.from(devAssignments.entries()).map(([k, v]) => [k, v]),
+    ),
     clubhouseEvents,
     ownerEvaluationHistory,
     eventLog: eventLog.serialize(),
@@ -4088,22 +4329,29 @@ function buildPersistedState(): PersistedGameState | null {
 function applyLoadedState(state: PersistedGameState): void {
   currentSeason = state.season;
   rngSeed = state.rngSeed;
+  userTeamId = (state as any).userTeamId ?? 1;
   gen = state.gen;
   teams = state.teams;
   players = state.players;
   latestTeamSeasons = state.teamSeasons;
-  latestPlayerSeasons = state.playerSeasons;
+
+  // Reconstruct playerSeasons Map from either Map or serialized Record
+  latestPlayerSeasons = reconstructMap(state.playerSeasons);
+
   latestGameResults = state.gameResults;
   latestPlayoffBracket = state.playoffBracket;
   latestSeasonAwards = state.seasonAwards;
   latestNewsFeed = state.newsFeed;
   transactionLog = state.transactionLog;
-  coachingStaffs = state.coachingStaffs;
+
+  // Reconstruct coachingStaffs Map
+  coachingStaffs = reconstructMap(state.coachingStaffs);
+
   latestOffseasonRecap = state.latestOffseasonRecap;
 
   const teamIds = teams.map((t) => t.teamId);
   const baselineOwnerProfiles = initializeOwnerProfiles(teamIds, currentSeason);
-  const loadedProfiles = new Map(state.ownerProfiles);
+  const loadedProfiles = reconstructMap<OwnerProfile>(state.ownerProfiles);
   ownerProfiles = new Map<number, OwnerProfile>();
   for (const [teamId, baseline] of baselineOwnerProfiles) {
     const loaded = loadedProfiles.get(teamId);
@@ -4122,7 +4370,7 @@ function applyLoadedState(state: PersistedGameState): void {
   }
 
   const baselineChemistry = initializeTeamChemistry(teamIds, currentSeason);
-  const loadedChemistry = new Map(state.teamChemistry);
+  const loadedChemistry = reconstructMap<TeamChemistryState>(state.teamChemistry);
   teamChemistry = new Map<number, TeamChemistryState>();
   for (const [teamId, baseline] of baselineChemistry) {
     const loaded = loadedChemistry.get(teamId);
@@ -4168,6 +4416,11 @@ function applyLoadedState(state: PersistedGameState): void {
   hofCandidates = Array.isArray((state as any).hofCandidates) ? (state as any).hofCandidates : [];
   franchiseRecordBook = (state as any).franchiseRecordBook ?? null;
   firedMilestones = new Set(Array.isArray((state as any).firedMilestones) ? (state as any).firedMilestones : []);
+
+  // Restore lineup/rotation/dev assignment Maps
+  lineupOrders = (state as any).lineupOrders ? reconstructMap<number[]>((state as any).lineupOrders) : new Map();
+  rotationOrders = (state as any).rotationOrders ? reconstructMap<number[]>((state as any).rotationOrders) : new Map();
+  devAssignments = (state as any).devAssignments ? reconstructMap<any>((state as any).devAssignments) : new Map();
 
   featuredGameIds = selectFeaturedGames(latestGameResults);
   seasonHistory.length = 0;

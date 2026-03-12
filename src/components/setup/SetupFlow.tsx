@@ -7,6 +7,8 @@ import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, FO_CANDIDATES_PER_ROLE, ge
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
 import type { StandingsRow } from '../../types/league';
 import type { OwnerArchetype } from '../../engine/narrative';
+import { DelegationSetupSection } from './DelegationPanel';
+import { getDelegationForDifficulty } from '../../store/gameStore';
 import DraftRoom from '../draft/DraftRoom';
 
 // ─── Team list ─────────────────────────────────────────────────────────────────
@@ -322,10 +324,11 @@ const ARCHETYPES: Array<{
 ];
 
 function DifficultyScreen() {
-  const { difficulty, setDifficulty, ownerArchetype, setOwnerArchetype, setFoBudget, setSetupScreen } = useGameStore();
+  const { difficulty, setDifficulty, setDelegation, ownerArchetype, setOwnerArchetype, setFoBudget, setSetupScreen } = useGameStore();
 
   const handleDifficulty = (d: 'rookie' | 'normal' | 'hard') => {
     setDifficulty(d);
+    setDelegation(getDelegationForDifficulty(d));
     const diff = DIFFICULTIES.find(x => x.id === d);
     if (diff) setFoBudget(diff.foBudget);
   };
@@ -418,6 +421,9 @@ function DifficultyScreen() {
             );
           })}
         </div>
+
+        {/* Management Scope — what you control vs AI */}
+        <DelegationSetupSection />
 
         {/* Nav */}
         <div className="flex gap-3 pb-6">

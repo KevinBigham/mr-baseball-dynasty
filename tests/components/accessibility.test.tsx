@@ -4,7 +4,8 @@ import { render, screen } from '@testing-library/react';
 // Mock the zustand store used by MobileNav
 vi.mock('../../src/store/uiStore', () => ({
   useUIStore: () => ({
-    activeTab: 'dashboard',
+    activeTab: 'home',
+    navigate: vi.fn(),
     setActiveTab: vi.fn(),
   }),
 }));
@@ -13,24 +14,30 @@ import MobileNav from '../../src/components/layout/MobileNav';
 import { SkeletonTable, SkeletonProfile } from '../../src/components/layout/Skeleton';
 
 describe('MobileNav accessibility', () => {
-  it('button has aria-label="Toggle navigation menu" and aria-expanded', () => {
+  it('renders 5 pillar tab buttons', () => {
     render(<MobileNav />);
-    const button = screen.getByRole('button', { name: 'Toggle navigation menu' });
-    expect(button).toBeInTheDocument();
-    expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveAttribute('aria-controls', 'mobile-nav-menu');
-  });
-
-  it('button has min-h-[44px] for accessible tap target', () => {
-    render(<MobileNav />);
-    const button = screen.getByRole('button', { name: 'Toggle navigation menu' });
-    expect(button.className).toContain('min-h-[44px]');
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.length).toBe(5);
   });
 
   it('nav has role="navigation" with aria-label', () => {
     render(<MobileNav />);
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
     expect(nav).toBeInTheDocument();
+  });
+
+  it('tab buttons have min-h-[56px] for accessible tap target', () => {
+    render(<MobileNav />);
+    const buttons = screen.getAllByRole('button');
+    for (const button of buttons) {
+      expect(button.className).toContain('min-h-[56px]');
+    }
+  });
+
+  it('active tab has aria-current="page"', () => {
+    render(<MobileNav />);
+    const homeButton = screen.getByText('HOME').closest('button')!;
+    expect(homeButton).toHaveAttribute('aria-current', 'page');
   });
 });
 

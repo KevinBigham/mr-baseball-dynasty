@@ -9,10 +9,10 @@ const FEATURE_LOADERS: Record<FeatureLoaderKey, FeatureLoader> = {
   roster: () => import('../components/roster/RosterView.tsx').then((mod) => ({ default: (mod as any).RosterView ?? mod.default })),
   leaderboards: () => import('../components/stats/Leaderboards.tsx').then((mod) => ({ default: (mod as any).Leaderboards ?? mod.default })),
   player: () => import('../components/stats/PlayerProfile.tsx').then((mod) => ({ default: (mod as any).PlayerProfile ?? mod.default })),
-  playoffs: () => import('../components/playoffs/PlayoffBracketView.tsx').then((mod) => ({ default: mod.PlayoffBracketView })),
-  awards: () => import('../components/awards/AwardsView.tsx').then((mod) => ({ default: mod.AwardsView })),
+  playoffs: () => import('../components/playoffs/PlayoffBracketView.tsx').then((mod) => ({ default: (mod as any).PlayoffBracketView ?? mod.default })),
+  awards: () => import('../components/awards/AwardsView.tsx').then((mod) => ({ default: (mod as any).AwardsView ?? mod.default })),
   history: () => import('../components/history/HistoryView.tsx').then((mod) => ({ default: mod.HistoryView })),
-  news: () => import('../components/news/NewsFeedView.tsx').then((mod) => ({ default: mod.NewsFeedView })),
+  news: () => import('../components/news/NewsFeedView.tsx').then((mod) => ({ default: (mod as any).NewsFeedView ?? mod.default })),
 };
 
 const lazyCache = new Map<FeatureLoaderKey, LazyExoticComponent<ComponentType>>();

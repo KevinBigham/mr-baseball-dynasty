@@ -6,6 +6,46 @@ export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 
 export type GamePhase = 'preseason' | 'in_season' | 'simulating' | 'postseason' | 'offseason' | 'fired';
 export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
 
+// ─── Delegation System (Progressive Disclosure) ──────────────────────────────
+// Each key = a management domain. true = player controls it, false = AI handles it.
+export interface DelegationScope {
+  lineup:        boolean;  // Set lineup/rotation
+  roster:        boolean;  // Call-ups, DFA, promotions
+  trades:        boolean;  // Propose and evaluate trades
+  freeAgency:    boolean;  // Sign free agents
+  minorLeagues:  boolean;  // Manage minor league rosters
+  scouting:      boolean;  // Assign scouts to regions
+  development:   boolean;  // Dev lab assignments
+  arbitration:   boolean;  // Handle arbitration cases
+  extensions:    boolean;  // Negotiate contract extensions
+  draftStrategy: boolean;  // Amateur draft picks
+}
+
+export const DELEGATION_PRESETS: Record<string, DelegationScope> = {
+  casual: {
+    lineup: true, roster: false, trades: false, freeAgency: false,
+    minorLeagues: false, scouting: false, development: false,
+    arbitration: false, extensions: false, draftStrategy: false,
+  },
+  standard: {
+    lineup: true, roster: true, trades: true, freeAgency: true,
+    minorLeagues: false, scouting: false, development: false,
+    arbitration: false, extensions: true, draftStrategy: true,
+  },
+  hardcore: {
+    lineup: true, roster: true, trades: true, freeAgency: true,
+    minorLeagues: true, scouting: true, development: true,
+    arbitration: true, extensions: true, draftStrategy: true,
+  },
+};
+
+/** Maps difficulty → default delegation preset */
+export function getDelegationForDifficulty(d: string): DelegationScope {
+  if (d === 'rookie') return { ...DELEGATION_PRESETS.casual };
+  if (d === 'hard')   return { ...DELEGATION_PRESETS.hardcore };
+  return { ...DELEGATION_PRESETS.standard };
+}
+
 interface GameStore {
   // ── Core game state ──────────────────────────────────────────────────────────
   season:        number;
@@ -23,6 +63,9 @@ interface GameStore {
   frontOffice:   FOStaffMember[];
   foBudget:      number;    // Total budget in $M
   difficulty:    'rookie' | 'normal' | 'hard';
+
+  // ── Delegation (progressive disclosure) ──────────────────────────────────────
+  delegation: DelegationScope;
 
   // ── Owner Patience ───────────────────────────────────────────────────────────
   ownerArchetype:  OwnerArchetype;
@@ -62,6 +105,8 @@ interface GameStore {
   removeFOStaff:      (id: string) => void;
   setFoBudget:        (b: number) => void;
   setDifficulty:      (d: 'rookie' | 'normal' | 'hard') => void;
+  setDelegation:      (d: DelegationScope) => void;
+  toggleDelegation:   (key: keyof DelegationScope) => void;
   resetSetup:         () => void;
 
   setOwnerArchetype:  (a: OwnerArchetype) => void;
@@ -102,6 +147,7 @@ export const useGameStore = create<GameStore>(set => ({
   frontOffice:     [],
   foBudget:        15,
   difficulty:      'normal',
+  delegation:      { ...DELEGATION_PRESETS.standard },
 
   ownerArchetype:  'patient_builder',
   ownerPatience:   70,    // Start at 70 — earned trust must be maintained
@@ -137,6 +183,8 @@ export const useGameStore = create<GameStore>(set => ({
   removeFOStaff:   id          => set(state => ({ frontOffice: state.frontOffice.filter(s => s.id !== id) })),
   setFoBudget:     b           => set({ foBudget: b }),
   setDifficulty:   d           => set({ difficulty: d }),
+  setDelegation:   d           => set({ delegation: d }),
+  toggleDelegation: key        => set(state => ({ delegation: { ...state.delegation, [key]: !state.delegation[key] } })),
 
   resetSetup: () => set({
     setupScreen: 'title',
@@ -188,6 +236,7 @@ export const useGameStore = create<GameStore>(set => ({
     frontOffice: [],
     foBudget: 15,
     difficulty: 'normal' as const,
+    delegation: { ...DELEGATION_PRESETS.standard },
     ownerArchetype: 'patient_builder' as OwnerArchetype,
     ownerPatience: 70,
     teamMorale: 65,

@@ -121,8 +121,8 @@ export function useSeasonSimulation() {
 
       // ── Narrative ──
       const userTeamSeason = ((result as any).teamSeasons ?? []).find((ts: any) => ts.teamId === userTeamId);
-      const userWins       = userTeamSeason?.record?.wins ?? 81;
-      const userLosses     = userTeamSeason?.record?.losses ?? 81;
+      const userWins       = userTeamSeason?.record.wins ?? 81;
+      const userLosses     = userTeamSeason?.record.losses ?? 81;
 
       const allPlayoffIds = bracket ? new Set([
         // @ts-expect-error Sprint 04 stub — contract alignment pending

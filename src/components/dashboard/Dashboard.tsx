@@ -30,12 +30,14 @@ import MomentsPanel from './MomentsPanel';
 import WeeklyCard from './WeeklyCard';
 import MFSNPanel from './MFSNPanel';
 import LoadingFallback from '../layout/LoadingFallback';
+import HomeCommandCenter from './HomeCommandCenter';
 import AllStarBreak from './AllStarBreak';
 import MidSeasonCheckIn from './MidSeasonCheckIn';
 import TradeDeadline from './TradeDeadline';
 import InSeasonDashboard from './InSeasonDashboard';
 import TutorialOverlay from '../tutorial/TutorialOverlay';
 import FrontOfficeBriefing from '../home/FrontOfficeBriefing';
+import DelegationPanel from '../setup/DelegationPanel';
 import EndOfDayDigest from '../home/EndOfDayDigest';
 import FirstWeekCoach from '../setup/FirstWeekCoach';
 import { shouldAutoStartTutorial } from '../../engine/tutorial';
@@ -107,6 +109,9 @@ export default function Dashboard() {
 
   return (
     <div className="p-4 space-y-4">
+
+      {/* ── Command Center (operational dashboard) ─────────────────── */}
+      <HomeCommandCenter />
 
       {/* ── Tutorial Overlay ─────────────────────────────────────── */}
       <TutorialOverlay
@@ -296,8 +301,8 @@ export default function Dashboard() {
           <TradeDeadline
             userTeamId={userTeamId}
             season={sim.lastResult.season}
-            userWins={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record?.wins ?? 0}
-            userLosses={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record?.losses ?? 0}
+            userWins={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.wins ?? 0}
+            userLosses={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.losses ?? 0}
             onContinue={() => setSeasonPhase('complete')}
           />
         )}
@@ -345,6 +350,17 @@ export default function Dashboard() {
 
       {/* ── End-of-Day Digest ──────────────────────────────────────── */}
       <EndOfDayDigest />
+
+      {/* ── Management Scope (delegation controls) ─────────────────── */}
+      <details className="bloomberg-border">
+        <summary className="bloomberg-header cursor-pointer select-none flex items-center justify-between">
+          <span>MANAGEMENT SCOPE</span>
+          <span className="text-gray-500 font-normal text-[10px]">⚙ CUSTOMIZE</span>
+        </summary>
+        <div className="p-3">
+          <DelegationPanel />
+        </div>
+      </details>
 
       {/* ── Always-visible panels ────────────────────────────────── */}
       <RivalryPanel />
