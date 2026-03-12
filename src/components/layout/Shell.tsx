@@ -22,23 +22,65 @@ const PlayerProfile = lazy(() => import('../stats/PlayerProfile'));
 const FinanceView   = lazy(() => import('../stats/FinanceView'));
 const HistoryView   = lazy(() => import('../stats/HistoryView'));
 
-const NAV_TABS: Array<{ id: NavTab; label: string }> = [
-  { id: 'dashboard',  label: 'HOME' },
-  { id: 'standings',  label: 'STANDINGS' },
-  { id: 'roster',     label: 'ROSTER' },
-  { id: 'stats',      label: 'LEADERBOARDS' },
-  { id: 'finance',    label: 'FINANCES' },
-  { id: 'history',    label: 'HISTORY' },
-  { id: 'profile',    label: 'PLAYER' },
+// Phase 8 audit: route ALL sub-tabs to real components
+const AwardsView           = lazy(() => import('../awards/AwardsView'));
+const PlayoffBracketView   = lazy(() => import('../playoffs/PlayoffBracketView'));
+const FranchiseRecordsView = lazy(() => import('../stats/FranchiseRecordsView'));
+const HallOfFameGallery    = lazy(() => import('../stats/HallOfFameGallery'));
+const TradeCenter          = lazy(() => import('../offseason/TradeCenter'));
+const FreeAgencyPanel      = lazy(() => import('../offseason/FreeAgencyPanel'));
+const ScoutingReports      = lazy(() => import('../roster/ScoutingReports'));
+
+// ─── 5-Pillar Navigation (UI_EVOLUTION_MARKER_2026) ─────────────────────────
+const NAV_PILLARS: Array<{ id: NavTab; label: string; icon: string; subTabs: Array<{ id: string; label: string }> }> = [
+  { id: 'home', label: 'HOME', icon: '⚾', subTabs: [] },
+  { id: 'team', label: 'TEAM', icon: '📋', subTabs: [
+    { id: 'roster', label: 'ROSTER' },
+    { id: 'depth', label: 'DEPTH CHART' },
+    { id: 'pipeline', label: 'PROSPECTS' },
+    { id: 'devlab', label: 'DEV LAB' },
+    { id: 'player', label: 'PLAYER' },
+  ]},
+  { id: 'frontoffice', label: 'FRONT OFFICE', icon: '💼', subTabs: [
+    { id: 'finances', label: 'FINANCES' },
+    { id: 'trades', label: 'TRADES' },
+    { id: 'scouting', label: 'SCOUTING' },
+    { id: 'freeagency', label: 'FREE AGENCY' },
+  ]},
+  { id: 'league', label: 'LEAGUE', icon: '🏆', subTabs: [
+    { id: 'standings', label: 'STANDINGS' },
+    { id: 'leaderboards', label: 'LEADERS' },
+    { id: 'awards', label: 'AWARDS' },
+    { id: 'playoffs', label: 'PLAYOFFS' },
+  ]},
+  { id: 'history', label: 'HISTORY', icon: '📖', subTabs: [
+    { id: 'history', label: 'TIMELINE' },
+    { id: 'records', label: 'RECORDS' },
+    { id: 'hof', label: 'HALL OF FAME' },
+    { id: 'career', label: 'CAREER LEADERS' },
+  ]},
 ];
 
+// NAV_PILLARS used directly by navigation rendering
+
 export default function Shell() {
-  const { activeTab, setActiveTab } = useUIStore();
+  const { activeTab, subTab, navigate } = useUIStore();
   const { season, userTeamId, isSimulating, simProgress, gamePhase, resetAll: resetGame } = useGameStore();
   const { resetAll: resetLeague } = useLeagueStore();
   const [saveFlash, setSaveFlash] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showSaveManager, setShowSaveManager] = useState(false);
+
+  // Map legacy tab values
+  const effectiveTab = activeTab === 'dashboard' ? 'home'
+    : activeTab === 'standings' ? 'league'
+    : activeTab === 'roster' ? 'team'
+    : activeTab === 'stats' ? 'league'
+    : activeTab === 'finance' ? 'frontoffice'
+    : activeTab === 'profile' ? 'team'
+    : activeTab;
+
+  const currentPillar = NAV_PILLARS.find(p => p.id === effectiveTab) ?? NAV_PILLARS[0];
 
   // ESC to close topmost modal
   useEscapeKey(useCallback(() => {
@@ -72,20 +114,50 @@ export default function Shell() {
         <Suspense fallback={<LoadingFallback />}>{child}</Suspense>
       </ErrorBoundary>
     );
-    switch (activeTab) {
-      case 'dashboard':  return <Dashboard />;
-      case 'standings':  return wrap(<StandingsView />);
-      case 'roster':     return wrap(<RosterView />);
-      case 'stats':      return wrap(<Leaderboards />);
-      case 'finance':    return wrap(<FinanceView />);
-      case 'history':    return wrap(<HistoryView />);
-      case 'profile':    return wrap(<PlayerProfile />);
-      default:           return <Dashboard />;
+
+    switch (effectiveTab) {
+      case 'home':
+        return <Dashboard />;
+
+      case 'team':
+        switch (subTab) {
+          case 'player':
+          case 'profile':   return wrap(<PlayerProfile />);
+          default:           return wrap(<RosterView />);
+        }
+
+      case 'frontoffice':
+        switch (subTab) {
+          case 'trades':     return wrap(<TradeCenter />);
+          case 'freeagency': return wrap(<FreeAgencyPanel onDone={() => navigate('frontoffice', 'finances')} />);
+          case 'scouting':   return wrap(<ScoutingReports />);
+          default:           return wrap(<FinanceView />);
+        }
+
+      case 'league':
+        switch (subTab) {
+          case 'leaderboards':
+          case 'stats':       return wrap(<Leaderboards />);
+          case 'awards':      return wrap(<AwardsView />);
+          case 'playoffs':    return wrap(<PlayoffBracketView />);
+          default:            return wrap(<StandingsView />);
+        }
+
+      case 'history':
+        switch (subTab) {
+          case 'records':    return wrap(<FranchiseRecordsView />);
+          case 'hof':        return wrap(<HallOfFameGallery />);
+          case 'career':     return wrap(<Leaderboards />);
+          default:           return wrap(<HistoryView />);
+        }
+
+      default:
+        return <Dashboard />;
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-950">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#0B1020' }}>
       {/* ── Skip to content (a11y) ────────────────────────────────── */}
       <a
         href="#main-content"
@@ -97,7 +169,7 @@ export default function Shell() {
       {/* ── New Game Confirmation Modal ────────────────────────────── */}
       {showNewGameConfirm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="new-game-title">
-          <div className="bloomberg-border bg-gray-900 p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
+          <div className="bloomberg-border bg-[#0F1930] p-6 max-w-sm w-full max-h-[90vh] overflow-y-auto">
             <div id="new-game-title" className="text-orange-500 font-bold text-xs tracking-widest mb-4">NEW GAME</div>
             <p className="text-gray-400 text-sm mb-6">
               Are you sure? This will end your current dynasty. Make sure you've saved first.
@@ -121,11 +193,11 @@ export default function Shell() {
       )}
 
       {/* ── Header bar ──────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-2 sm:px-4 py-2 bg-black border-b border-gray-800 shrink-0" role="banner">
-        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-          <span className="text-orange-500 font-bold text-xs sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
+      <header className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2 border-b border-dynasty-base shrink-0 safe-top" style={{ backgroundColor: '#0D1628' }} role="banner">
+        <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
+          <span className="text-orange-500 font-bold text-[10px] sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
           <span className="text-gray-500 text-xs hidden sm:inline">⚾</span>
-          <span className="text-gray-500 text-xs">S{season}</span>
+          <span className="text-gray-500 text-[10px] sm:text-xs">S{season}</span>
         </div>
         {isSimulating && (
           <div className="flex items-center gap-2" aria-live="polite" role="status">
@@ -169,30 +241,74 @@ export default function Shell() {
         </div>
       </header>
 
-      {/* ── Mobile Nav (hamburger) ─────────────────────────────────── */}
+      {/* ── Mobile Nav (bottom tab bar) ────────────────────────────── */}
       <MobileNav onNewGame={() => setShowNewGameConfirm(true)} />
 
-      {/* ── Desktop Nav bar ─────────────────────────────────────────── */}
-      <nav className="hidden sm:flex border-b border-gray-800 bg-gray-950 shrink-0" role="navigation" aria-label="Main navigation">
-        {NAV_TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={[
-              'px-4 py-2 text-xs font-bold tracking-wider uppercase transition-colors border-r border-gray-800 last:border-r-0',
-              activeTab === tab.id
-                ? 'bg-orange-900/40 text-orange-400 border-b-2 border-b-orange-500'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
-            ].join(' ')}
-            aria-current={activeTab === tab.id ? 'page' : undefined}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ── Mobile Sub-Nav (scrollable, only shown on mobile when pillar has sub-tabs) ── */}
+      {currentPillar.subTabs.length > 0 && (
+        <div className="sm:hidden overflow-x-auto flex shrink-0" style={{ backgroundColor: '#0B1020', borderBottom: '1px solid #1E2A4A' }}>
+          {currentPillar.subTabs.map(st => (
+            <button
+              key={st.id}
+              onClick={() => navigate(effectiveTab as NavTab, st.id)}
+              className={[
+                'px-3 py-2 text-[10px] font-semibold tracking-widest uppercase transition-colors whitespace-nowrap touch-target',
+                subTab === st.id
+                  ? 'text-orange-400 border-b-2 border-orange-500'
+                  : 'text-gray-500 active:text-gray-400',
+              ].join(' ')}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Desktop Nav — 5 Pillars ─────────────────────────────────── */}
+      <nav className="hidden sm:block border-b shrink-0" style={{ backgroundColor: '#0D1628', borderColor: '#1E2A4A' }} role="navigation" aria-label="Main navigation">
+        {/* Primary pillar tabs */}
+        <div className="flex">
+          {NAV_PILLARS.map(pillar => (
+            <button
+              key={pillar.id}
+              onClick={() => navigate(pillar.id, pillar.subTabs[0]?.id ?? '')}
+              className={[
+                'px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition-colors flex items-center gap-1.5',
+                effectiveTab === pillar.id
+                  ? 'text-orange-400 border-b-2 border-b-orange-500'
+                  : 'text-gray-500 hover:text-gray-300',
+              ].join(' ')}
+              style={effectiveTab === pillar.id ? { backgroundColor: 'rgba(249,115,22,0.08)' } : {}}
+              aria-current={effectiveTab === pillar.id ? 'page' : undefined}
+            >
+              <span className="text-sm">{pillar.icon}</span>
+              {pillar.label}
+            </button>
+          ))}
+        </div>
+        {/* Sub-navigation for active pillar */}
+        {currentPillar.subTabs.length > 0 && (
+          <div className="flex" style={{ backgroundColor: '#0B1020', borderTop: '1px solid rgba(30,42,74,0.5)' }}>
+            {currentPillar.subTabs.map(st => (
+              <button
+                key={st.id}
+                onClick={() => navigate(effectiveTab as NavTab, st.id)}
+                className={[
+                  'px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase transition-colors',
+                  subTab === st.id
+                    ? 'text-orange-400 border-b border-orange-500'
+                    : 'text-gray-500 hover:text-gray-400',
+                ].join(' ')}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
 
       {/* ── Main content ─────────────────────────────────────────────── */}
-      <main id="main-content" className="flex-1 overflow-auto" role="main">
+      <main id="main-content" className="flex-1 overflow-auto pb-16 sm:pb-0" role="main">
         {renderContent()}
       </main>
 

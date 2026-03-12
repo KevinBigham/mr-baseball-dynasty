@@ -145,12 +145,12 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
   // Load current lineup/rotation order from engine
   useEffect(() => {
     if (!editable) return;
-    Promise.all([
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      getEngine().getLineupOrder(),
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      getEngine().getRotationOrder(),
-    ]).then(([lineup, rotation]) => {
+    (async () => {
+      const tid = await getEngine().getUserTeamId();
+      const [lineup, rotation] = await Promise.all([
+        getEngine().getLineupOrder(tid),
+        getEngine().getRotationOrder(tid),
+      ]);
       if (lineup.length > 0) setLineupIds(lineup);
       if (rotation.length > 0) setRotationIds(rotation);
     });
@@ -232,23 +232,18 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
     const finalLineup = lineupIds.length === 9 ? lineupIds : effectiveLineup.map(p => p.playerId);
     const finalRotation = rotationIds.length > 0 ? rotationIds : effectiveRotation.map(p => p.playerId);
 
+    const tid = await getEngine().getUserTeamId();
     const [lineupRes, rotationRes] = await Promise.all([
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      getEngine().setLineupOrder(finalLineup),
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      getEngine().setRotationOrder(finalRotation),
+      getEngine().setLineupOrder(tid, finalLineup),
+      getEngine().setRotationOrder(tid, finalRotation),
     ]);
 
-    // @ts-expect-error Sprint 04 stub — contract alignment pending
     if (!lineupRes.ok) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setSaveMsg(lineupRes.error ?? 'Failed to save lineup.');
+      setSaveMsg('Failed to save lineup.');
       return;
     }
-    // @ts-expect-error Sprint 04 stub — contract alignment pending
     if (!rotationRes.ok) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setSaveMsg(rotationRes.error ?? 'Failed to save rotation.');
+      setSaveMsg('Failed to save rotation.');
       return;
     }
 

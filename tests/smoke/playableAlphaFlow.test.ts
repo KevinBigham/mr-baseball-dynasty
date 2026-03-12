@@ -116,7 +116,9 @@ describe('playable alpha smoke flow', () => {
       season: loaded.state!.season,
       gen: loaded.state!.gen,
       transactionLog: [...loaded.state!.transactionLog],
-      coachingStaffs: loaded.state!.coachingStaffs,
+      coachingStaffs: loaded.state!.coachingStaffs instanceof Map
+        ? loaded.state!.coachingStaffs
+        : new Map(Object.entries(loaded.state!.coachingStaffs).map(([k, v]) => [Number(k), v])) as any,
       seasonHistory: [sim],
       nextDraftPlayerId: maxPlayerId + 1,
     });

@@ -33,11 +33,13 @@ export interface InSeasonFlowState {
   // Granular sim state
   currentDate: string | null;      // ISO date of next unplayed game
   lastRangeRecord: { wins: number; losses: number } | null;
+  interrupts: Array<{ type: string; headline: string; detail: string }>;
 
   // Actions
   startSeason: () => Promise<void>;
   simNextChunk: () => Promise<void>;
   simAllRemaining: () => Promise<void>;
+  simToNextEvent: () => Promise<void>;
   continueAfterEvent: () => void;   // Dismiss event overlay, ready for next chunk
   getUserOverallRecord: () => { wins: number; losses: number };
 
@@ -67,6 +69,7 @@ export function useInSeasonFlow(): InSeasonFlowState {
   const [divisionStandings, setDivisionStandings] = useState<StandingsRow[] | null>(null);
   const [currentDate, setCurrentDate] = useState<string | null>(null);
   const [lastRangeRecord, setLastRangeRecord] = useState<{ wins: number; losses: number } | null>(null);
+  const [interrupts, setInterrupts] = useState<Array<{ type: string; headline: string; detail: string }>>([]);
 
   /** Fetch standings from the engine and update stores */
   const refreshStandings = useCallback(async () => {
@@ -223,6 +226,13 @@ export function useInSeasonFlow(): InSeasonFlowState {
       setLastRangeRecord(result.userRecord);
       setSegmentUserRecord(result.userRecord);
 
+      // Capture interrupts from auto-pause triggers
+      if (result.interrupts && result.interrupts.length > 0) {
+        setInterrupts(result.interrupts);
+      } else {
+        setInterrupts([]);
+      }
+
       // Update segment in store if a boundary was crossed
       if (result.crossedSegment !== null) {
         setCurrentSegment(result.crossedSegment);
@@ -242,8 +252,11 @@ export function useInSeasonFlow(): InSeasonFlowState {
       } else if (result.crossedEvent) {
         setPendingEvent(result.crossedEvent as InSeasonEvent);
         setInSeasonPaused(true);
+      } else if (result.interrupts && result.interrupts.length > 0) {
+        // Pause for interrupts (milestones, streaks) even without segment event
+        setInSeasonPaused(true);
       }
-      // If no event was crossed, don't set pendingEvent — user keeps simming
+      // If no event or interrupt, don't set pendingEvent — user keeps simming
 
       setSimProgress(1);
     } catch (e) {
@@ -256,6 +269,58 @@ export function useInSeasonFlow(): InSeasonFlowState {
   const simDay = useCallback(() => _doSimRange('day'), [_doSimRange]);
   const simWeek = useCallback(() => _doSimRange('week'), [_doSimRange]);
   const simMonth = useCallback(() => _doSimRange('month'), [_doSimRange]);
+
+  /** Sim forward until the next meaningful event — THE "ONE MORE CLICK" LOOP */
+  const simToNextEvent = useCallback(async () => {
+    setError(null);
+    setSimulating(true);
+    setSimProgress(0);
+    setInterrupts([]);
+
+    try {
+      const engine = getEngine();
+      const result: any = await (engine as any).simToNextEvent();
+
+      setPartialResult(result.partialResult);
+      setLastRangeRecord(result.userRecord);
+      setSegmentUserRecord(result.userRecord);
+
+      // Capture interrupts
+      if (result.interrupts && result.interrupts.length > 0) {
+        setInterrupts(result.interrupts);
+      }
+
+      // Update segment if boundary crossed
+      if (result.crossedSegment !== null && result.crossedSegment !== undefined) {
+        setCurrentSegment(result.crossedSegment);
+        storeSetSegment(result.crossedSegment);
+      }
+
+      // Refresh standings and schedule
+      await refreshStandings();
+      await refreshScheduleInfo();
+
+      // Handle events
+      if (result.isSeasonComplete) {
+        const finalResult = await engine.finalizeSeason();
+        setFullResult(finalResult as any);
+        setPendingEvent('complete');
+        setInSeasonPaused(true);
+      } else if (result.crossedEvent) {
+        setPendingEvent(result.crossedEvent as InSeasonEvent);
+        setInSeasonPaused(true);
+      } else if (result.interrupts && result.interrupts.length > 0) {
+        // Pause for interrupts even without a segment event
+        setInSeasonPaused(true);
+      }
+
+      setSimProgress(1);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSimulating(false);
+    }
+  }, [setSimulating, setSimProgress, storeSetSegment, setInSeasonPaused, setSegmentUserRecord, refreshStandings, refreshScheduleInfo]);
 
   /** Dismiss event overlay and prepare for next action */
   const continueAfterEvent = useCallback(() => {
@@ -270,7 +335,7 @@ export function useInSeasonFlow(): InSeasonFlowState {
   const getUserOverallRecord = useCallback((): { wins: number; losses: number } => {
     if (!partialResult) return { wins: 0, losses: 0 };
     const ts = partialResult.teamSeasons.find(t => t.teamId === userTeamId);
-    return { wins: ts?.record?.wins ?? 0, losses: ts?.record?.losses ?? 0 };
+    return { wins: ts?.record.wins ?? 0, losses: ts?.record.losses ?? 0 };
   }, [partialResult, userTeamId]);
 
   return {
@@ -283,9 +348,11 @@ export function useInSeasonFlow(): InSeasonFlowState {
     divisionStandings,
     currentDate,
     lastRangeRecord,
+    interrupts,
     startSeason,
     simNextChunk,
     simAllRemaining,
+    simToNextEvent,
     continueAfterEvent,
     getUserOverallRecord,
     simDay,

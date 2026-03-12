@@ -1,69 +1,52 @@
-import { useState } from 'react';
 import { useUIStore, type NavTab } from '../../store/uiStore';
 
-const NAV_TABS: Array<{ id: NavTab; label: string }> = [
-  { id: 'dashboard',  label: 'HOME' },
-  { id: 'standings',  label: 'STANDINGS' },
-  { id: 'roster',     label: 'ROSTER' },
-  { id: 'stats',      label: 'LEADERBOARDS' },
-  { id: 'finance',    label: 'FINANCES' },
-  { id: 'history',    label: 'HISTORY' },
-  { id: 'profile',    label: 'PLAYER' },
+const MOBILE_TABS: Array<{ id: NavTab; label: string; icon: string }> = [
+  { id: 'home',        label: 'HOME',    icon: '⚾' },
+  { id: 'team',        label: 'TEAM',    icon: '📋' },
+  { id: 'frontoffice', label: 'OFFICE',  icon: '💼' },
+  { id: 'league',      label: 'LEAGUE',  icon: '🏆' },
+  { id: 'history',     label: 'HISTORY', icon: '📖' },
 ];
 
 interface MobileNavProps {
   onNewGame?: () => void;
 }
 
-export default function MobileNav({ onNewGame }: MobileNavProps) {
-  const { activeTab, setActiveTab } = useUIStore();
-  const [open, setOpen] = useState(false);
+export default function MobileNav({ onNewGame: _onNewGame }: MobileNavProps) {
+  const { activeTab, navigate } = useUIStore();
+
+  // Map legacy tab names
+  const effectiveTab = activeTab === 'dashboard' ? 'home'
+    : activeTab === 'standings' ? 'league'
+    : activeTab === 'roster' ? 'team'
+    : activeTab === 'stats' ? 'league'
+    : activeTab === 'finance' ? 'frontoffice'
+    : activeTab === 'profile' ? 'team'
+    : activeTab;
 
   return (
-    <nav className="sm:hidden border-b border-gray-800 bg-gray-950" role="navigation" aria-label="Main navigation">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-2 text-xs font-bold tracking-wider text-gray-400 min-h-[44px]"
-        aria-expanded={open}
-        aria-controls="mobile-nav-menu"
-        aria-label="Toggle navigation menu"
-      >
-        <span className="text-orange-400">
-          {NAV_TABS.find(t => t.id === activeTab)?.label ?? 'MENU'}
-        </span>
-        <span className="text-gray-500">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div id="mobile-nav-menu" className="border-t border-gray-800">
-          {NAV_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setOpen(false);
-              }}
-              className={[
-                'w-full text-left px-4 py-3 text-xs font-bold tracking-wider uppercase transition-colors',
-                activeTab === tab.id
-                  ? 'bg-orange-900/40 text-orange-400'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900',
-              ].join(' ')}
-              aria-current={activeTab === tab.id ? 'page' : undefined}
-            >
-              {tab.label}
-            </button>
-          ))}
-          {onNewGame && (
-            <button
-              onClick={() => { setOpen(false); onNewGame(); }}
-              className="w-full text-left px-4 py-3 text-xs font-bold tracking-wider uppercase transition-colors text-red-500 hover:text-red-400 hover:bg-gray-900 border-t border-gray-800"
-            >
-              NEW GAME
-            </button>
-          )}
-        </div>
-      )}
+    <nav
+      className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex safe-bottom"
+      style={{ backgroundColor: '#0D1628', borderTop: '1px solid #1E2A4A' }}
+      role="navigation"
+      aria-label="Main navigation"
+    >
+      {MOBILE_TABS.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => navigate(tab.id)}
+          className={[
+            'flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] transition-colors',
+            effectiveTab === tab.id
+              ? 'text-orange-400'
+              : 'text-gray-500',
+          ].join(' ')}
+          aria-current={effectiveTab === tab.id ? 'page' : undefined}
+        >
+          <span className="text-lg">{tab.icon}</span>
+          <span className="text-[9px] font-bold tracking-wider uppercase mt-0.5">{tab.label}</span>
+        </button>
+      ))}
     </nav>
   );
 }
