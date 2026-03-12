@@ -50,10 +50,10 @@ function getSortValue(p: RosterPlayer, key: SortKey, isPitcherTable: boolean): n
     case 'salary': return p.salary;
     case 'contract': return p.contractYearsRemaining;
     case 'service': return p.serviceTimeDays;
-    case 'stat1': return isPitcherTable ? (p.stats.w ?? 0) : (p.stats.avg ?? 0);
-    case 'stat2': return isPitcherTable ? (p.stats.era ?? 99) : (p.stats.hr ?? 0);
-    case 'stat3': return isPitcherTable ? (p.stats.ip ?? 0) : (p.stats.rbi ?? 0);
-    case 'stat4': return isPitcherTable ? (p.stats.k9 ?? 0) : (p.stats.obp ?? 0);
+    case 'stat1': return isPitcherTable ? (p.stats?.w ?? 0) : (p.stats?.avg ?? 0);
+    case 'stat2': return isPitcherTable ? (p.stats?.era ?? 99) : (p.stats?.hr ?? 0);
+    case 'stat3': return isPitcherTable ? (p.stats?.ip ?? 0) : (p.stats?.rbi ?? 0);
+    case 'stat4': return isPitcherTable ? (p.stats?.k9 ?? 0) : (p.stats?.obp ?? 0);
     default: return 0;
   }
 }
@@ -167,17 +167,17 @@ function PlayerRow({
       <td className="px-2 py-1 text-gray-500 text-center">{p.isPitcher ? p.throws : p.bats}</td>
       {p.isPitcher ? (
         <>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.w ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.era ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.ip ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.k9 ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.w ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.era ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.ip ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.k9 ?? '—'}</td>
         </>
       ) : (
         <>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.avg ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.hr ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.rbi ?? '—'}</td>
-          <td className="text-right px-2 py-1 tabular-nums">{p.stats.obp ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.avg ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.hr ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.rbi ?? '—'}</td>
+          <td className="text-right px-2 py-1 tabular-nums">{p.stats?.obp ?? '—'}</td>
         </>
       )}
       {showContractCols && (

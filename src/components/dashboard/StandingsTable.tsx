@@ -173,8 +173,9 @@ export default function StandingsView() {
   if (loading) return <div className="p-4"><SkeletonTable rows={5} cols={8} /></div>;
   if (!standings) return <div className="p-4 text-gray-500 text-xs">No standings yet. Simulate a season first.</div>;
 
-  const grouped   = groupByDivision(standings.standings);
-  const playoffIds = computePlayoffIds(standings.standings);
+  const standingsRows = Array.isArray(standings.standings) ? standings.standings : [];
+  const grouped   = groupByDivision(standingsRows);
+  const playoffIds = computePlayoffIds(standingsRows);
 
   const handleRowClick = (teamId: number) => {
     setDetailTeamId(teamId);
@@ -279,8 +280,8 @@ export default function StandingsView() {
       {/* ── Playoff picture view ───────────────────────────────────────── */}
       {view === 'picture' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <PlayoffPicturePanel rows={standings.standings} league="AL" userTeamId={userTeamId} onSelect={handleRowClick} />
-          <PlayoffPicturePanel rows={standings.standings} league="NL" userTeamId={userTeamId} onSelect={handleRowClick} />
+          <PlayoffPicturePanel rows={standingsRows} league="AL" userTeamId={userTeamId} onSelect={handleRowClick} />
+          <PlayoffPicturePanel rows={standingsRows} league="NL" userTeamId={userTeamId} onSelect={handleRowClick} />
           <div className="lg:col-span-2 flex gap-6 text-xs text-gray-500">
             <span><span className="text-yellow-400">▲</span> Division Leader</span>
             <span><span className="text-blue-400">✦</span> Wild Card</span>

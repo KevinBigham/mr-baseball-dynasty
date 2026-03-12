@@ -31,7 +31,7 @@ const TradeCenter          = lazy(() => import('../offseason/TradeCenter'));
 const FreeAgencyPanel      = lazy(() => import('../offseason/FreeAgencyPanel'));
 const ScoutingReports      = lazy(() => import('../roster/ScoutingReports'));
 
-// ─── 5-Pillar Navigation ─────────────────────────────────────────────────────
+// ─── 5-Pillar Navigation (UI_EVOLUTION_MARKER_2026) ─────────────────────────
 const NAV_PILLARS: Array<{ id: NavTab; label: string; icon: string; subTabs: Array<{ id: string; label: string }> }> = [
   { id: 'home', label: 'HOME', icon: '⚾', subTabs: [] },
   { id: 'team', label: 'TEAM', icon: '📋', subTabs: [
