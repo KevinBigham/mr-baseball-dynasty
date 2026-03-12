@@ -32,6 +32,12 @@ export interface GameState {
   hallOfFamers: unknown[];
   milestones: unknown[];
   leagueRecords: unknown[];
+  careerHistory?: Record<number, PlayerSeason[]>;
+  awardsHistory?: SeasonAwards[];
+  leagueHistory?: unknown[];
+  hofCandidates?: unknown[];
+  franchiseRecordBook?: unknown;
+  firedMilestones?: string[];
   newsFeed: NewsStory[];
   transactionLog: TransactionLogEntry[];
   coachingStaffs: Map<number, CoachingStaff>;

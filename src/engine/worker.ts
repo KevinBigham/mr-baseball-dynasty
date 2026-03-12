@@ -105,6 +105,23 @@ import {
   type DraftBoardEntry,
   type DraftBoardState,
 } from './draft.ts';
+import { computePayrollReport, generateArbitrationCases, type ArbitrationCase } from './finances.ts';
+import { computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages } from './advancedStats.ts';
+import { generateTradeOffers, shopPlayer as shopPlayerEngine } from './trading.ts';
+import { generateScoutingReport } from './scouting.ts';
+import {
+  createSeasonSimState,
+  simulateChunk,
+  simulateRange,
+  computeSim1DayTarget,
+  computeSim1WeekTarget,
+  computeSim1MonthTarget,
+  buildPartialResult,
+  type SeasonSimState,
+  SEGMENTS,
+} from './sim/incrementalSimulator.ts';
+import { generateScheduleTemplate } from '../data/scheduleTemplate.ts';
+import type { ScheduleEntry } from '../types/game.ts';
 
 // ─── In-Memory State ─────────────────────────────────────────────
 // The worker holds the live game state. IndexedDB is for persistence.
@@ -160,6 +177,36 @@ const cache = new WorkerCache();
 // Only these game IDs get full box scores retained for storage
 let featuredGameIds: Set<number> = new Set();
 let activeDraftState: DraftBoardState | null = null;
+let devAssignments: Map<number, import('../engine/devPrograms').DevProgram> = new Map();
+let lineupOrders: Map<number, number[]> = new Map();
+let rotationOrders: Map<number, number[]> = new Map();
+/** Per-player career stat history: playerId → PlayerSeason[] (one entry per season played) */
+let careerHistory: Map<number, PlayerSeason[]> = new Map();
+/** Season awards history across all played seasons */
+let awardsHistory: SeasonAwards[] = [];
+/** Franchise record book (user team, updated each season) */
+let franchiseRecordBook: import('./franchiseRecords').FranchiseRecordBook | null = null;
+/** HOF inductees */
+let hallOfFamers: import('./hallOfFame').HallOfFameInductee[] = [];
+/** Active HOF ballot candidates */
+let hofCandidates: import('./hallOfFame').HallOfFameCandidate[] = [];
+/** League history: season summaries for browsing */
+let leagueHistory: Array<{
+  season: number;
+  champion: { teamId: number; teamName: string } | null;
+  alMVP: string;
+  nlMVP: string;
+  alCyYoung: string;
+  nlCyYoung: string;
+  topWins: { teamId: number; teamName: string; wins: number };
+  topHR: { playerId: number; name: string; hr: number };
+}> = [];
+/** Tracks which milestones have already fired to avoid duplicates */
+let firedMilestones: Set<string> = new Set();
+/** Incremental sim state — null when not in mid-season */
+let incrementalSimState: SeasonSimState | null = null;
+/** Cached schedule for incremental sim (generated once per season) */
+let cachedSchedule: ScheduleEntry[] | null = null;
 
 // ─── Public API ──────────────────────────────────────────────────
 
@@ -181,6 +228,18 @@ const api = {
     seasonHistory.length = 0;
     ownerEvaluationHistory.length = 0;
     activeDraftState = null;
+    careerHistory = new Map();
+    awardsHistory = [];
+    lineupOrders = new Map();
+    rotationOrders = new Map();
+    devAssignments = new Map();
+    franchiseRecordBook = null;
+    hallOfFamers = [];
+    hofCandidates = [];
+    leagueHistory = [];
+    firedMilestones = new Set();
+    incrementalSimState = null;
+    cachedSchedule = null;
     eventLog.clear();
     cache.reset();
 
@@ -221,6 +280,12 @@ const api = {
     leagueGamesOnIL: number;
     standings: TeamStandingRow[];
   }> {
+    // Ensure all teams have minimum viable rosters (prevents forfeit bugs)
+    try {
+      const { ensureMinimumRosters } = await import('./rosterGuard.ts');
+      ensureMinimumRosters(players, teams);
+    } catch { /* non-fatal */ }
+
     const injuryRiskMultipliers = new Map<number, number>();
     for (const team of teams) {
       const coaching = coachingStaffs.get(team.teamId);
@@ -243,6 +308,35 @@ const api = {
     latestPlayerSeasons = result.playerSeasons;
     latestGameResults = result.gameResults;
     gen = result.gen;
+
+    // ── Accumulate career history ─────────────────────────────────────────
+    for (const [playerId, ps] of result.playerSeasons) {
+      const existing = careerHistory.get(playerId) ?? [];
+      existing.push(ps);
+      careerHistory.set(playerId, existing);
+    }
+
+    // ── Detect career milestones ──────────────────────────────────────────
+    try {
+      const { detectMilestones } = await import('./milestones.ts');
+      const nameMap = new Map(players.map(p => [p.playerId, p.name]));
+      const milestones = detectMilestones(careerHistory, nameMap, currentSeason, firedMilestones);
+      for (const m of milestones) {
+        latestNewsFeed.push({
+          id: `milestone-${currentSeason}-${m.playerId}-${m.milestone}`,
+          season: currentSeason,
+          gameDay: 162,
+          category: 'award',
+          priority: 'major',
+          headline: `MILESTONE: ${m.playerName} Reaches ${m.milestone}`,
+          body: `${m.playerName} has reached a career milestone: ${m.milestone}. Current total: ${m.value}.`,
+          teamIds: [],
+          playerIds: [m.playerId],
+        });
+      }
+      if (milestones.length > 0) latestNewsFeed = sortNewsFeed(latestNewsFeed);
+    } catch { /* milestone detection non-fatal */ }
+
     seasonHistory.push(result);
     if (seasonHistory.length > 8) {
       seasonHistory.shift();
@@ -372,6 +466,8 @@ const api = {
     );
 
     latestSeasonAwards = awards;
+    awardsHistory.push(awards);
+    if (awardsHistory.length > 50) awardsHistory.shift();
     cache.invalidate();
 
     // Generate award news stories
@@ -425,6 +521,87 @@ const api = {
 
     latestNewsFeed = sortNewsFeed(latestNewsFeed);
 
+    // ── Update franchise records ─────────────────────────────────────────
+    try {
+      const { updateFranchiseRecords, emptyRecordBook } = await import('./franchiseRecords.ts');
+      const userTeamId = 1;
+      const userTeamSeason = latestTeamSeasons.find(ts => ts.teamId === userTeamId);
+      if (userTeamSeason) {
+        const playerMap = new Map(players.map(p => [p.playerId, p]));
+        const seasonStatsMap = new Map<number, any>();
+        for (const [pid, ps] of latestPlayerSeasons) {
+          const p = playerMap.get(pid);
+          if (p && p.teamId === userTeamId) {
+            seasonStatsMap.set(pid, {
+              playerId: pid, teamId: ps.teamId, season: ps.season,
+              pa: ps.ab + 50, ab: ps.ab, h: ps.hits, hr: ps.hr, rbi: ps.rbi, r: ps.runs,
+              bb: Math.round(ps.ab * 0.08), so: Math.round(ps.ab * 0.22),
+              outs: Math.round(ps.ip * 3), er: ps.earnedRuns, w: ps.wins, l: ps.losses,
+              ka: ps.kPitching, sv: ps.saves, ra: ps.earnedRuns,
+              doubles: 0, triples: 0, hbp: 0, sb: 0, cs: 0, sf: 0, ha: 0, bba: 0, hra: 0,
+            });
+          }
+        }
+        const userCareer = new Map<number, any[]>();
+        for (const [pid, seasons] of careerHistory) {
+          const p = playerMap.get(pid);
+          if (p && p.teamId === userTeamId) {
+            userCareer.set(pid, seasons.map(s => ({
+              ...s, pa: s.ab + 50,
+              outs: Math.round(s.ip * 3), ka: s.kPitching,
+              bb: 0, so: 0, doubles: 0, triples: 0, hbp: 0, sb: 0, cs: 0, sf: 0, ha: 0, bba: 0, hra: 0, ra: 0,
+            })));
+          }
+        }
+        const book = franchiseRecordBook ?? emptyRecordBook();
+        const { records, newRecords } = updateFranchiseRecords(
+          book, seasonStatsMap, userCareer, playerMap,
+          { wins: userTeamSeason.wins, losses: userTeamSeason.losses },
+          currentSeason, userTeamId,
+        );
+        franchiseRecordBook = records;
+        for (const rec of newRecords) {
+          latestNewsFeed.push({
+            id: `record-${currentSeason}-${rec.category}`,
+            season: currentSeason,
+            headline: `NEW FRANCHISE RECORD: ${rec.playerName} — ${rec.category}`,
+            body: `${rec.playerName} set a new franchise record with ${rec.displayValue} (${rec.category}).`,
+            category: 'record',
+            priority: 'major',
+            playerIds: [rec.playerId],
+            teamIds: [userTeamId],
+            gameDay: 162,
+          });
+        }
+        if (newRecords.length > 0) latestNewsFeed = sortNewsFeed(latestNewsFeed);
+      }
+    } catch { /* non-fatal */ }
+
+    // ── Build league history entry ───────────────────────────────────────
+    {
+      const champion = latestPlayoffBracket?.worldSeries?.winnerTeamId;
+      const champTeam = champion ? teams.find(t => t.teamId === champion) : null;
+      const bestTeam = [...latestTeamSeasons].sort((a, b) => b.wins - a.wins)[0];
+      const bestTeamObj = bestTeam ? teams.find(t => t.teamId === bestTeam.teamId) : null;
+      let topHR = { playerId: 0, name: '', hr: 0 };
+      for (const [pid, ps] of latestPlayerSeasons) {
+        if (ps.hr > topHR.hr) {
+          const p = players.find(pl => pl.playerId === pid);
+          topHR = { playerId: pid, name: p?.name ?? '', hr: ps.hr };
+        }
+      }
+      leagueHistory.push({
+        season: currentSeason,
+        champion: champTeam ? { teamId: champTeam.teamId, teamName: champTeam.name } : null,
+        alMVP: awards.alMVP.playerName || 'N/A',
+        nlMVP: awards.nlMVP.playerName || 'N/A',
+        alCyYoung: awards.alCyYoung.playerName || 'N/A',
+        nlCyYoung: awards.nlCyYoung.playerName || 'N/A',
+        topWins: { teamId: bestTeam?.teamId ?? 0, teamName: bestTeamObj?.name ?? '', wins: bestTeam?.wins ?? 0 },
+        topHR,
+      });
+    }
+
     const saveState = buildPersistedState();
     if (saveState) {
       createAutosave(saveState, 'Awards Computed');
@@ -443,7 +620,7 @@ const api = {
       playerMap.set(p.playerId, p);
     }
     let rankings: ProspectRanking[];
-    [rankings, gen] = generateTop100(playerMap, gen);
+    [rankings, gen] = generateTop100(playerMap, gen, currentSeason);
     return rankings;
   },
 
@@ -468,7 +645,7 @@ const api = {
         teamSeasonsMap.set(ts.teamId, ts);
       }
 
-      const ownerTeamStrategies = classifyAllTeams(teamSeasonsMap);
+      const ownerTeamStrategies = classifyAllTeams(teamSeasonsMap, players);
       const ownerEvaluations = evaluateOwnersForSeason({
         season: currentSeason,
         ownerProfiles,
@@ -499,11 +676,35 @@ const api = {
         seasonHistory,
         nextDraftPlayerId: maxPlayerId + 1,
         ownerBidModifiers,
+        teams,
+        userTeamId: 1,
       });
 
       gen = offseason.gen;
       latestOffseasonRecap = offseason.recap;
       players = Array.from(playersMap.values());
+
+      // Apply development program effects to assigned players
+      if (devAssignments.size > 0) {
+        const { applyDevProgram } = await import('./devPrograms.ts');
+        for (const [playerId, programId] of devAssignments) {
+          const player = players.find(p => p.playerId === playerId);
+          if (player) {
+            applyDevProgram(player, programId);
+          }
+        }
+        devAssignments.clear();
+      }
+
+      // Compute coaching morale bonuses per team
+      const coachingMoraleBonuses = new Map<number, number>();
+      for (const team of teams) {
+        const coaching = coachingStaffs.get(team.teamId);
+        if (coaching) {
+          const bonuses = bonusesFromCoaching(coaching);
+          coachingMoraleBonuses.set(team.teamId, bonuses.moraleBonus);
+        }
+      }
 
       const chemistryAdvance = advanceTeamChemistry({
         season: currentSeason + 1,
@@ -513,6 +714,7 @@ const api = {
         previousChemistry: teamChemistry,
         gen,
         nextEventId: nextClubhouseEventId(),
+        coachingMoraleBonuses,
       });
       gen = chemistryAdvance.gen;
       teamChemistry = chemistryAdvance.chemistry;
@@ -522,6 +724,37 @@ const api = {
           clubhouseEvents = clubhouseEvents.slice(-400);
         }
       }
+
+      // ── HOF voting ─────────────────────────────────────────────────────
+      try {
+        const { identifyHOFCandidates, simulateHOFVoting } = await import('./hallOfFame.ts');
+        const retiredMap = new Map<number, { name: string; position: string; seasons: any[] }>();
+        for (const [playerId, seasons] of careerHistory) {
+          const player = playersMap.get(playerId);
+          if (!player || player.rosterData.rosterStatus !== 'RETIRED') continue;
+          retiredMap.set(playerId, {
+            name: player.name,
+            position: player.position,
+            seasons: seasons.map(s => ({
+              ...s, pa: s.ab + 50, h: s.hits,
+              outs: Math.round(s.ip * 3), ka: s.kPitching, er: s.earnedRuns,
+              bb: 0, so: 0, doubles: 0, triples: 0, hbp: 0, sb: 0, cs: 0, sf: 0, ha: 0, bba: 0, hra: 0, ra: 0,
+            })),
+          });
+        }
+        const existingIds = new Set(hallOfFamers.map(h => h.playerId));
+        const candidates = identifyHOFCandidates(retiredMap, currentSeason + 1, existingIds);
+        // Merge with existing candidates (increment ballot year)
+        for (const existing of hofCandidates) {
+          if (!candidates.find(c => c.playerId === existing.playerId)) {
+            existing.yearsOnBallot++;
+            if (existing.yearsOnBallot <= 10) candidates.push(existing);
+          }
+        }
+        const { inducted, remaining } = simulateHOFVoting(candidates, rngSeed + currentSeason);
+        hallOfFamers.push(...inducted);
+        hofCandidates = remaining;
+      } catch { /* HOF voting non-fatal */ }
 
       // Backfill offseason transaction log (retirements + Rule 5 + FA + draft).
       const offseasonSeason = currentSeason + 1;
@@ -730,9 +963,25 @@ const api = {
     latestSeasonAwards = null;
     latestTeamSeasons = [];
     latestPlayerSeasons = new Map();
+    incrementalSimState = null;
+    cachedSchedule = null;
     latestGameResults = [];
     featuredGameIds = new Set();
     cache.invalidate();
+
+    // Reset per-season counters (options, demotions, IL clearance)
+    for (const p of players) {
+      p.rosterData.optionUsedThisSeason = false;
+      p.rosterData.minorLeagueDaysThisSeason = 0;
+      p.rosterData.demotionsThisSeason = 0;
+      // Clear healed injuries from previous season
+      if (p.rosterData.currentInjury && p.rosterData.currentInjury.recoveryDaysRemaining <= 0) {
+        p.rosterData.currentInjury = undefined;
+        if (p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60') {
+          p.rosterData.rosterStatus = 'MLB_ACTIVE';
+        }
+      }
+    }
 
     if (hadCompletedSeason) {
       refreshDraftBoard(1);
@@ -866,9 +1115,11 @@ const api = {
     if (!player) return null;
 
     const ps = latestPlayerSeasons.get(playerId);
+    const career = careerHistory.get(playerId) ?? [];
     return {
       player,
       seasonStats: ps ?? null,
+      careerStats: career,
     };
   },
 
@@ -876,8 +1127,31 @@ const api = {
     return currentSeason;
   },
 
+  async getSimProgress() {
+    if (!incrementalSimState) {
+      return { active: false, gamesCompleted: 0, totalGames: 0, currentSegment: -1, isComplete: false, segments: SEGMENTS };
+    }
+    return {
+      active: true,
+      gamesCompleted: incrementalSimState.gamesCompleted,
+      totalGames: incrementalSimState.totalGames,
+      currentSegment: incrementalSimState.currentSegment,
+      isComplete: incrementalSimState.isComplete,
+      segments: SEGMENTS,
+      partialStandings: buildPartialResult(incrementalSimState, teams).teamSeasons.map(ts => ({
+        teamId: ts.teamId,
+        wins: ts.record.wins,
+        losses: ts.record.losses,
+      })),
+    };
+  },
+
   async getSeasonStage(): Promise<SeasonStage> {
     return computeSeasonStage();
+  },
+
+  async getLeagueHistory() {
+    return leagueHistory;
   },
 
   async getTeams(): Promise<Team[]> {
@@ -2090,8 +2364,11 @@ const api = {
   // ─── Stub methods (Sprint 04 branch surgery) ──────────────────────
 
   // State management
-  async loadState(_state: any): Promise<void> { /* TODO */ },
-  async getFullState(): Promise<any> { return null; },
+  async loadState(_state: any): Promise<void> {
+    // Legacy stub — use loadGameFromSlot() for save/load functionality
+    console.warn('loadState() is deprecated. Use loadGameFromSlot() instead.');
+  },
+  async getFullState(): Promise<any> { return buildPersistedState(); },
 
   // Team/roster queries
   async getLeagueTeams() { return teams; },
@@ -2109,82 +2386,596 @@ const api = {
   // Season sim aliases
   async simulateSeason(_onProgress?: any) { return api.simulateCurrentSeason(); },
   async simulatePlayoffs() { return api.simulatePostseason(); },
-  async finalizeSeason() { /* TODO */ },
-  async simNextChunk() { return { done: true, gamesPlayed: 0 }; },
-  async simRange(_start: number, _end: number) { return { done: true, gamesPlayed: 0 }; },
-  async simRemainingChunks() { return { done: true, gamesPlayed: 0 }; },
+  async finalizeSeason() {
+    // Season complete — ensure all post-season data is computed
+    cache.invalidate();
+    const saveState = buildPersistedState();
+    if (saveState) createAutosave(saveState, 'Season Finalized');
+  },
+  async simNextChunk() {
+    // Initialize incremental sim if not started
+    if (!incrementalSimState) {
+      cachedSchedule = generateScheduleTemplate();
+      incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
+    }
+    if (!cachedSchedule) cachedSchedule = generateScheduleTemplate();
+
+    const result = simulateChunk(
+      incrementalSimState,
+      teams,
+      players,
+      cachedSchedule,
+      { userTeamId: 1 },
+    );
+
+    // If season complete, sync to main sim state
+    if (result.isSeasonComplete) {
+      // Convert partial result to the format latestTeamSeasons expects
+      latestTeamSeasons = result.partialResult.teamSeasons.map(ts => ({
+        teamId: ts.teamId,
+        season: ts.season,
+        wins: ts.record.wins,
+        losses: ts.record.losses,
+        runsScored: ts.record.runsScored,
+        runsAllowed: ts.record.runsAllowed,
+        divisionRank: 0,
+        playoffResult: null,
+      }));
+      // Assign division ranks
+      const byDiv = new Map<string, typeof latestTeamSeasons>();
+      for (const ts of latestTeamSeasons) {
+        const team = teams.find(t => t.teamId === ts.teamId);
+        const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
+        const arr = byDiv.get(key) ?? [];
+        arr.push(ts);
+        byDiv.set(key, arr);
+      }
+      for (const div of byDiv.values()) {
+        div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+        div.forEach((ts, i) => { ts.divisionRank = i + 1; });
+      }
+      // Convert player stats
+      latestPlayerSeasons = new Map();
+      for (const ps of result.partialResult.playerSeasons) {
+        latestPlayerSeasons.set(ps.playerId, {
+          playerId: ps.playerId,
+          teamId: ps.teamId,
+          season: ps.season,
+          ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
+          ip: ps.outs / 3, earnedRuns: ps.er,
+          wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
+        });
+      }
+    }
+
+    cache.invalidate();
+    return {
+      done: result.isSeasonComplete,
+      gamesPlayed: result.partialResult.gamesCompleted,
+      segment: result.segment,
+      segmentLabel: result.segmentLabel,
+      event: result.event,
+      userRecord: result.userRecord,
+    };
+  },
+  async simRange(mode: string, _end?: number) {
+    // Initialize if needed
+    if (!incrementalSimState) {
+      cachedSchedule = generateScheduleTemplate();
+      incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
+    }
+    if (!cachedSchedule) cachedSchedule = generateScheduleTemplate();
+
+    // Compute target based on mode
+    let target: number;
+    switch (mode) {
+      case 'day':
+        target = computeSim1DayTarget(incrementalSimState, cachedSchedule);
+        break;
+      case 'week':
+        target = computeSim1WeekTarget(incrementalSimState, cachedSchedule);
+        break;
+      case 'month':
+        target = computeSim1MonthTarget(incrementalSimState, cachedSchedule);
+        break;
+      default:
+        target = typeof _end === 'number' ? _end : computeSim1WeekTarget(incrementalSimState, cachedSchedule);
+    }
+
+    const result = simulateRange(
+      incrementalSimState,
+      teams,
+      players,
+      cachedSchedule,
+      target,
+      { userTeamId: 1 },
+    );
+
+    cache.invalidate();
+    return {
+      done: result.isSeasonComplete,
+      gamesPlayed: result.gamesSimulated,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      event: result.crossedEvent,
+      segment: result.crossedSegment,
+      userRecord: result.userRecord,
+    };
+  },
+  async simRemainingChunks() {
+    // Simulate all remaining chunks until season complete
+    if (!incrementalSimState) {
+      cachedSchedule = generateScheduleTemplate();
+      incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
+    }
+    if (!cachedSchedule) cachedSchedule = generateScheduleTemplate();
+
+    let totalGamesPlayed = 0;
+    while (!incrementalSimState.isComplete) {
+      const result = simulateChunk(incrementalSimState, teams, players, cachedSchedule, { userTeamId: 1 });
+      totalGamesPlayed += result.partialResult.gamesCompleted;
+      if (result.isSeasonComplete) break;
+    }
+
+    // Sync final state (same as simNextChunk completion)
+    const partial = buildPartialResult(incrementalSimState, teams);
+    latestTeamSeasons = partial.teamSeasons.map(ts => ({
+      teamId: ts.teamId, season: ts.season,
+      wins: ts.record.wins, losses: ts.record.losses,
+      runsScored: ts.record.runsScored, runsAllowed: ts.record.runsAllowed,
+      divisionRank: 0, playoffResult: null,
+    }));
+    const byDiv = new Map<string, typeof latestTeamSeasons>();
+    for (const ts of latestTeamSeasons) {
+      const team = teams.find(t => t.teamId === ts.teamId);
+      const key = team ? `${team.conferenceId}-${team.divisionId}` : 'unknown';
+      const arr = byDiv.get(key) ?? [];
+      arr.push(ts);
+      byDiv.set(key, arr);
+    }
+    for (const div of byDiv.values()) {
+      div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+      div.forEach((ts, i) => { ts.divisionRank = i + 1; });
+    }
+    latestPlayerSeasons = new Map();
+    for (const ps of partial.playerSeasons) {
+      latestPlayerSeasons.set(ps.playerId, {
+        playerId: ps.playerId, teamId: ps.teamId, season: ps.season,
+        ab: ps.ab, hits: ps.h, hr: ps.hr, rbi: ps.rbi, runs: ps.r,
+        ip: ps.outs / 3, earnedRuns: ps.er,
+        wins: ps.w, losses: ps.l, kPitching: ps.ka, saves: ps.sv,
+      });
+    }
+
+    cache.invalidate();
+    return { done: true, gamesPlayed: totalGamesPlayed };
+  },
 
   // Roster transactions
   async promotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'CALL_UP', playerId }); },
   async demotePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'OPTION', playerId }); },
   async dfaPlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'DFA', playerId }); },
   async releasePlayer(playerId: number, teamId = 1) { return api.submitRosterTransaction(teamId, { type: 'RELEASE', playerId }); },
-  async setLineupOrder(_teamId: number, _order: number[]) { /* TODO */ },
-  async setRotationOrder(_teamId: number, _order: number[]) { /* TODO */ },
-  async getLineupOrder(_teamId: number) { return [] as number[]; },
-  async getRotationOrder(_teamId: number) { return [] as number[]; },
+  async setLineupOrder(teamId: number, order: number[]) {
+    lineupOrders.set(teamId, order);
+    cache.invalidate();
+  },
+  async setRotationOrder(teamId: number, order: number[]) {
+    rotationOrders.set(teamId, order);
+    cache.invalidate();
+  },
+  async getLineupOrder(teamId: number) { return lineupOrders.get(teamId) ?? []; },
+  async getRotationOrder(teamId: number) { return rotationOrders.get(teamId) ?? []; },
 
   // Free agency
   async getFreeAgents() { return players.filter(p => p.rosterData.rosterStatus === 'FREE_AGENT'); },
-  async signFreeAgent(_playerId: number, _teamId: number, _years: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async signFreeAgent(playerId: number, teamId: number, years: number, salary: number) {
+    const { signFreeAgent: signFA } = await import('./freeAgency.ts');
+    const { canAffordMove } = await import('./finances.ts');
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, reason: 'Player not found' };
+    const team = teams.find(t => t.teamId === teamId);
+    if (team && !canAffordMove(players, team, salary)) {
+      return { ok: false, reason: 'Cannot afford this signing — would exceed budget.' };
+    }
+    const result = signFA(player, teamId, years, salary, players);
+    if (result.ok) {
+      cache.invalidate();
+      latestNewsFeed.push(News.generateSigningStory(
+        currentSeason, player.name, team?.name ?? '',
+        years, salary, playerId, teamId,
+      ));
+      latestNewsFeed = sortNewsFeed(latestNewsFeed);
+    }
+    return result;
+  },
 
   // Trading
-  async getTradeOffers(_teamId: number) { return [] as any[]; },
-  async proposeTrade(_offer: any) { return { ok: false, reason: 'Not yet implemented' }; },
-  async acceptTradeOffer(_offerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async acceptCounterOffer(_offerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async shopPlayer(_playerId: number) { return [] as any[]; },
+  async getTradeOffers(teamId: number) {
+    return generateTradeOffers(teamId, players, teams);
+  },
+  async proposeTrade(offer: { partnerTeamId: number; userPlayerIds: number[]; partnerPlayerIds: number[] }) {
+    const { evaluateProposedTrade, executeTrade: execTrade } = await import('./trading.ts');
+    const evaluation = evaluateProposedTrade(
+      players, offer.userPlayerIds, offer.partnerPlayerIds,
+    );
+    if (!evaluation.fair) {
+      return { ok: false, reason: 'The other team doesn\'t see this as a fair deal.' };
+    }
+    const result = execTrade(players, 1, offer.partnerTeamId, offer.userPlayerIds, offer.partnerPlayerIds);
+    if (result.ok) {
+      cache.invalidate();
+      const partnerTeam = teams.find(t => t.teamId === offer.partnerTeamId);
+      latestNewsFeed.push(News.generateTradeStory(
+        currentSeason, 0, 'User Team', partnerTeam?.name ?? '',
+        offer.userPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
+        offer.partnerPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
+        [...offer.userPlayerIds, ...offer.partnerPlayerIds],
+        [1, offer.partnerTeamId],
+      ));
+      latestNewsFeed = sortNewsFeed(latestNewsFeed);
+    }
+    return result;
+  },
+  async acceptTradeOffer(offerId: number) {
+    // For now, trade offers from getTradeOffers contain all info needed
+    // The UI should call proposeTrade with the offer details
+    void offerId;
+    return { ok: false, reason: 'Use proposeTrade with the offer details instead.' };
+  },
+  async acceptCounterOffer(_offerId: number) {
+    return { ok: false, reason: 'Counter-offers not yet supported.' };
+  },
+  async shopPlayer(playerId: number) {
+    return shopPlayerEngine(playerId, players, teams);
+  },
 
   // Draft
   async startDraft() { return api.getDraftBoard(); },
   async startAnnualDraft() { return api.getDraftBoard(); },
   async autoAdvanceDraft() { return { done: true, picks: [] as any[] }; },
-  async completeDraft() { /* TODO */ },
-  async completeAnnualDraft() { /* TODO */ },
+  async completeDraft() {
+    activeDraftState = null;
+    cache.invalidate();
+  },
+  async completeAnnualDraft() {
+    activeDraftState = null;
+    cache.invalidate();
+  },
 
   // Awards/stats/leaderboards
   async getLeaderboard(_category?: string, _limit?: number) { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
-  async getLeaderboardFull(_category: string) { return [] as any[]; },
-  async getAwardRace() { return {} as any; },
+  async getLeaderboardFull(category: string) {
+    if (category === 'batting') return api.getBattingLeaders(50);
+    if (category === 'pitching') return api.getPitchingLeaders(50);
+    // Combined: return both
+    const [batting, pitching] = await Promise.all([
+      api.getBattingLeaders(50),
+      api.getPitchingLeaders(50),
+    ]);
+    return [...batting, ...pitching];
+  },
+  async getAwardRace() {
+    return latestSeasonAwards ?? {
+      season: currentSeason,
+      alMVP: { awardName: 'AL MVP', playerId: 0, playerName: '', teamId: 0, statLine: '' },
+      nlMVP: { awardName: 'NL MVP', playerId: 0, playerName: '', teamId: 0, statLine: '' },
+      alCyYoung: { awardName: 'AL Cy Young', playerId: 0, playerName: '', teamId: 0, statLine: '' },
+      nlCyYoung: { awardName: 'NL Cy Young', playerId: 0, playerName: '', teamId: 0, statLine: '' },
+      alROY: null,
+      nlROY: null,
+    };
+  },
   async getStaffBonuses(_teamId?: number) {
     const targetTeamId = _teamId ?? 1;
     const coaching = coachingStaffs.get(targetTeamId);
     if (!coaching) return DEFAULT_BONUSES;
     return bonusesFromCoaching(coaching);
   },
-  async getAdvancedStats(_playerId: number) { return {} as any; },
-  async getCareerLeaderboard(_stat: string) { return [] as any[]; },
+  async getAdvancedStats(playerId: number) {
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return null;
+    const ps = latestPlayerSeasons.get(playerId);
+    if (!ps) return null;
+    // Build league averages from all player seasons
+    const allStats = Array.from(latestPlayerSeasons.values())
+      .map(s => ({
+        playerId: s.playerId, teamId: s.teamId, season: s.season,
+        pa: s.ab + 50, ab: s.ab, h: s.hits, doubles: 0, triples: 0, hr: s.hr,
+        rbi: s.rbi, r: s.runs, bb: Math.round(s.ab * 0.08), hbp: Math.round(s.ab * 0.01),
+        sb: 0, cs: 0, sf: Math.round(s.ab * 0.005), so: Math.round(s.ab * 0.22),
+        outs: Math.round(s.ip * 3), er: s.earnedRuns, ha: Math.round(s.ip * 8.5),
+        bba: Math.round(s.ip * 3), ka: s.kPitching, hra: Math.round(s.ip * 1.1),
+        w: s.wins, l: s.losses, sv: s.saves, ra: s.earnedRuns,
+      }));
+    const league = computeLeagueAverages(allStats as any);
+    const pStats = allStats.find(s => s.playerId === playerId);
+    if (!pStats) return null;
+    if (player.isPitcher) {
+      return computeAdvancedPitching(pStats as any, league);
+    } else {
+      return computeAdvancedHitting(pStats as any, league);
+    }
+  },
+
+  // ─── Dev Programs API ──────────────────────────────────────────────────────
+  async getDevPrograms(isPitcher: boolean) {
+    const { getProgramsForPlayer } = await import('./devPrograms.ts');
+    return getProgramsForPlayer(isPitcher);
+  },
+
+  async getDevAssignments(teamId?: number) {
+    const targetTeam = teamId ?? 1;
+    const entries: Array<{ playerId: number; program: import('../engine/devPrograms').DevProgram; playerName: string }> = [];
+    for (const [playerId, program] of devAssignments) {
+      const player = players.find(p => p.playerId === playerId);
+      if (player && player.teamId === targetTeam) {
+        entries.push({ playerId, program, playerName: player.name });
+      }
+    }
+    return entries;
+  },
+
+  async assignDevProgram(playerId: number, programId: import('../engine/devPrograms').DevProgram) {
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+    if (programId === 'balanced') {
+      devAssignments.delete(playerId);
+    } else {
+      devAssignments.set(playerId, programId);
+    }
+    return { ok: true };
+  },
+  async getCareerLeaderboard(stat: string) {
+    const entries: Array<{ playerId: number; name: string; value: number; seasons: number }> = [];
+    for (const [playerId, seasons] of careerHistory) {
+      const player = players.find(p => p.playerId === playerId);
+      if (!player) continue;
+      let value = 0;
+      if (stat === 'hr') value = seasons.reduce((s, ps) => s + ps.hr, 0);
+      else if (stat === 'hits') value = seasons.reduce((s, ps) => s + ps.hits, 0);
+      else if (stat === 'rbi') value = seasons.reduce((s, ps) => s + ps.rbi, 0);
+      else if (stat === 'runs') value = seasons.reduce((s, ps) => s + ps.runs, 0);
+      else if (stat === 'wins') value = seasons.reduce((s, ps) => s + ps.wins, 0);
+      else if (stat === 'kPitching') value = seasons.reduce((s, ps) => s + ps.kPitching, 0);
+      else if (stat === 'saves') value = seasons.reduce((s, ps) => s + ps.saves, 0);
+      else if (stat === 'ip') value = Math.round(seasons.reduce((s, ps) => s + ps.ip, 0));
+      else value = seasons.reduce((s, ps) => s + ps.hr, 0); // default: HR
+      if (value <= 0) continue;
+      entries.push({ playerId, name: player.name, value, seasons: seasons.length });
+    }
+    entries.sort((a, b) => b.value - a.value);
+    return entries.slice(0, 50);
+  },
   async getPlayoffMVP() { return null; },
-  async getHOFCandidates() { return [] as any[]; },
-  async getHallOfFame() { return [] as any[]; },
-  async getFranchiseRecords(_teamId: number) { return [] as any[]; },
-  async getPayrollReport(_teamId: number) { return {} as any; },
+  async getHOFCandidates() {
+    return hofCandidates;
+  },
+  async getHallOfFame() {
+    return hallOfFamers;
+  },
+  async getFranchiseRecords(_teamId: number) {
+    if (franchiseRecordBook) return franchiseRecordBook;
+    const { emptyRecordBook } = await import('./franchiseRecords.ts');
+    return emptyRecordBook();
+  },
+  async getPayrollReport(teamId: number) {
+    const team = teams.find(t => t.teamId === teamId);
+    if (!team) return null;
+    return computePayrollReport(players, team);
+  },
 
   // Scouting/development
-  async scoutPlayer(_playerId: number) { return {} as any; },
-  async getScoutablePlayers(_teamId: number) { return [] as any[]; },
-  async assignDevProgram(_playerId: number, _program: string) { return { ok: false, reason: 'Not yet implemented' }; },
-  async removeDevProgram(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
+  async scoutPlayer(playerId: number) {
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, error: 'Player not found' };
+    const team = teams.find(t => t.teamId === 1); // User team default
+    const accuracy = team?.scoutingQuality ?? 0.7;
+    const report = generateScoutingReport(player, accuracy, currentSeason);
+    return { ok: true, report };
+  },
+  async getScoutablePlayers(teamId: number) {
+    // Return opponent players with scouting-ready shape
+    const teamMap = new Map(teams.map(t => [t.teamId, t]));
+    return players
+      .filter(p => p.teamId !== teamId && (
+        p.rosterData.rosterStatus === 'MLB_ACTIVE' ||
+        p.rosterData.rosterStatus === 'MLB_IL_10' ||
+        p.rosterData.rosterStatus === 'MLB_IL_60'
+      ))
+      .map(p => {
+        const team = teamMap.get(p.teamId);
+        return {
+          playerId: p.playerId,
+          name: p.name,
+          teamId: p.teamId,
+          teamAbbr: team?.abbreviation ?? '???',
+          position: p.position,
+          age: p.age,
+          isPitcher: p.isPitcher,
+          observedOverall: p.overall, // Placeholder until scouting fog-of-war is enabled
+          observedPotential: p.potential,
+          scouted: false,
+          confidence: 0,
+        };
+      })
+      .sort((a, b) => b.observedOverall - a.observedOverall)
+      .slice(0, 200);
+  },
+  async removeDevProgram(playerId: number) {
+    devAssignments.delete(playerId);
+    return { ok: true };
+  },
 
   // Offseason phases
-  async startOffseason() { return {} as any; },
-  async startInSeason() { return {} as any; },
-  async startIntlSigning() { return {} as any; },
-  async finishIntlSigning() { /* TODO */ },
-  async finishOffseason() { /* TODO */ },
-  async processWaivers() { return [] as any[]; },
-  async resolveArbitrationCase(_playerId: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async getArbitrationCases() { return [] as any[]; },
-  async conductRule5Draft() { return [] as any[]; },
-  async userRule5Pick(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async getRule5Eligible() { return [] as any[]; },
-  async offerExtension(_playerId: number, _years: number, _salary: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async signIntlProspect(_playerId: number) { return { ok: false, reason: 'Not yet implemented' }; },
-  async getAIRosterMoves() { return [] as any[]; },
+  async startOffseason() { return { season: currentSeason, phase: 'offseason', totalGames: 2430 }; },
+  async startInSeason() {
+    cachedSchedule = generateScheduleTemplate();
+    incrementalSimState = createSeasonSimState(teams, cachedSchedule.length, currentSeason, rngSeed + currentSeason);
+    cache.invalidate();
+    return {
+      season: currentSeason,
+      phase: 'in_season',
+      totalGames: cachedSchedule.length,
+      segments: SEGMENTS.map(s => ({ label: s.label, event: s.event })),
+    };
+  },
+  async startIntlSigning() {
+    // Generate intl class if not already available
+    return { season: currentSeason, phase: 'intl_signing', prospects: [], bonusPool: 5_000_000 };
+  },
+  async finishIntlSigning() { /* International signing period ends — handled by advanceSeason */ },
+  async finishOffseason() { /* Offseason complete — handled by advanceSeason */ },
+  async processWaivers() {
+    const { processWaivers: runWaivers } = await import('./waivers.ts');
+    return runWaivers(players, teams, 1);
+  },
+  async resolveArbitrationCase(playerId: number, salary: number) {
+    const { resolveArbitration } = await import('./finances.ts');
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, reason: 'Player not found' };
+    resolveArbitration(player, salary);
+    cache.invalidate();
+    return { ok: true };
+  },
+  async getArbitrationCases() {
+    // Show arb cases for all teams
+    const cases: ArbitrationCase[] = [];
+    for (const team of teams) {
+      cases.push(...generateArbitrationCases(players, team.teamId));
+    }
+    return cases;
+  },
+  async conductRule5Draft() {
+    const { conductRule5Draft } = await import('./draft/rule5Draft.ts');
+    return conductRule5Draft(players, teams, 1, currentSeason);
+  },
+  async userRule5Pick(playerId: number) {
+    const { userRule5Pick: pick } = await import('./draft/rule5Draft.ts');
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, reason: 'Player not found' };
+    const result = pick(player, 1, players);
+    if (result.ok) cache.invalidate();
+    return result;
+  },
+  async getRule5Eligible() {
+    const { identifyRule5Eligible } = await import('./draft/rule5Draft.ts');
+    const teamMap = new Map(teams.map(t => [t.teamId, t]));
+    return identifyRule5Eligible(players, currentSeason).map(p => ({
+      playerId: p.playerId, name: p.name, position: p.position,
+      age: p.age, overall: p.overall, potential: p.potential,
+      teamId: p.teamId, teamAbbr: teamMap.get(p.teamId)?.abbreviation ?? '???',
+    }));
+  },
+  async offerExtension(playerId: number, years: number, salary: number) {
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, reason: 'Player not found' };
+    if (player.rosterData.rosterStatus === 'FREE_AGENT') return { ok: false, reason: 'Cannot extend a free agent — use signing.' };
+    // Simple acceptance: player accepts if salary >= 80% of projected market value
+    const { projectSalary } = await import('./freeAgency.ts');
+    const marketValue = projectSalary(player);
+    if (salary < marketValue * 0.8) return { ok: false, reason: 'Player rejected — offer below market value.' };
+    player.rosterData.contractYearsRemaining = years;
+    player.rosterData.salary = salary;
+    player.rosterData.freeAgentEligible = false;
+    cache.invalidate();
+    return { ok: true };
+  },
+  async signIntlProspect(playerId: number) {
+    const { signIntlProspect: signIntl } = await import('./internationalSigning.ts');
+    const player = players.find(p => p.playerId === playerId);
+    if (!player) return { ok: false, reason: 'Player not found' };
+    const result = signIntl(player, 1, 500_000); // Default bonus for user team
+    if (result.ok) cache.invalidate();
+    return result;
+  },
+  async getAIRosterMoves() {
+    const { processAIRosterMoves } = await import('./aiRosterManager.ts');
+    return processAIRosterMoves(players, teams, 1, rngSeed + currentSeason);
+  },
 
   // UI/misc
-  async getPennantRace() { return {} as any; },
-  async getCurrentScheduleInfo() { return {} as any; },
+  async getPennantRace() {
+    if (latestTeamSeasons.length === 0) return null;
+    const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
+    const userTeamId = 1; // TODO: get from game state
+
+    const userRow = standings.find(r => r.teamId === userTeamId);
+    if (!userRow) return null;
+
+    // Find division leader
+    const divRivals = standings.filter(r => r.conferenceId === userRow.conferenceId && r.divisionId === userRow.divisionId);
+    divRivals.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    const leader = divRivals[0];
+    const userDivRank = divRivals.findIndex(r => r.teamId === userTeamId) + 1;
+    const gamesBack = leader ? ((leader.wins - userRow.wins) + (userRow.losses - leader.losses)) / 2 : 0;
+
+    // Wild card: top 3 non-division-winners by record in each league
+    const leagueTeams = standings.filter(r => r.conferenceId === userRow.conferenceId);
+    const divWinners = new Set<number>();
+    const divGroups = new Map<number, typeof standings>();
+    for (const r of leagueTeams) {
+      const arr = divGroups.get(r.divisionId) ?? [];
+      arr.push(r);
+      divGroups.set(r.divisionId, arr);
+    }
+    for (const div of divGroups.values()) {
+      div.sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+      if (div[0]) divWinners.add(div[0].teamId);
+    }
+    const wcContenders = leagueTeams
+      .filter(r => !divWinners.has(r.teamId))
+      .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+    const userWCRank = wcContenders.findIndex(r => r.teamId === userTeamId) + 1;
+    const wcLeader = wcContenders[0];
+    const wcGB = wcLeader ? ((wcLeader.wins - userRow.wins) + (userRow.losses - wcLeader.losses)) / 2 : 0;
+
+    const gamesRemaining = 162 - userRow.wins - userRow.losses;
+    const isInPlayoff = userDivRank === 1 || userWCRank <= 3;
+
+    // Magic number: games remaining + 1 - lead over next team
+    let magicNumber: number | null = null;
+    if (userDivRank === 1 && divRivals.length > 1) {
+      const second = divRivals[1];
+      magicNumber = Math.max(0, gamesRemaining + 1 - ((userRow.wins - second.wins) + (second.losses - userRow.losses)) / 2);
+      if (magicNumber <= 0) magicNumber = 0; // clinched
+    }
+
+    // Elimination number
+    let eliminationNumber: number | null = null;
+    if (userDivRank > 1) {
+      eliminationNumber = Math.max(0, gamesRemaining + 1 - Math.ceil(gamesBack));
+      if (eliminationNumber <= 0) eliminationNumber = 0; // eliminated
+    }
+
+    const leaderTeam = teams.find(t => t.teamId === leader?.teamId);
+    return {
+      userDivisionRank: userDivRank,
+      userGamesBack: Math.max(0, gamesBack),
+      userWildCardRank: userWCRank || 99,
+      userWCGamesBack: Math.max(0, wcGB),
+      divisionLeader: {
+        teamId: leader?.teamId ?? 0,
+        abbr: leaderTeam?.abbreviation ?? '???',
+        wins: leader?.wins ?? 0,
+        losses: leader?.losses ?? 0,
+      },
+      isInPlayoffPosition: isInPlayoff,
+      magicNumber,
+      eliminationNumber,
+    };
+  },
+  async getCurrentScheduleInfo() {
+    return {
+      season: currentSeason,
+      gamesPlayed: latestGameResults.length,
+      gamesCompleted: latestGameResults.length,
+      totalGames: 2430,
+      teamCount: teams.length,
+      playerCount: players.length,
+      currentDate: `${currentSeason}-04-01`,
+    };
+  },
   async standings() { return api.getStandings(); },
 };
 
@@ -2329,6 +3120,7 @@ export interface LeaderboardEntry {
 export interface PlayerProfileData {
   player: Player;
   seasonStats: PlayerSeason | null;
+  careerStats: PlayerSeason[];
 }
 
 export interface PerformanceStats {
@@ -3266,9 +4058,17 @@ function buildPersistedState(): PersistedGameState | null {
     gameResults: latestGameResults,
     playoffBracket: latestPlayoffBracket,
     seasonAwards: latestSeasonAwards,
-    hallOfFamers: [],
+    hallOfFamers,
     milestones: [],
     leagueRecords: [],
+    careerHistory: Object.fromEntries(
+      Array.from(careerHistory.entries()).map(([k, v]) => [k, v]),
+    ),
+    awardsHistory,
+    leagueHistory,
+    hofCandidates,
+    franchiseRecordBook,
+    firedMilestones: Array.from(firedMilestones),
     newsFeed: latestNewsFeed,
     transactionLog,
     coachingStaffs,
@@ -3353,6 +4153,21 @@ function applyLoadedState(state: PersistedGameState): void {
   enabledFeatures = normalizeEnabledFeatures(state.enabledFeatures);
   migrationNotes = normalizeMigrationNotes(state.migrationNotes);
   buildFingerprint = state.buildFingerprint ?? makeBuildFingerprint();
+
+  // Restore career history
+  careerHistory = new Map();
+  const savedCareer = (state as any).careerHistory;
+  if (savedCareer && typeof savedCareer === 'object') {
+    for (const [key, val] of Object.entries(savedCareer)) {
+      careerHistory.set(Number(key), val as PlayerSeason[]);
+    }
+  }
+  awardsHistory = Array.isArray((state as any).awardsHistory) ? (state as any).awardsHistory : [];
+  leagueHistory = Array.isArray((state as any).leagueHistory) ? (state as any).leagueHistory : [];
+  hallOfFamers = Array.isArray((state as any).hallOfFamers) ? (state as any).hallOfFamers : [];
+  hofCandidates = Array.isArray((state as any).hofCandidates) ? (state as any).hofCandidates : [];
+  franchiseRecordBook = (state as any).franchiseRecordBook ?? null;
+  firedMilestones = new Set(Array.isArray((state as any).firedMilestones) ? (state as any).firedMilestones : []);
 
   featuredGameIds = selectFeaturedGames(latestGameResults);
   seasonHistory.length = 0;

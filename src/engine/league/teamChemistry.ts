@@ -57,6 +57,8 @@ export interface ChemistryAdvanceInput {
   previousChemistry: Map<number, TeamChemistryState>;
   gen: RandomGenerator;
   nextEventId: number;
+  /** Per-team morale bonus from coaching staff quality (0–5) */
+  coachingMoraleBonuses?: Map<number, number>;
 }
 
 export interface ChemistryAdvanceResult {
@@ -199,7 +201,7 @@ function generateEventCandidates(
 // ─── Core advance function ───────────────────────────────────────────────────
 
 export function advanceTeamChemistry(input: ChemistryAdvanceInput): ChemistryAdvanceResult {
-  const { season, players, teamSeasons, previousChemistry, gen: inputGen } = input;
+  const { season, players, teamSeasons, previousChemistry, gen: inputGen, coachingMoraleBonuses } = input;
   let gen = inputGen;
   let eventId = input.nextEventId;
 
@@ -228,7 +230,8 @@ export function advanceTeamChemistry(input: ChemistryAdvanceInput): ChemistryAdv
 
     // Compute targets
     const targetCohesion = computeTargetCohesion(snapshot);
-    const targetMorale = computeTargetMorale(teamSeasons.get(teamId));
+    const coachingBonus = coachingMoraleBonuses?.get(teamId) ?? 0;
+    const targetMorale = computeTargetMorale(teamSeasons.get(teamId)) + coachingBonus;
 
     // Blend with inertia (previous season carries weight)
     const newCohesion = Math.max(0, Math.min(100, blendWithInertia(prev.cohesion, targetCohesion, COHESION_INERTIA)));

@@ -177,8 +177,13 @@ describe('Gate 11 — Determinism', () => {
     const [p] = generateLeaguePlayers(createPRNG(42), t, 2026);
     const schedule = generateScheduleTemplate();
 
-    const r1 = await simulateSeason(t, p, schedule, 99);
-    const r2 = await simulateSeason(t, p, schedule, 99);
+    // Deep-clone players for each run so injury mutations from run 1
+    // don't contaminate run 2's starting state.
+    const p1 = JSON.parse(JSON.stringify(p));
+    const p2 = JSON.parse(JSON.stringify(p));
+
+    const r1 = await simulateSeason(t, p1, schedule, 99);
+    const r2 = await simulateSeason(t, p2, schedule, 99);
 
     const wins1 = r1.teamSeasons.map(ts => ts.record.wins).join(',');
     const wins2 = r2.teamSeasons.map(ts => ts.record.wins).join(',');

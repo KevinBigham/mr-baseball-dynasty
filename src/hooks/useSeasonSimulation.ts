@@ -111,7 +111,7 @@ export function useSeasonSimulation() {
       setStandings(standings as any);
       setLeaderboard(hrLeaders as any);
       setPlayoffBracket(bracket as any);
-      setAwardRaceData(awardRace);
+      setAwardRaceData(awardRace as any);
       setSimProgress(1);
 
       // Resolve MFSN predictions

@@ -201,7 +201,6 @@ export default function FinanceView() {
       const [roster, teams, report] = await Promise.all([
         engine.getFullRoster(userTeamId),
         engine.getLeagueTeams(),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         engine.getPayrollReport(userTeamId).catch((e) => { console.warn('Payroll report unavailable:', e); return null; }),
       ]);
 

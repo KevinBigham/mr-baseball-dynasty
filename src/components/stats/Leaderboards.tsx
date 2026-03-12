@@ -227,9 +227,8 @@ export default function Leaderboards() {
     setLoading(true);
 
     if (isCareer) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      getEngine().getCareerLeaderboard({ category: careerSubCat, sortBy, limit: 50 })
-        .then(setCareerData)
+      getEngine().getCareerLeaderboard(sortBy)
+        .then((data) => setCareerData(data as any))
         .finally(() => setLoading(false));
     } else if (isAdvanced) {
       // @ts-expect-error Sprint 04 stub — contract alignment pending
@@ -246,7 +245,7 @@ export default function Leaderboards() {
         position: posFilter === 'ALL' ? undefined : posFilter,
         limit: 50,
       })
-        .then(setLeaderboardFull)
+        .then((data) => setLeaderboardFull(data as any))
         .finally(() => setLoading(false));
     }
   }, [gameStarted, leaderboardCategory, sortBy, posFilter, qualified, setLeaderboardFull, isAdvanced, advSubCat, isCareer, careerSubCat]);

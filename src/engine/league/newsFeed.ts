@@ -29,7 +29,8 @@ export type NewsCategory =
   | 'playoff'
   | 'draft'
   | 'clubhouse'
-  | 'ownership';
+  | 'ownership'
+  | 'record';
 
 export interface NewsStory {
   id: string;
@@ -254,13 +255,21 @@ export function generateClubhouseStory(
   teamName: string,
   event: ClubhouseEvent,
 ): NewsStory {
+  const headlineMap: Record<string, string> = {
+    leadership_emergence: `${teamName}: Veterans Take Charge of Clubhouse`,
+    clubhouse_friction: `${teamName}: Clubhouse Tension Reported`,
+    morale_surge: `${teamName}: Confidence Surging After Strong Season`,
+    morale_collapse: `${teamName}: Morale Crumbling After Tough Campaign`,
+    strong_clubhouse: `${teamName}: One of Baseball's Tightest Clubhouses`,
+    clubhouse_crisis: `${teamName}: Sources Report Fractured Clubhouse`,
+  };
   return {
     id: `clubhouse-${season}-${event.eventId}`,
     season,
     gameDay: 0,
     category: 'clubhouse',
-    priority: 'routine',
-    headline: `${teamName}: Clubhouse Update`,
+    priority: event.kind.includes('crisis') || event.kind.includes('collapse') ? 'breaking' : 'routine',
+    headline: headlineMap[event.kind] ?? `${teamName}: Clubhouse Update`,
     body: event.description,
     teamIds: [event.teamId],
     playerIds: [],

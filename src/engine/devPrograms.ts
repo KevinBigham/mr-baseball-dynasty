@@ -1,6 +1,8 @@
 // ─── Player Development Lab — Program definitions ───────────────────────────
 // Each program boosts one attribute at the cost of another during offseason dev.
 
+import type { Player } from '../types/player';
+
 export type DevProgram =
   | 'power_focus' | 'contact_focus' | 'eye_development' | 'speed_training'
   | 'defensive_drills' | 'stuff_development' | 'command_work' | 'movement_mechanics'
@@ -41,4 +43,46 @@ export const DEV_PROGRAMS: ProgramDefinition[] = [
 
 export function getProgramsForPlayer(isPitcher: boolean): ProgramDefinition[] {
   return DEV_PROGRAMS.filter(p => p.id === 'balanced' || p.forPitchers === isPitcher);
+}
+
+// ─── Apply program effects to player attributes ─────────────────────────────
+
+/**
+ * Apply a development program's boost/penalty to a player's attributes.
+ * Called during offseason development. Mutates the player in place.
+ * Returns a description of what changed for news/UI purposes.
+ */
+export function applyDevProgram(
+  player: Player,
+  programId: DevProgram,
+): { boosted: string; penalized: string; amount: number } | null {
+  if (programId === 'balanced') return null;
+  const program = DEV_PROGRAMS.find(p => p.id === programId);
+  if (!program) return null;
+
+  // Verify program matches player type
+  if (program.forPitchers && !player.isPitcher) return null;
+  if (!program.forPitchers && player.isPitcher) return null;
+
+  const attrs = player.isPitcher ? player.pitcherAttributes : player.hitterAttributes;
+  if (!attrs) return null;
+
+  // Use unknown intermediate cast for dynamic attribute access
+  const attrMap = attrs as unknown as Record<string, number>;
+
+  // Apply boost
+  if (program.boostAttr && program.boostAttr in attrMap) {
+    attrMap[program.boostAttr] = Math.min(550, attrMap[program.boostAttr] + program.boostAmount);
+  }
+
+  // Apply penalty
+  if (program.penaltyAttr && program.penaltyAttr in attrMap) {
+    attrMap[program.penaltyAttr] = Math.max(0, attrMap[program.penaltyAttr] + program.penaltyAmount);
+  }
+
+  return {
+    boosted: program.boostAttr,
+    penalized: program.penaltyAttr,
+    amount: program.boostAmount,
+  };
 }

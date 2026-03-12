@@ -149,7 +149,7 @@ function PlayerSearch({
         const matches = all
           .filter(e => e.name.toLowerCase().includes(q) && e.playerId !== excludeId)
           .slice(0, 8)
-          .map(e => ({ playerId: e.playerId, name: e.name, teamAbbr: e.teamAbbr, position: e.position }));
+          .map(e => ({ playerId: e.playerId, name: e.name, teamAbbr: (e as any).teamAbbr ?? (e as any).team ?? '???', position: e.position }));
         setResults(matches);
       } catch { /* silent */ }
       setSearching(false);

@@ -113,6 +113,7 @@ export function processSeasonInjuries(
   season: number,
   injuryRateMultiplier = 1.0,
   recoverySpeedMultiplier = 1.0,
+  teamMultipliers?: Map<number, { injuryRate: number; recoverySpeed: number }>,
 ): InjuryEvent[] {
   // Clamp multipliers to sane bounds
   injuryRateMultiplier = Math.max(0.1, Math.min(3.0, injuryRateMultiplier));
@@ -153,7 +154,15 @@ export function processSeasonInjuries(
       if (p.rosterData.currentInjury) continue;
       if (p.rosterData.rosterStatus !== 'MLB_ACTIVE') continue;
 
-      const prob = injuryProbability(p) * injuryRateMultiplier;
+      const teamMult = teamMultipliers?.get(p.teamId);
+      const effectiveInjuryRate = teamMult
+        ? Math.max(0.1, Math.min(3.0, teamMult.injuryRate))
+        : injuryRateMultiplier;
+      const effectiveRecoverySpeed = teamMult
+        ? Math.max(0.5, Math.min(2.0, teamMult.recoverySpeed))
+        : recoverySpeedMultiplier;
+
+      const prob = injuryProbability(p) * effectiveInjuryRate;
       // Deterministic "roll" using player ID and game day as seed
       const roll = ((p.playerId * 7919 + day * 31 + baseSeed) % 10000) / 10000;
 
@@ -163,8 +172,7 @@ export function processSeasonInjuries(
 
         const ilStatus: RosterStatus = injuryType.severity === 'minor' ? 'MLB_IL_10' : 'MLB_IL_60';
 
-        // Apply recovery speed multiplier (< 1.0 means faster recovery from good medical staff)
-        const adjustedRecovery = Math.max(5, Math.round(injuryType.ilDays * recoverySpeedMultiplier));
+        const adjustedRecovery = Math.max(5, Math.round(injuryType.ilDays * effectiveRecoverySpeed));
 
         const record: InjuryRecord = {
           type: injuryType.name,

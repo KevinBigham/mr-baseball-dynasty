@@ -241,8 +241,8 @@ export default function HallOfFameGallery() {
       getEngine().getHOFCandidates(),
     ])
       .then(([hof, cands]) => {
-        setInductees(hof as HallOfFameInductee[]);
-        setCandidates(cands as HallOfFameCandidate[]);
+        setInductees(hof as unknown as HallOfFameInductee[]);
+        setCandidates(cands as unknown as HallOfFameCandidate[]);
       })
       .finally(() => setLoading(false));
   }, [gameStarted]);

@@ -167,9 +167,15 @@ export default function DevLab({
     (async () => {
       try {
         const engine = getEngine();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const data = await engine.getDevAssignments();
-        setAssignments(data);
+        // Convert array to record
+        const record: Record<number, DevAssignment> = {};
+        if (Array.isArray(data)) {
+          for (const entry of data) {
+            record[entry.playerId] = { playerId: entry.playerId, program: entry.program, assignedSeason: 0 };
+          }
+        }
+        setAssignments(record);
       } catch {
         // ignore
       } finally {
@@ -216,8 +222,7 @@ export default function DevLab({
         [playerId]: { playerId, program, assignedSeason: 0 },
       }));
     } else {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      addToast(result.error ?? 'Failed to assign program.', 'error');
+      addToast((result as any).error ?? 'Failed to assign program.', 'error');
     }
   }, [addToast]);
 
