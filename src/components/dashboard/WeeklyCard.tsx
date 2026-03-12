@@ -104,7 +104,7 @@ function buildProspectPipeline(result: SeasonResult): WeeklyStory {
 function buildHotSeatWatch(result: SeasonResult, userWins: number): WeeklyStory {
   // Look for teams with very low wins in standings
   const lowWinTeams = result.teamSeasons
-    .filter((ts: { record: { wins: number } }) => ts.record.wins < 65)
+    .filter((ts: { record?: { wins: number } }) => (ts.record?.wins ?? 0) < 65)
     .length;
 
   if (userWins < 70) return {

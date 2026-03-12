@@ -296,8 +296,8 @@ export default function Dashboard() {
           <TradeDeadline
             userTeamId={userTeamId}
             season={sim.lastResult.season}
-            userWins={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.wins ?? 0}
-            userLosses={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record.losses ?? 0}
+            userWins={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record?.wins ?? 0}
+            userLosses={sim.lastResult.teamSeasons.find(ts => ts.teamId === userTeamId)?.record?.losses ?? 0}
             onContinue={() => setSeasonPhase('complete')}
           />
         )}

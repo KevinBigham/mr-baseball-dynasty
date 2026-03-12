@@ -39,7 +39,7 @@ function computeHighlights(result: SeasonResult, userTeamId: number): Highlight[
 
   // User team record
   const userTeam = result.teamSeasons.find(t => t.teamId === userTeamId);
-  if (userTeam) {
+  if (userTeam?.record) {
     const w = userTeam.record.wins;
     const l = userTeam.record.losses;
     highlights.push({
@@ -98,14 +98,14 @@ function computeHighlights(result: SeasonResult, userTeamId: number): Highlight[
   }
   // Biggest surprise team (most wins above .500)
   const surpriseTeam = result.teamSeasons.reduce((a, b) => {
-    const aDiff = a.record.wins - 81;
-    const bDiff = b.record.wins - 81;
+    const aDiff = (a.record?.wins ?? 0) - 81;
+    const bDiff = (b.record?.wins ?? 0) - 81;
     return aDiff > bDiff ? a : b;
   });
-  if (surpriseTeam.record.wins > 0) {
+  if ((surpriseTeam?.record?.wins ?? 0) > 0) {
     highlights.push({
       label: 'BEST RECORD',
-      value: `${surpriseTeam.record.wins}-${surpriseTeam.record.losses}`,
+      value: `${surpriseTeam.record!.wins}-${surpriseTeam.record!.losses}`,
       sub: `Team #${surpriseTeam.teamId}`,
       color: 'text-yellow-400',
     });

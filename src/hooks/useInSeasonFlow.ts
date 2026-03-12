@@ -270,7 +270,7 @@ export function useInSeasonFlow(): InSeasonFlowState {
   const getUserOverallRecord = useCallback((): { wins: number; losses: number } => {
     if (!partialResult) return { wins: 0, losses: 0 };
     const ts = partialResult.teamSeasons.find(t => t.teamId === userTeamId);
-    return { wins: ts?.record.wins ?? 0, losses: ts?.record.losses ?? 0 };
+    return { wins: ts?.record?.wins ?? 0, losses: ts?.record?.losses ?? 0 };
   }, [partialResult, userTeamId]);
 
   return {

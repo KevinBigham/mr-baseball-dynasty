@@ -18,14 +18,14 @@ interface Props {
 
 export default function MonthRecap({ segment, partialResult, userTeamId, chunkRecord, divisionStandings }: Props) {
   const userTeam = partialResult.teamSeasons.find(t => t.teamId === userTeamId);
-  const totalWins = userTeam?.record.wins ?? 0;
-  const totalLosses = userTeam?.record.losses ?? 0;
+  const totalWins = userTeam?.record?.wins ?? 0;
+  const totalLosses = userTeam?.record?.losses ?? 0;
   const totalGames = totalWins + totalLosses;
   const pct = totalGames > 0 ? (totalWins / totalGames).toFixed(3).slice(1) : '.000';
 
   // Runs per game
-  const rs = userTeam ? userTeam.record.runsScored / Math.max(1, totalGames) : 0;
-  const ra = userTeam ? userTeam.record.runsAllowed / Math.max(1, totalGames) : 0;
+  const rs = userTeam?.record ? userTeam.record.runsScored / Math.max(1, totalGames) : 0;
+  const ra = userTeam?.record ? userTeam.record.runsAllowed / Math.max(1, totalGames) : 0;
 
   // Find user's division standings
   const userStanding = divisionStandings?.find(s => s.teamId === userTeamId);

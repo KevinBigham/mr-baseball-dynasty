@@ -156,7 +156,7 @@ export function calcOwnerPatienceDelta(
   difficulty:           'rookie' | 'normal' | 'hard',
   breakoutsOnUserTeam:  number,
 ): number {
-  const wins = userTeamSeason.record.wins;
+  const wins = userTeamSeason?.record?.wins ?? 0;
   const diffMult = difficulty === 'rookie' ? 0.5 : difficulty === 'hard' ? 1.4 : 1.0;
   let delta = 0;
 
@@ -303,7 +303,7 @@ export function generateSeasonNews(result: SeasonResult, userTeamId: number): Ne
   if (result.divisionChampions) {
     for (const champ of result.divisionChampions) {
       const userTs = result.teamSeasons.find(ts => ts.teamId === userTeamId);
-      const isUser = userTs?.record.wins === champ.wins && userTs?.record.losses === champ.losses;
+      const isUser = userTs?.record?.wins === champ.wins && userTs?.record?.losses === champ.losses;
       items.push({
         id: nid(), season: s, type: 'division', icon: '🥇', priority: isUser ? 5 : 2,
         isUserTeam: isUser,

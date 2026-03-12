@@ -30,14 +30,14 @@ function getOwnerMood(ownerPatience: number, wins: number, losses: number): { te
 
 export default function MidSeasonCheckIn({ result, userTeamId, seasonPhase, ownerPatience, onContinue }: Props) {
   const userTeam = result.teamSeasons.find(ts => ts.teamId === userTeamId);
-  const wins = userTeam?.record.wins ?? 0;
-  const losses = userTeam?.record.losses ?? 0;
+  const wins = userTeam?.record?.wins ?? 0;
+  const losses = userTeam?.record?.losses ?? 0;
   const mood = getOwnerMood(ownerPatience, wins, losses);
 
   // Find user team's league-wide ranking
   const sortedTeams = [...result.teamSeasons]
-    .sort((a, b) => (b.record.wins / Math.max(1, b.record.wins + b.record.losses))
-                   - (a.record.wins / Math.max(1, a.record.wins + a.record.losses)));
+    .sort((a, b) => ((b.record?.wins ?? 0) / Math.max(1, (b.record?.wins ?? 0) + (b.record?.losses ?? 0)))
+                   - ((a.record?.wins ?? 0) / Math.max(1, (a.record?.wins ?? 0) + (a.record?.losses ?? 0))));
   const leagueRank = sortedTeams.findIndex(ts => ts.teamId === userTeamId) + 1;
 
   return (
