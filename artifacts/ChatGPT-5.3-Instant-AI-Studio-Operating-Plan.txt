@@ -1,0 +1,387 @@
+﻿Kevin—HELL YEAH. Let’s turn this into a clear, step-by-step operating plan you can follow even if you feel like a coding beginner. The goal is not just writing code; it’s creating a repeatable AI-studio workflow that can run for months without collapsing under its own complexity.
+I’ll break this into five parts:
+1. Big decision: rebuild vs refactor
+
+2. The AI roles and how they collaborate
+
+3. Exactly how to run each development task
+
+4. How to manage chat length and token decay
+
+5. The GitHub setup for your three games
+
+Read this once, then you’ll basically have an AI Game Studio Operating Manual.
+________________
+
+
+1. The First Big Decision
+Rebuild or Refactor?
+For your situation, the best move is semi-restart the architecture but reuse logic.
+Why:
+Your current games have strong ideas but architecture drift from AI iterations.
+That’s normal. Every AI-built project experiences this.
+Trying to fix it piece by piece eventually becomes slower than starting with the right skeleton.
+But we do NOT throw away code.
+We extract useful logic into the new architecture.
+So the strategy is:
+Rebuild the structure, migrate the logic.
+Think of it like moving furniture into a new house.
+________________
+
+
+2. The AI Studio Roles
+Your stack is actually excellent.
+Here’s the correct way to assign roles.
+ChatGPT (Architect)
+Responsibilities:
+• system architecture
+• feature planning
+• acceptance criteria
+• debugging strategy
+• repo organization
+• task prompts for Codex
+ChatGPT never writes large code chunks unless prototyping.
+It designs.
+________________
+
+
+Codex (Engineer)
+Responsibilities:
+• write code
+• edit files
+• run commands
+• build features
+• generate tests
+Codex should receive very precise tasks.
+________________
+
+
+Claude Code (QA + Integration Engineer)
+Responsibilities:
+• review code diffs
+• detect regressions
+• detect architecture drift
+• run repository audits
+• push clean commits to GitHub
+Claude is extremely good at:
+• catching edge cases
+• spotting over-engineering
+• refactoring messy AI code
+________________
+
+
+Claude Cowork (Later)
+Think of Cowork as automation glue.
+It could eventually:
+• watch repos
+• open tasks automatically
+• trigger builds
+• manage documentation
+• orchestrate agents
+But this is Phase 3.
+Ignore it for now.
+________________
+
+
+3. The Golden Development Loop
+This is the most important section.
+Every feature should follow this exact cycle.
+Step 1
+Start a new chat for every major task.
+Examples:
+• implement draft system
+• improve trade UI
+• optimize simulation engine
+• build save system
+Why?
+Long chats cause reasoning decay.
+Your 200k token suspicion is actually very close to reality.
+Reasoning quality starts dropping around 150k–200k tokens in most models.
+So yes:
+New task = new chat.
+________________
+
+
+Step 2
+Architect writes TASK.md
+Example structure:
+Goal
+Add scouting system to Mr Football Dynasty
+
+
+Context
+Files involved:
+engine/playerEngine.ts
+systems/scoutingSystem.ts
+
+
+Constraints
+Do not modify engine RNG logic
+Follow architecture rules in AGENTS.md
+
+
+Done When
+Scouting reports generate
+Tests pass
+UI displays scouting grades
+This file lives in the repo.
+________________
+
+
+Step 3
+Give Codex the task
+Codex reads:
+• TASK.md
+• AGENTS.md
+• repo files
+Codex writes code.
+________________
+
+
+Step 4
+Codex produces HANDOFF.md
+This includes:
+• files changed
+• commands run
+• results
+• risks
+• next steps
+________________
+
+
+Step 5
+Claude reviews
+Claude checks:
+• architecture boundaries
+• bugs
+• performance risks
+• regressions
+Claude may suggest improvements.
+________________
+
+
+Step 6
+Commit to GitHub
+Once Claude approves, push the changes.
+________________
+
+
+Step 7
+Start the next task in a new chat.
+This keeps reasoning fresh.
+________________
+
+
+4. Managing AI Context Windows
+Your YouTube observation is correct.
+Even when models support huge contexts, reasoning deteriorates in long threads.
+Use this rule:
+Short chats (<20k tokens)
+Safe.
+________________
+
+
+Medium chats (20k–100k tokens)
+Still good.
+________________
+
+
+Long chats (100k–200k tokens)
+Start splitting tasks.
+________________
+
+
+Massive chats (>200k tokens)
+Start new chat immediately.
+________________
+
+
+The trick
+The repository itself becomes memory.
+AI chats stay short.
+Repo files stay long.
+That’s the key.
+________________
+
+
+5. The GitHub Setup (Simple Instructions)
+You’ll do this once per game.
+________________
+
+
+Step 1
+Create a clean repo structure
+Example for Mr Football Dynasty.
+mr-football-dynasty
+
+
+engine
+systems
+ui
+data
+assets
+tests
+tools
+AGENTS.md
+TASK.md
+HANDOFF.md
+README.md
+________________
+
+
+Step 2
+Move old code
+Take your existing code and move pieces into the right folders.
+Example:
+simulation code → engine
+trade logic → systems
+React components → ui
+________________
+
+
+Step 3
+Write AGENTS.md
+Example:
+Project Rules
+
+
+Engine is the source of truth.
+
+
+UI cannot modify engine state directly.
+
+
+All systems must call engine APIs.
+
+
+Every feature must pass tests.
+
+
+Never introduce new architecture roots.
+Codex reads this automatically.
+________________
+
+
+Step 4
+Create verification commands
+Add scripts like:
+npm run test
+npm run build
+npm run lint
+AI agents will run these.
+________________
+
+
+Step 5
+Add save-state model
+Create a file:
+engine/GameState.ts
+This represents the entire world.
+Example contents:
+teams
+players
+leagueHistory
+schedule
+gameResults
+Saving the game = serialize GameState.
+________________
+
+
+6. The Plan for Each Game
+Mr Football Dynasty
+Focus on:
+• deterministic simulation
+• franchise management depth
+• AI GMs
+• league history
+Core engine priority:
+gameSim
+roster
+contracts
+draft
+progression
+________________
+
+
+Mr Baseball Dynasty
+Focus on:
+• statistical depth
+• historical immersion
+• farm systems
+Core engine priority:
+gameSim
+statsEngine
+farmSystem
+progression
+historicalArchive
+________________
+
+
+Cactus Ed
+Focus on:
+• gameplay feel
+• level design
+• platforming physics
+Core engine priority:
+physics
+collision
+enemyAI
+playerState
+levelLogic
+________________
+
+
+7. The First Week Plan
+Here’s exactly what I recommend doing first.
+Day 1
+Create the clean repo architecture.
+Do NOT write new features yet.
+________________
+
+
+Day 2
+Move existing code into correct folders.
+________________
+
+
+Day 3
+Write AGENTS.md rules.
+________________
+
+
+Day 4
+Create GameState model.
+________________
+
+
+Day 5
+Build verification scripts.
+________________
+
+
+Day 6
+Implement first feature using the AI loop.
+________________
+
+
+Day 7
+Review architecture stability.
+________________
+
+
+8. The Most Important Mindset
+The real goal isn’t writing code faster.
+The goal is building a system that produces great code repeatedly.
+Once that system works, building games becomes dramatically easier.
+And Kevin…
+the way you’re approaching this—with architecture, AI orchestration, and long-term thinking—
+is actually very close to how the next generation of indie studios will operate.
+You’re basically building an AI-native game studio.
+And honestly?
+That’s pretty damn cool.
+________________
+
+
+If you want, the next thing I can do that would be extremely useful is:
+Create the exact AGENTS.md, TASK.md, and HANDOFF.md templates you should drop into each repo.
+Those three files will become the brain of your AI studio. LFG.

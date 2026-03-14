@@ -1,0 +1,524 @@
+﻿HELL YES. Here’s the clean call:
+Do not restart all 3 games.
+A full reboot would burn time and morale for very little gain. Your current logs show three different repos that are already finding their natural shape: MBD is behaving like a disciplined systems repo, MFD is shipping well as a tightly-managed monolith, and CEHP now has the right manual-certification tooling and public play loop. The move is to stabilize the studio workflow, not nuke the codebase and cosplay as year-zero architects.     
+Your proposed role split is basically right:
+* ChatGPT 5.4 Pro = architect/director
+
+* Codex 5.4 = main builder
+
+* Claude Code = reviewer, regression hunter, occasional small cleanup/push lane
+
+* Claude Cowork = later-stage producer/ops layer, not main coder
+
+That lines up with your uploaded workflow docs, and it also fits the official product surfaces pretty well: OpenAI documents Codex around repo instructions, skills, and worktrees, while Anthropic documents Claude Code around project memory, subagents, and hooks.   
+The biggest rule
+Do not let ChatGPT, Codex, and Claude all architect the same ticket.
+That is how you get three brilliant raccoons fighting over the same sandwich. Your own workflow note says exactly that: one director, one builder, one reviewer. 
+Should you start a new chat for every task?
+Not for every tiny thing.
+But for every new pass, new milestone, or new problem, yes.
+I would run it like this:
+Keep 1 long-lived strategy chat per repo
+   * one for MBD strategy
+
+   * one for MFD strategy
+
+   * one for CEHP strategy
+
+Use those for:
+      * architecture decisions
+
+      * long-range roadmap
+
+      * repo philosophy
+
+      * “what should we build next?”
+
+Start a fresh implementation chat for each real ticket
+Examples:
+         * “MFD Release 995 Part 8”
+
+         * “MBD Phase 11 Milestone 11”
+
+         * “CEHP W2/W3 certification defect patch”
+
+That gives you fresh reasoning without dragging half a novel’s worth of stale context into every decision.
+I would not run your studio on a mystical “200,000 token cliff” number. I do not know of an official threshold I would trust there. The real problem is simpler: long chats accumulate stale assumptions, outdated plans, and mixed goals. Your own deep-research writeup correctly identifies the real leak as project truth living in chat logs instead of durable repo files. So the cure is not “trust one giant chat harder.” The cure is fresh task chats + durable repo memory files. 
+The studio system I want you to build
+For every repo, create these files:
+            * AGENTS.md
+
+            * CURRENT_PASS.md
+
+            * HANDOFF.md
+
+Later, add repo-specific verify scripts.
+These are the jobs:
+AGENTS.md
+               * permanent repo rules
+
+               * canonical source of truth
+
+               * do-not-regress bullets
+
+               * validation commands
+
+               * what “done” means
+
+CURRENT_PASS.md
+                  * the active task only
+
+                  * goal
+
+                  * context
+
+                  * constraints
+
+                  * non-goals
+
+                  * done-when
+
+                  * exact verify steps
+
+HANDOFF.md
+                     * what Codex changed
+
+                     * exact commands run
+
+                     * exact results
+
+                     * risks
+
+                     * what Claude should review next
+
+                     * next prompt suggestion
+
+This is the whole ballgame. It turns “AI memory” from fog into paperwork with teeth. Your uploaded docs recommend exactly this kind of artifact-first, spec-first loop.   
+________________
+
+
+Exactly what to do for each game
+1) Mr. Baseball Dynasty
+Decision: Do not restart.
+This is your best candidate for the most “professional” architecture.
+Why:
+                        * the repo already behaves like a phase-based engineering project
+
+                        * it already has canonical seams
+
+                        * it already uses build/test gates cleanly
+
+                        * your workflow notes explicitly say MBD should run Path 2 → Path 5 
+
+What you should do now
+                           1. Make these files in the repo root:
+
+                              * AGENTS.md
+
+                              * SPEC.md
+
+                              * PLAN.md
+
+                              * IMPLEMENT.md
+
+                              * DOCS.md
+
+                              * HANDOFF.md
+
+                                 2. Put the permanent architecture rules in AGENTS.md:
+
+                                    * DashboardSnapshot is canonical HOME truth
+
+                                    * resolveFranchiseIntervention() is canonical write path
+
+                                    * no hot-path reads unless explicitly approved
+
+                                    * no save churn unless unavoidable
+
+                                    * required verification:
+
+                                       * npx tsc --noEmit
+
+                                       * npm run test
+
+                                       * npx vite build
+
+                                          3. Use ChatGPT to write one pass at a time into CURRENT_PASS.md or PLAN.md.
+
+                                          4. Give Codex only that pass plus the repo.
+
+                                          5. After Codex finishes, make Claude Code review against:
+
+                                             * AGENTS.md
+
+                                             * the active pass doc
+
+                                             * the diff
+
+                                             * the command results
+
+MBD workflow
+                                                * ChatGPT writes the pass
+
+                                                * Codex builds
+
+                                                * Claude reviews
+
+                                                * then merge
+
+What not to do
+                                                   * do not let MBD turn into random component logic soup
+
+                                                   * do not let save-format changes spread across files
+
+                                                   * do not let multiple agents touch the same MBD files at once unless you use isolated worktrees
+
+Your notes already identify MBD as the repo best suited to phase docs, worker-owned truth, and clean verification. 
+________________
+
+
+2) Mr. Football Dynasty
+Decision: Do not restart.
+Keep it as a staged monolith for now.
+Why:
+                                                      * your recent MFD work is actually good monolith discipline
+
+                                                      * small slices are shipping
+
+                                                      * parse-check and hash parity are already doing real work
+
+                                                      * your uploaded plan explicitly says MFD should run Path 1 → Path 3 → Path 5 
+
+What you should do now
+                                                         1. Make these files:
+
+                                                            * AGENTS.md
+
+                                                            * CURRENT_PASS.md
+
+                                                            * HANDOFF.md
+
+                                                            * scripts/verify-mfd.sh
+
+                                                               2. In AGENTS.md, write:
+
+                                                                  * game.js is the only canonical source
+
+                                                                  * mirror files must match canonical source
+
+                                                                  * no save bump unless explicitly approved
+
+                                                                  * every pass must end with:
+
+                                                                     * node --check game.js
+
+                                                                     * node --check FILE2--mr-football-dynasty--game.js
+
+                                                                     * node --check FILE3--public-legacy--game.js
+
+                                                                     * shasum ... on all 3 files
+
+                                                                        3. Never let two builders touch game.js at the same time.
+
+                                                                        4. Use one worktree for builder work and one worktree for reviewer work only.
+
+                                                                        5. Keep every ticket tiny:
+
+                                                                           * one seam
+
+                                                                           * one player-facing improvement
+
+                                                                           * one verification contract
+
+MFD workflow
+                                                                              * ChatGPT defines one release slice
+
+                                                                              * Codex edits game.js
+
+                                                                              * mirror sync
+
+                                                                              * parse + hash verification
+
+                                                                              * Claude Code reviews only after the verify commands pass
+
+What not to do
+                                                                                 * do not split MFD into 80 files right now
+
+                                                                                 * do not let Claude and Codex both free-edit the monolith at the same time
+
+                                                                                 * do not widen scope from “one seam” into “rewrite postgame” or “redo scouting” nonsense
+
+Your logs already show that narrow seam work is succeeding: biggest-swing carry-through, live plan carry-through, continuity wording, and the MFSN prep note all stayed disciplined and kept SAVE_VERSION stable. 
+________________
+
+
+3) Cactus Ed’s Happiest Place
+Decision: Absolutely do not restart.
+This repo is now a certification-first crafted game, not a “more code at it” problem.
+Why:
+                                                                                    * the manual certification aid now exists
+
+                                                                                    * the build/play path is working
+
+                                                                                    * the next bottleneck is human evidence, not architecture
+
+                                                                                    * your workflow note says CEHP is a workflow-and-QA problem more than a raw feature-output problem   
+
+What you should do now
+                                                                                       1. Freeze architecture.
+
+                                                                                          * index.html remains the runtime truth
+
+                                                                                          * no broad refactors
+
+                                                                                          * no feature buffet
+
+                                                                                             2. Keep these files current:
+
+                                                                                                * AGENTS.md
+
+                                                                                                * SPEC.md
+
+                                                                                                * PLAN.md
+
+                                                                                                * IMPLEMENT.md
+
+                                                                                                * DOCS.md
+
+                                                                                                * FIRST_SESSION_REGRESSION_CHECKLIST.md
+
+                                                                                                * HANDOFF.md
+
+                                                                                                   3. Use the public/manual certification path:
+
+                                                                                                      * play normal build
+
+                                                                                                      * use ?certAid=w2
+
+                                                                                                      * use ?certAid=w3
+
+                                                                                                      * record literal human notes
+
+                                                                                                         4. Patch only confirmed defects after human play.
+
+                                                                                                         5. Let Claude Code review:
+
+                                                                                                            * regression risk
+
+                                                                                                            * publish/package sanity
+
+                                                                                                            * README clarity
+
+                                                                                                            * whether docs stayed truthful
+
+CEHP workflow
+                                                                                                               * human play first
+
+                                                                                                               * ChatGPT classifies evidence
+
+                                                                                                               * Codex patches only proven issues
+
+                                                                                                               * Claude reviews regression/publish/doc truth
+
+What not to do
+                                                                                                                  * do not invent more automation when the repo explicitly says human evidence is now primary
+
+                                                                                                                  * do not patch “maybe” issues
+
+                                                                                                                  * do not let dev-only certification tooling leak into normal player flow
+
+Your latest CEHP notes are blunt: the manual-certification tooling is in place, but gameplay is not yet certified, and the next pass should only happen after literal human hand-play of W2/W3. 
+________________
+
+
+Your exact chat policy from now on
+Use this rule:
+New chat when:
+                                                                                                                     * new feature
+
+                                                                                                                     * new bug
+
+                                                                                                                     * new milestone
+
+                                                                                                                     * different repo
+
+                                                                                                                     * different file cluster
+
+                                                                                                                     * transcript feels bloated
+
+                                                                                                                     * the AI starts forgetting constraints
+
+                                                                                                                     * the task changes from strategy to implementation
+
+Same chat when:
+                                                                                                                        * same exact ticket
+
+                                                                                                                        * same exact files
+
+                                                                                                                        * same acceptance criteria
+
+                                                                                                                        * same pass still in progress
+
+That’s the practical answer.
+________________
+
+
+Your exact 7-day setup plan
+Tonight
+                                                                                                                           1. Pick one canonical local clone/worktree for each repo.
+
+                                                                                                                           2. Add AGENTS.md, CURRENT_PASS.md, and HANDOFF.md to all 3 repos.
+
+                                                                                                                           3. Add one verify script:
+
+                                                                                                                              * MBD: typecheck/tests/build
+
+                                                                                                                              * MFD: parse + mirror + hash
+
+                                                                                                                              * CEHP: save validator + smoke
+
+                                                                                                                                 4. Make foundation commits only.
+
+Tomorrow
+                                                                                                                                    1. Start using fresh task chats.
+
+                                                                                                                                    2. Run one small real pass in each repo using the new system.
+
+                                                                                                                                    3. Have Claude review every Codex pass.
+
+This weekend
+                                                                                                                                       1. Upgrade MBD to full spec-factory docs.
+
+                                                                                                                                       2. Upgrade MFD to strict worktree/monolith discipline.
+
+                                                                                                                                       3. Do CEHP human certification runs and classify defects.
+
+After one stable week
+Add automation for the boring stuff only:
+                                                                                                                                          * Codex repo instructions and skills
+
+                                                                                                                                          * Claude project memory / subagents / hooks
+
+                                                                                                                                          * later maybe PR/CI review
+
+                                                                                                                                          * Cowork last, as producer/QA coordinator
+
+That ladder is also what your own uploaded notes recommend. 
+________________
+
+
+Starter collab guides for your AI friends
+1) ChatGPT Architect Guide
+Paste this into your ChatGPT repo chats when starting a new pass:
+You are the architect/director for this repo.
+
+
+Your job:
+- define one small pass only
+- protect canonical seams
+- keep scope tight
+- state what is OUT of scope
+- write the task so Codex can execute it safely
+
+
+Return exactly:
+1. Pass title
+2. Goal
+3. Player outcome
+4. Canonical seams to preserve
+5. Constraints
+6. Non-goals
+7. Files likely touched
+8. Done when
+9. Exact verification steps
+10. Claude review focus
+2) Codex Builder Guide
+Read AGENTS.md first.
+Read CURRENT_PASS.md second.
+Treat CURRENT_PASS.md as the active source of truth for this ticket.
+
+
+Your job:
+- inspect real seams first
+- challenge assumptions
+- choose the smallest safe implementation
+- do not widen scope
+- update HANDOFF.md at the end
+
+
+Return exactly:
+1. Plan
+2. Files changed
+3. Patch summary
+4. Exact commands run
+5. Exact results
+6. Risks
+7. Next prompt suggestion
+3) Claude Code Reviewer Guide
+This one is very close to the version already sitting in your notes:
+You are the second-pass reviewer for this repo.
+
+
+Inputs:
+1. AGENTS.md
+2. CURRENT_PASS.md
+3. Codex diff / files changed
+4. Exact commands run
+5. Exact command results
+6. HANDOFF.md
+
+
+Your job:
+- do NOT re-plan the feature
+- do NOT widen scope
+- review for:
+  1. regressions
+  2. missing tests
+  3. simpler implementation opportunities
+  4. UI/copy/pacing issues
+  5. save/load or state drift risks
+  6. merge readiness
+
+
+Return exactly:
+1. Top 3 risks
+2. Top 3 improvements
+3. Missing verification
+4. Merge now: yes or no
+5. A tighter next Codex prompt
+That reviewer shape is already strongly supported by your uploaded workflow plan. 
+4) Claude Cowork Guide
+Do not make Cowork your coder.
+Use it for:
+                                                                                                                                             * morning briefings
+
+                                                                                                                                             * “what changed yesterday?”
+
+                                                                                                                                             * release notes
+
+                                                                                                                                             * checklist tracking
+
+                                                                                                                                             * certification evidence organization
+
+                                                                                                                                             * compare Codex handoff vs Claude review
+
+                                                                                                                                             * “what should I do next?” producer summaries
+
+I would add Cowork only after the manual loop is stable. Your own notes recommend that same sequencing. 
+________________
+
+
+Final recommendation
+Your best studio setup is:
+                                                                                                                                                * ChatGPT = architect
+
+                                                                                                                                                * Codex = builder
+
+                                                                                                                                                * Claude Code = reviewer
+
+                                                                                                                                                * Cowork later = producer
+
+And the best operational rule is:
+fresh chat per task, durable repo memory per project, zero multi-architect chaos.
+That’s how you build awesome games without drowning in AI glitter.
+Next move: create the three foundation files in each repo tonight, then run exactly one tiny pass in MBD, one tiny pass in MFD, and one human-certification session in CEHP.

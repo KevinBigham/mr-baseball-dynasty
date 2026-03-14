@@ -1,0 +1,170 @@
+You’re already doing the smart part. Your uploaded playbooks and guides all point to the same leverage points: start with /plan, keep prompts in a tight Goal/Context/Constraints/Done-when shape, store repo memory in agent docs/skills, and use exact verification instead of vibe-checking code. Your MBD guide already sketches the clean role split too: ChatGPT as design director, Codex as implementation lead, Claude Code as second-pass verifier/polisher.        
+
+Tiny naming fix: Anthropic spells it Cowork. On Anthropic’s current docs, Max includes Claude Code, and Cowork is a research preview in Claude Desktop for paid plans. Claude Code can read your repo, edit files, run commands, use project skills, and spawn subagents that run in separate context windows. That makes it a very clean add-on to your existing loop.  
+
+The big rule: do not let ChatGPT, Codex, and Claude all become architects on the same ticket. That turns into three jazz solos and zero shipped builds. Keep ChatGPT as the director, Codex as the main builder, Claude Code as the independent reviewer/regression hunter, and Gemini as the outside researcher or constraint-checker. Your baseball workflow docs already lean that way.    
+
+1. Path 1 — Minimal-friction upgrade: keep your loop, add Claude as the formal reviewer
+
+This is the easiest upgrade and the one I’d deploy first tonight.
+
+Flow:
+	1.	ChatGPT writes the pass brief.
+	2.	Codex does /plan, then implements Milestone 1.
+	3.	You accept the diff.
+	4.	Claude Code gets only four things: the accepted plan, the diff, the commands run, and the results.
+	5.	Claude returns: regressions, missing tests, simpler alternative, copy/pacing polish, and “next-prompt upgrades.”
+	6.	ChatGPT writes the next Codex prompt.
+
+Why it works: it preserves the loop you already trust, and it uses Claude where it adds the most signal—independent review, not duplicate planning. That matches the role split already described in your MBD guide, and it fits Claude Code’s actual strengths: repo reading, command running, and isolated subagent review.    
+
+Best fit:
+	•	MBD right now.
+	•	MFD for nontrivial feature passes.
+	•	Cactus for post-fix regression review.
+
+2. Path 2 — Spec-factory workflow: one active pass doc per repo
+
+This is the highest-ROI structural upgrade.
+
+For each repo, maintain one current pass file or small memory stack:
+	•	SPEC.md
+	•	PLAN.md
+	•	IMPLEMENT.md
+	•	DOCS.md
+	•	or a lighter CURRENT_PASS.md
+
+ChatGPT owns the pass doc.
+Codex implements against that doc.
+Claude Code audits whether the code matches the doc, instead of just asking “does this diff look okay?”
+
+Why it works: OpenAI’s own long-horizon Codex guidance explicitly recommends a spec, checkpointed plans, a runbook, and a live documentation log for multi-hour work. Your Cactus repo already proved this pattern is real and useful, not theoretical fluff.    
+
+Best fit:
+	•	MBD most of all, because it already behaves like phase-based product engineering with typed worker/UI contracts, snapshot surfaces, and build/test gates.    
+	•	Cactus second, because certification honesty and memory stack discipline are core to that repo now.    
+
+3. Path 3 — Parallel worktree studio: separate lanes, same repo
+
+This is how you stop three games from becoming one giant soup monster.
+
+Use separate worktrees or isolated task branches like this:
+	•	Codex worktree A: feature implementation
+	•	Claude Code worktree B: tests + regressions + polish
+	•	Gemini lane: research/spec stress test
+	•	ChatGPT lane: synthesis + arbitration
+
+OpenAI’s Codex app supports worktrees specifically so independent tasks don’t interfere with each other. Your own Codex playbook also warns against multiple live threads touching the same files without isolation.    
+
+Best fit by repo:
+	•	MBD: separate engine/UI/test lanes.
+	•	MFD: one source-of-truth monolith lane, one review lane only.
+	•	Cactus: one gameplay lane, one certification lane.
+
+This is especially useful because your repos are genuinely different beasts:
+	•	MBD is a React/TypeScript/Vite, worker-driven sim with typed DTOs.  
+	•	MFD is a single-file monolith with mirrored JS copies and strict parse/hash discipline.    
+	•	Cactus is a single-file ES5 Phaser game where browser-first continuity certification matters more than raw code volume.    
+
+4. Path 4 — Cowork as your local producer / QA coordinator
+
+Do not make Cowork your main code surgeon. Make it your desktop-side producer.
+
+Use Cowork for:
+	•	turning Codex/Claude logs into next actions,
+	•	summarizing local files without manual uploads,
+	•	tracking checklists,
+	•	building a morning briefing,
+	•	packaging release notes,
+	•	organizing certification evidence,
+	•	comparing “what changed / what broke / what still needs hand-play.”
+
+Anthropic describes Cowork as a desktop research preview for paid plans that can access local files directly and handle multi-step tasks without using the terminal. That makes it a better fit for workflow coordination and QA orchestration than for being your primary implementer.  
+
+Best fit:
+	•	Cactus, because that repo now has AGENTS, a regression checklist, a skill draft, smoke/save probes, and certification reporting that all benefit from a coordinator brain.  
+	•	MFD/MBD for release packaging, testing summaries, and “what should I do next?” briefings.
+
+5. Path 5 — Full agentic OS: repo-native memory + skills + hooks + nightly automation
+
+This is the most automated path and the one that gets you closest to “small AI studio.”
+
+Codex side
+	•	AGENTS.md
+	•	.codex/config.toml
+	•	repo skills in .agents/skills
+	•	worktree automations for safe background tasks
+
+Claude side
+	•	project memory/instructions
+	•	project subagents
+	•	project skills
+	•	project hooks that run deterministic checks
+
+OpenAI’s docs support repo-level AGENTS.md, project config, and repo skills; Anthropic’s docs support project skills, subagents, and hooks that fire automatically at lifecycle events.  
+
+Automate only the boring, stable machinery:
+	•	MBD: tsc, tests, build, smoke summaries. Your phase logs already use that pattern.  
+	•	MFD: node --check, mirror sync, hash parity, release-note diff summaries. Your handoff logs already verify exactly that.  
+	•	Cactus: save validator, smoke boots, checklist reminders, certification report scaffold. That repo is already half-built for this lane.  
+
+This is the highest leverage path once your manual workflow is stable. Before that, it becomes elaborate nonsense with a nice haircut.
+
+What I’d actually do
+
+Not five different forever-paths. A ladder.
+
+Tonight at 9pm
+	•	Start with Path 1 immediately.
+	•	Give Claude Code a strict reviewer lane only.
+
+This weekend
+	•	Build Path 2 for MBD and MFD.
+	•	Your Cactus repo is already partly there.
+
+After one stable week
+	•	Add Path 5 automation for the boring checks.
+
+Best fit per game
+
+Mr. Baseball Dynasty:
+Run Path 2 → Path 5. It already has the right architecture for phase docs, typed contracts, worker-owned truth, and clean build/test verification.    
+
+Mr. Football Dynasty:
+Run Path 1 → Path 3 → Path 5. It’s a monolith, so you want one builder, one reviewer, strict scope, parse-checks, and hash-parity automation—not three agents free-jazzing inside one file.    
+
+Cactus Ed’s Happiest Place:
+Run Path 4 → Path 5. Its bottleneck is certification truth, continuity, overlap safety, and browser validation. That is a workflow-and-QA problem more than a raw feature-output problem.    
+
+One paste-ready Claude insertion prompt for tonight
+
+Use this right after Codex finishes a pass:
+
+You are the second-pass reviewer for this repo.
+
+Inputs:
+1. Accepted Codex plan
+2. Codex diff / files changed
+3. Exact commands run
+4. Exact command results
+5. Current AGENTS / guide / pass doc
+
+Your job:
+- Do NOT re-plan the feature from scratch.
+- Do NOT widen scope.
+- Review for:
+  1. regressions
+  2. missing tests
+  3. simpler implementation opportunities
+  4. UI/copy/pacing issues
+  5. save/load or state drift risks
+  6. next-prompt upgrades for Codex
+
+Return exactly:
+1. Top 3 risks
+2. Top 3 improvements
+3. Missing verification
+4. Whether this should merge now
+5. A tighter next Codex prompt
+
+Best immediate move: keep ChatGPT as director, keep Codex as builder, and make Claude Code your ruthless reviewer tonight. That alone will make your workflow feel less like “three smart bots vibing” and more like an actual studio.
