@@ -19,6 +19,9 @@ export interface DraftProspect {
   rank: number;          // Consensus rank (1 = best)
 }
 
+export const ANNUAL_DRAFT_ROUNDS = 20;
+export const ANNUAL_DRAFT_CLASS_SIZE = 620;
+
 // ─── Pool Creation ───────────────────────────────────────────────────────────
 
 /**
@@ -118,7 +121,7 @@ export function getDraftRounds(mode: string): number {
     case 'snake10': return 10;
     case 'snake25': return 25;
     case 'snake26': return 26;
-    case 'annual': return 5;
+    case 'annual': return ANNUAL_DRAFT_ROUNDS;  // Real MLB draft is 20 rounds (since 2023)
     default: return 0;
   }
 }
@@ -133,14 +136,14 @@ const DRAFT_POSITIONS: Position[] = [
 ];
 
 /**
- * Generate an annual amateur draft class of ~150 prospects.
+ * Generate an annual amateur draft class of ~620 prospects (20 rounds × 30 teams + buffer).
  * Mix of college players (higher floor) and HS players (higher ceiling).
  * Players start at DRAFT_ELIGIBLE with no team assignment.
  */
 export function generateAnnualDraftClass(
   gen: RandomGenerator,
   season: number,
-  count = 150,
+  count = ANNUAL_DRAFT_CLASS_SIZE,
 ): [Player[], RandomGenerator] {
   const prospects: Player[] = [];
 

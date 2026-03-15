@@ -41,6 +41,8 @@ import DelegationPanel from '../setup/DelegationPanel';
 import EndOfDayDigest from '../home/EndOfDayDigest';
 import FirstWeekCoach from '../setup/FirstWeekCoach';
 import { shouldAutoStartTutorial } from '../../engine/tutorial';
+import TeamLeadersWidget from './TeamLeadersWidget';
+import DynastyMilestonesPanel from './DynastyMilestonesPanel';
 
 const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
 const PostseasonReport   = lazy(() => import('./PostseasonReport'));
@@ -266,6 +268,9 @@ export default function Dashboard() {
         <MoralePanel />
       </div>
 
+      {/* ── Team Leaders Widget ─────────────────────────────────── */}
+      <TeamLeadersWidget />
+
       {/* ── In-Season Dashboard (interactive pacing) ─────────────── */}
       {gamePhase === 'in_season' && (
         <InSeasonDashboard flow={inSeason} />
@@ -367,6 +372,7 @@ export default function Dashboard() {
       <ReputationCard />
       <LegacyTimeline />
       <MomentsPanel moments={moments} />
+      <DynastyMilestonesPanel />
       <NewsFeedPanel />
     </div>
   );

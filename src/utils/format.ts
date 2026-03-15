@@ -21,6 +21,11 @@ export function formatRecord(wins: number, losses: number): string {
   return `${wins}-${losses}`;
 }
 
+/** Format a season label using the full calendar year, with optional preseason text. */
+export function formatSeasonLabel(season: number, preseasonLabel = 'PRE'): string {
+  return season === 0 ? preseasonLabel : String(season);
+}
+
 /** Format innings pitched from outs (e.g., 18 outs → "6.0") */
 export function formatIP(outs: number): string {
   const full = Math.floor(outs / 3);

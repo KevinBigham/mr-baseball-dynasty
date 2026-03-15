@@ -10,6 +10,10 @@ import ProspectPipeline from './ProspectPipeline';
 import ILManagement from './ILManagement';
 import DevLab from './DevLab';
 import ScoutingReports from './ScoutingReports';
+import FranchiseRatings from './FranchiseRatings';
+import PositionBattles from './PositionBattles';
+import CutAdvisor from './CutAdvisor';
+import CoachTip from '../shared/CoachTip';
 import { formatSalary } from '../../utils/format';
 import { OVRBadge, PotentialArrow, ContractBadge, QuickActions, PlayerDetailPanel } from './RosterCards';
 import { ViewSwitcher, FilterChips, ActiveFiltersSummary, POSITION_GROUPS, STATUS_FILTERS, type DataView } from './RosterViews';
@@ -17,10 +21,12 @@ import { SkeletonTable } from '../layout/Skeleton';
 import ScrollableTable from '../layout/ScrollableTable';
 import ConfirmModal from '../layout/ConfirmModal';
 import type { RosterStatus } from '../../types/player';
+import { useSort } from '../../hooks/useSort';
+import { SortHeader } from '../shared/SortHeader';
 
 type RosterTab = 'ACTIVE' | 'IL' | 'AAA' | 'AA' | 'HIGH-A' | 'LOW-A' | 'ROOKIE' | 'INTL' | 'DFA';
 type SortKey = 'name' | 'position' | 'age' | 'overall' | 'potential' | 'salary' | 'contract' | 'service' | 'stat1' | 'stat2' | 'stat3' | 'stat4';
-type ViewMode = 'table' | 'depth' | 'pipeline' | 'devlab' | 'scouting';
+type ViewMode = 'table' | 'depth' | 'pipeline' | 'devlab' | 'scouting' | 'ratings';
 
 interface FullRosterData {
   teamId: number;
@@ -112,29 +118,7 @@ function ProspectTraitsPanel({ players }: { players: RosterPlayer[] }) {
 }
 
 // ─── Sortable header cell ────────────────────────────────────────────────────
-function SortHeader({ label, sortKey: sk, currentSort, onSort, align }: {
-  label: string; sortKey: SortKey; currentSort: { key: SortKey; dir: 'asc' | 'desc' };
-  onSort: (key: SortKey) => void; align?: 'left' | 'right';
-}) {
-  const active = currentSort.key === sk;
-  const arrow = active ? (currentSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
-  return (
-    <th
-      scope="col"
-      role="button"
-      tabIndex={0}
-      aria-sort={active ? (currentSort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-      aria-label={`Sort by ${label}`}
-      className={`${align === 'left' ? 'text-left' : 'text-right'} px-2 py-1 cursor-pointer select-none hover:text-orange-400 transition-colors ${
-        active ? 'text-orange-400' : 'text-gray-500'
-      }`}
-      onClick={() => onSort(sk)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSort(sk); } }}
-    >
-      {label}{arrow}
-    </th>
-  );
-}
+// SortHeader is now imported from '../shared/SortHeader'
 
 // ─── Player row (upgraded with OVR badge + quick actions) ────────────────────
 function PlayerRow({
@@ -268,8 +252,8 @@ export default function RosterView() {
   const [posFilter, setPosFilter] = useState('ALL');
   const [dataView, setDataView] = useState<DataView>('overview');
   const [activeStatusFilters, setActiveStatusFilters] = useState<Set<string>>(new Set());
-  const [hitterSort, setHitterSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'overall', dir: 'desc' });
-  const [pitcherSort, setPitcherSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'overall', dir: 'desc' });
+  const { sort: hitterSort, toggle: toggleHitterSort } = useSort<SortKey>('overall');
+  const { sort: pitcherSort, toggle: togglePitcherSort } = useSort<SortKey>('overall');
   const [teamBudget, setTeamBudget] = useState(0);
 
   const teamId = selectedTeamId ?? userTeamId;
@@ -288,8 +272,7 @@ export default function RosterView() {
         engine.getFullRoster(teamId),
         engine.getLeagueTeams(),
       ]);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setFullRoster(data);
+      setFullRoster(data as FullRosterData);
       const team = teams.find(t => t.teamId === teamId);
       if (team) setTeamBudget(team.budget);
       // @ts-expect-error Sprint 04 stub — contract alignment pending
@@ -376,12 +359,9 @@ export default function RosterView() {
   }, [loadRoster, fullRoster]);
 
   const toggleSort = useCallback((isPitcherTable: boolean) => (key: SortKey) => {
-    const setter = isPitcherTable ? setPitcherSort : setHitterSort;
-    setter(prev => ({
-      key,
-      dir: prev.key === key ? (prev.dir === 'desc' ? 'asc' : 'desc') : 'desc',
-    }));
-  }, []);
+    if (isPitcherTable) togglePitcherSort(key);
+    else toggleHitterSort(key);
+  }, [toggleHitterSort, togglePitcherSort]);
 
   // Compute data
   const tabMap: Record<RosterTab, RosterPlayer[]> | null = fullRoster ? {
@@ -509,9 +489,18 @@ export default function RosterView() {
           >
             SCOUTING
           </button>
+          <button
+            onClick={() => setViewMode('ratings')}
+            className={`text-[10px] sm:text-xs px-2 py-1 transition-colors rounded whitespace-nowrap ${viewMode === 'ratings' ? 'text-orange-400 bg-orange-900/30' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            RATINGS
+          </button>
           </div>
         </div>
       </div>
+
+      {/* Coach tip */}
+      <CoachTip section="roster" />
 
       {/* Payroll bar */}
       {isUserTeam && teamBudget > 0 && (
@@ -529,7 +518,9 @@ export default function RosterView() {
         </div>
       )}
 
-      {viewMode === 'devlab' && isUserTeam ? (
+      {viewMode === 'ratings' ? (
+        <FranchiseRatings teamId={teamId} />
+      ) : viewMode === 'devlab' && isUserTeam ? (
         <DevLab
           players={[
             ...(fullRoster?.active ?? []),
@@ -632,6 +623,16 @@ export default function RosterView() {
             />
           </div>
 
+          {/* Position Battles (ACTIVE tab only) */}
+          {rosterTab === 'ACTIVE' && fullRoster && (
+            <div className="mb-4">
+              <PositionBattles
+                players={fullRoster.active}
+                onClickPlayer={openPlayer}
+              />
+            </div>
+          )}
+
           {/* IL Management panel (when IL tab is active) */}
           {rosterTab === 'IL' && fullRoster && (
             <div className="mb-4">
@@ -707,6 +708,15 @@ export default function RosterView() {
                 </tbody>
               </table>
             </ScrollableTable>
+          )}
+
+          {/* Cut Advisor (ACTIVE tab, user team only) */}
+          {rosterTab === 'ACTIVE' && isUserTeam && fullRoster && (
+            <CutAdvisor
+              players={fullRoster.active}
+              fortyManCount={fullRoster.fortyManCount}
+              onClickPlayer={openPlayer}
+            />
           )}
 
           {filteredPlayers.length === 0 && (

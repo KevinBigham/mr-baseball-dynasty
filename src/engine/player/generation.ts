@@ -55,29 +55,29 @@ const MLB_SP_COUNT = 5;
 const MLB_RP_COUNT = 7;
 const MLB_CL_COUNT = 1;
 
-// AAA: 20 players — 9 hitters + 5 SP + 4 RP + 1 CL + 1 extra RP
-const AAA_HITTERS: Position[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-const AAA_SP = 5; const AAA_RP = 4; const AAA_CL = 1;
+// AAA: 25 players — 12 hitters + 5 SP + 7 RP + 1 CL
+const AAA_HITTERS: Position[] = ['C', 'C', '1B', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF'];
+const AAA_SP = 5; const AAA_RP = 7; const AAA_CL = 1;
 
-// AA: 20 players — 9 hitters + 5 SP + 4 RP + 1 CL + 1 extra RP
-const AA_HITTERS: Position[]  = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-const AA_SP = 5;  const AA_RP  = 4; const AA_CL  = 1;
+// AA: 25 players — 12 hitters + 5 SP + 7 RP + 1 CL
+const AA_HITTERS: Position[]  = ['C', 'C', '1B', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF'];
+const AA_SP = 5;  const AA_RP  = 7; const AA_CL  = 1;
 
-// A+: 18 players — 9 hitters + 5 SP + 3 RP + 1 CL
-const APLUS_HITTERS: Position[] = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
-const APLUS_SP = 5; const APLUS_RP = 3; const APLUS_CL = 0; // No dedicated CL at A+
+// A+: 25 players — 12 hitters + 5 SP + 7 RP + 1 CL
+const APLUS_HITTERS: Position[] = ['C', 'C', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF', 'DH'];
+const APLUS_SP = 5; const APLUS_RP = 7; const APLUS_CL = 1;
 
-// A-: 16 players — 8 hitters + 4 SP + 3 RP + 1 spot
-const AMINUS_HITTERS: Position[] = ['C', 'SS', '2B', '3B', 'CF', 'LF', 'RF', '1B'];
-const AMINUS_SP = 4; const AMINUS_RP = 3; const AMINUS_CL = 0;
+// A-: 25 players — 12 hitters + 5 SP + 7 RP + 1 CL
+const AMINUS_HITTERS: Position[] = ['C', 'C', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF', 'DH'];
+const AMINUS_SP = 5; const AMINUS_RP = 7; const AMINUS_CL = 1;
 
-// Rookie: 14 players — 7 hitters + 4 SP + 3 RP
-const ROOKIE_HITTERS: Position[] = ['C', 'SS', '2B', '3B', 'CF', 'LF', 'RF'];
-const ROOKIE_SP = 4; const ROOKIE_RP = 3; const ROOKIE_CL = 0;
+// Rookie: 25 players — 12 hitters + 5 SP + 7 RP + 1 CL
+const ROOKIE_HITTERS: Position[] = ['C', 'C', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF', 'DH'];
+const ROOKIE_SP = 5; const ROOKIE_RP = 7; const ROOKIE_CL = 1;
 
-// INTL (DSL/FCL): 10 players — 7 hitters + 2 SP + 1 RP (ages 16–17)
-const INTL_HITTERS: Position[] = ['C', 'SS', '2B', '3B', 'CF', 'LF', 'RF'];
-const INTL_SP = 2; const INTL_RP = 1; const INTL_CL = 0;
+// INTL (DSL/FCL): 25 players — 12 hitters + 5 SP + 7 RP + 1 CL (ages 16–17)
+const INTL_HITTERS: Position[] = ['C', 'C', '1B', '2B', '2B', '3B', 'SS', 'SS', 'LF', 'CF', 'RF', 'DH'];
+const INTL_SP = 5; const INTL_RP = 7; const INTL_CL = 1;
 
 // ─── Name generation ──────────────────────────────────────────────────────────
 function generateName(gen: RandomGenerator, nationality: Nationality): [string, RandomGenerator] {
@@ -358,15 +358,15 @@ export function generatePlayer(
 
 // ─── Generate roster for one team ────────────────────────────────────────────
 //
-// Depth chart (WhatIfSports Hardball Dynasty baseline):
+// Depth chart (full org, 25 per minor league level):
 //   MLB:    26 active  (13 hitters + 5 SP + 7 RP + 1 CL)
-//   AAA:    20 players ( 9 hitters + 5 SP + 4 RP + 1 CL + 1 RP)
-//   AA:     20 players ( 9 hitters + 5 SP + 4 RP + 1 CL + 1 RP)
-//   A+:     18 players ( 9 hitters + 5 SP + 3 RP)
-//   A-:     16 players ( 8 hitters + 4 SP + 3 RP + 1 bonus)
-//   Rookie: 14 players ( 7 hitters + 4 SP + 3 RP)
-//   INTL:   10 players ( 7 hitters + 2 SP + 1 RP)
-//   TOTAL: ~124 per team × 30 teams ≈ 3,720 players
+//   AAA:    25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   AA:     25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   A+:     25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   A-:     25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   Rookie: 25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   INTL:   25 players (12 hitters + 5 SP + 7 RP + 1 CL)
+//   TOTAL: ~176 per team × 30 teams ≈ 5,280 players
 
 export function generateTeamRoster(
   gen: RandomGenerator,

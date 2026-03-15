@@ -5,6 +5,9 @@ import { useUIStore } from '../../store/uiStore';
 import { toScoutingScale } from '../../engine/player/attributes';
 import { SkeletonTable } from '../layout/Skeleton';
 import ScrollableTable from '../layout/ScrollableTable';
+import { useSort, compareSortValues } from '../../hooks/useSort';
+import { SortHeader } from '../shared/SortHeader';
+import CoachTip from '../shared/CoachTip';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -67,8 +70,8 @@ export default function ScoutingReports() {
   const [posFilter, setPosFilter] = useState('ALL');
   const [scoutsUsed, setScoutsUsed] = useState(0);
   const [scoutingInProgress, setScoutingInProgress] = useState<number | null>(null);
-  const [sortKey, setSortKey] = useState<'name' | 'ovr' | 'pot' | 'age' | 'conf'>('ovr');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  type ScoutSortKey = 'name' | 'ovr' | 'pot' | 'age' | 'conf';
+  const { sort: scoutSort, toggle: toggleScoutSort } = useSort<ScoutSortKey>('ovr');
 
   // Load teams on mount
   useEffect(() => {
@@ -137,20 +140,20 @@ export default function ScoutingReports() {
 
   // Sort players
   const sortedPlayers = useMemo(() => {
-    const list = [...players];
-    list.sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
-        case 'name': cmp = a.name.localeCompare(b.name); break;
-        case 'ovr': cmp = a.observedOverall - b.observedOverall; break;
-        case 'pot': cmp = a.observedPotential - b.observedPotential; break;
-        case 'age': cmp = a.age - b.age; break;
-        case 'conf': cmp = (a.confidence ?? 0) - (b.confidence ?? 0); break;
-      }
-      return sortDir === 'desc' ? -cmp : cmp;
+    return [...players].sort((a, b) => {
+      const getVal = (p: ScoutablePlayer): string | number => {
+        switch (scoutSort.key) {
+          case 'name': return p.name.toLowerCase();
+          case 'ovr': return p.observedOverall;
+          case 'pot': return p.observedPotential;
+          case 'age': return p.age;
+          case 'conf': return p.confidence ?? 0;
+          default: return 0;
+        }
+      };
+      return compareSortValues(getVal(a), getVal(b), scoutSort.dir);
     });
-    return list;
-  }, [players, sortKey, sortDir]);
+  }, [players, scoutSort]);
 
   // Group by team
   const groupedByTeam = useMemo(() => {
@@ -164,36 +167,13 @@ export default function ScoutingReports() {
     return groups;
   }, [sortedPlayers, teamFilter]);
 
-  const toggleSort = (key: typeof sortKey) => {
-    if (sortKey === key) {
-      setSortDir(prev => prev === 'desc' ? 'asc' : 'desc');
-    } else {
-      setSortKey(key);
-      setSortDir('desc');
-    }
-  };
-
-  const SortTh = ({ label, sk, align }: { label: string; sk: typeof sortKey; align?: 'left' | 'right' }) => {
-    const active = sortKey === sk;
-    const arrow = active ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '';
-    return (
-      <th
-        scope="col"
-        role="button"
-        tabIndex={0}
-        className={`${align === 'left' ? 'text-left' : 'text-right'} px-2 py-1 cursor-pointer select-none hover:text-orange-400 transition-colors ${active ? 'text-orange-400' : 'text-gray-500'}`}
-        onClick={() => toggleSort(sk)}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSort(sk); } }}
-      >
-        {label}{arrow}
-      </th>
-    );
-  };
+  // SortTh replaced by shared SortHeader component
 
   if (!gameStarted) return <div className="p-4 text-gray-500 text-xs">Start a game first.</div>;
 
   return (
     <div className="p-4 space-y-4">
+      <CoachTip section="scouting" />
       {/* Header */}
       <div className="bloomberg-border">
         <div className="bloomberg-header flex items-center justify-between">
@@ -252,12 +232,12 @@ export default function ScoutingReports() {
               <caption className="sr-only">Scouting reports for {teamAbbr}</caption>
               <thead>
                 <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <SortTh label="NAME" sk="name" align="left" />
+                  <SortHeader label="NAME" sortKey="name" currentSort={scoutSort} onSort={toggleScoutSort} align="left" />
                   <th className="text-left px-2 py-1">POS</th>
-                  <SortTh label="AGE" sk="age" />
-                  <SortTh label="OVR" sk="ovr" />
-                  <SortTh label="POT" sk="pot" />
-                  <SortTh label="CONF" sk="conf" />
+                  <SortHeader label="AGE" sortKey="age" currentSort={scoutSort} onSort={toggleScoutSort} />
+                  <SortHeader label="OVR" sortKey="ovr" currentSort={scoutSort} onSort={toggleScoutSort} />
+                  <SortHeader label="POT" sortKey="pot" currentSort={scoutSort} onSort={toggleScoutSort} />
+                  <SortHeader label="CONF" sortKey="conf" currentSort={scoutSort} onSort={toggleScoutSort} />
                   <th className="text-center px-2 py-1">STATUS</th>
                   <th className="px-2 py-1" />
                 </tr>
@@ -287,12 +267,12 @@ export default function ScoutingReports() {
             <caption className="sr-only">Scouting reports</caption>
             <thead>
               <tr className="text-gray-500 text-xs border-b border-gray-800">
-                <SortTh label="NAME" sk="name" align="left" />
+                <SortHeader label="NAME" sortKey="name" currentSort={scoutSort} onSort={toggleScoutSort} align="left" />
                 <th className="text-left px-2 py-1">POS</th>
-                <SortTh label="AGE" sk="age" />
-                <SortTh label="OVR" sk="ovr" />
-                <SortTh label="POT" sk="pot" />
-                <SortTh label="CONF" sk="conf" />
+                <SortHeader label="AGE" sortKey="age" currentSort={scoutSort} onSort={toggleScoutSort} />
+                <SortHeader label="OVR" sortKey="ovr" currentSort={scoutSort} onSort={toggleScoutSort} />
+                <SortHeader label="POT" sortKey="pot" currentSort={scoutSort} onSort={toggleScoutSort} />
+                <SortHeader label="CONF" sortKey="conf" currentSort={scoutSort} onSort={toggleScoutSort} />
                 <th className="text-center px-2 py-1">STATUS</th>
                 <th className="px-2 py-1" />
               </tr>

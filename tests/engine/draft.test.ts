@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Player, Position } from '../../src/types/player';
 import type { Team } from '../../src/types/team';
-import { createDraftPool, scoutDraftPool, getDraftRounds, generateAnnualDraftClass } from '../../src/engine/draft/draftPool';
+import {
+  ANNUAL_DRAFT_CLASS_SIZE,
+  ANNUAL_DRAFT_ROUNDS,
+  createDraftPool,
+  scoutDraftPool,
+  getDraftRounds,
+  generateAnnualDraftClass,
+} from '../../src/engine/draft/draftPool';
 import {
   generateDraftOrder, getPickingTeam, getOverallPick,
   aiSelectPlayer, fillRemainingRosters,
@@ -93,7 +100,7 @@ describe('getDraftRounds', () => {
     expect(getDraftRounds('snake10')).toBe(10);
     expect(getDraftRounds('snake25')).toBe(25);
     expect(getDraftRounds('snake26')).toBe(26);
-    expect(getDraftRounds('annual')).toBe(5);
+    expect(getDraftRounds('annual')).toBe(ANNUAL_DRAFT_ROUNDS);
     expect(getDraftRounds('instant')).toBe(0);
   });
 });
@@ -327,10 +334,10 @@ describe('generateAnnualDraftClass', () => {
     expect(prospects).toHaveLength(100);
   });
 
-  it('defaults to 150 prospects', () => {
+  it('defaults to the full annual draft class size', () => {
     const gen = createPRNG(42);
     const [prospects] = generateAnnualDraftClass(gen, 2027);
-    expect(prospects).toHaveLength(150);
+    expect(prospects).toHaveLength(ANNUAL_DRAFT_CLASS_SIZE);
   });
 
   it('all prospects are DRAFT_ELIGIBLE with no team', () => {

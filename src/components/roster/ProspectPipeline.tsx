@@ -8,6 +8,8 @@
 import { useState, useMemo } from 'react';
 import type { RosterPlayer } from '../../types/league';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
+import CoachTip from '../shared/CoachTip';
+import AgingBadge from '../shared/AgingBadge';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -149,7 +151,7 @@ function ProspectCard({ p, rank }: { p: RosterPlayer; rank: number }) {
           </span>
         </div>
         <div className="text-gray-500 text-xs">
-          {p.position} · Age {p.age} · {p.isPitcher ? p.throws : p.bats}
+          {p.position} · Age {p.age} <AgingBadge age={p.age} position={p.position} compact /> · {p.isPitcher ? p.throws : p.bats}
           <span className="ml-2 font-bold" style={{ color: potColor }}>
             POT {potScout}
           </span>
@@ -237,6 +239,7 @@ export default function ProspectPipeline({ players }: { players: RosterPlayer[] 
 
   return (
     <div className="bloomberg-border bg-gray-900">
+      <CoachTip section="pipeline" />
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>PROSPECT PIPELINE</span>
         <div className="flex items-center gap-3 normal-case font-normal">

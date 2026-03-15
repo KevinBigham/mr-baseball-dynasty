@@ -12,6 +12,7 @@ import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 import type { DevAssignment, DevProgram, ProgramDefinition } from '../../engine/devPrograms';
 import { DEV_PROGRAMS, getProgramsForPlayer } from '../../engine/devPrograms';
+import CoachTip from '../shared/CoachTip';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -268,6 +269,7 @@ export default function DevLab({
 
   return (
     <div className="bloomberg-border" style={{ background: '#0a0a0f' }}>
+      <CoachTip section="devlab" />
       {/* Header */}
       <div className="bloomberg-header px-4 flex items-center justify-between">
         <span>PLAYER DEVELOPMENT LAB</span>

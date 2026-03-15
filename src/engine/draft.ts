@@ -7,6 +7,7 @@ import type { Player } from '../types/player';
 import type { TeamSeason } from '../types/team';
 import type { DraftPick } from '../types/offseason';
 import type { RandomGenerator } from './math/prng';
+import { ANNUAL_DRAFT_ROUNDS } from './draft/draftPool';
 
 export interface DraftBoardEntry {
   playerId: number;
@@ -46,7 +47,7 @@ export function createDraftBoardState(
   const state: DraftBoardState = {
     season,
     userTeamId,
-    totalRounds: 10,
+    totalRounds: ANNUAL_DRAFT_ROUNDS,
     currentRound: 1,
     currentPickInRound: 1,
     overallPick: 1,

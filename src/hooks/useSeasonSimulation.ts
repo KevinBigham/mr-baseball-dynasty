@@ -8,6 +8,7 @@ import * as Comlink from 'comlink';
 import { getEngine } from '../engine/engineClient';
 import { useGameStore } from '../store/gameStore';
 import { useLeagueStore, generateKeyMoment, type SeasonSummary } from '../store/leagueStore';
+import { useUIStore } from '../store/uiStore';
 import type { SeasonResult, AwardCandidate } from '../types/league';
 import type { PressContext } from '../data/pressConference';
 import type { PlayoffBracket } from '../engine/sim/playoffSimulator';
@@ -204,6 +205,55 @@ export function useSeasonSimulation() {
       summary.keyMoment = generateKeyMoment(summary);
       addSeasonSummary(summary);
       incrementSeasonsManaged();
+
+      // ── Celebration toasts ─────────────────────────────────────────────
+      const toast = useUIStore.getState().addToast;
+
+      // Championship / Playoff clinch
+      if (isChampion) {
+        toast('🏆 WORLD SERIES CHAMPIONS! Your dynasty moment is here!', 'success', {
+          accent: '#facc15', icon: '🏆', duration: 8000,
+        });
+      } else if (isPlayoff) {
+        toast('⚾ Postseason bound! Your team clinched a playoff spot!', 'success', {
+          accent: '#3b82f6', icon: '⚾', duration: 5000,
+        });
+      }
+
+      // Record announcement
+      if (userWins >= 100) {
+        toast(`🔥 Historic season! ${userWins} wins — elite territory.`, 'info', {
+          accent: '#f97316', icon: '🔥', duration: 5000,
+        });
+      } else if (userWins >= 90) {
+        toast(`💪 ${userWins}-win season — a contender's campaign.`, 'info', {
+          accent: '#22c55e', icon: '💪', duration: 4000,
+        });
+      }
+
+      // Award wins
+      const userAwards = extractUserAwards(result as any, userTeamId);
+      for (const award of userAwards.slice(0, 3)) {
+        toast(`🏅 ${award}`, 'success', {
+          accent: '#fbbf24', icon: '🏅', duration: 5000,
+        });
+      }
+
+      // Breakout stars
+      if (breakoutHits > 0) {
+        toast(`⭐ ${breakoutHits} breakout prospect${breakoutHits > 1 ? 's' : ''} hit their ceiling!`, 'info', {
+          accent: '#a855f7', icon: '⭐', duration: 4000,
+        });
+      }
+
+      // Injury report (user team only)
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
+      const userInjuries = (result.injuryEvents ?? []).filter((e: any) => e.teamId === userTeamId);
+      if (userInjuries.length > 0) {
+        toast(`🏥 ${userInjuries.length} player${userInjuries.length > 1 ? 's' : ''} suffered injuries this season.`, 'error', {
+          accent: '#ef4444', icon: '🏥', duration: 4000,
+        });
+      }
 
       // Storyboard arc
       setPostSimArcWins(userWins);

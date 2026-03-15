@@ -584,8 +584,9 @@ function managePitcher(
   //   stamina 380-449: max 6 innings (SP goes ~198 IP, just under 200)
   //   stamina ≥ 450: max 7 innings (SP can reach 200+ IP) — ~7% of SPs
   const staminaAttr = currentPitcher.pitcherAttributes?.stamina ?? 350;
-  // Bottom ~11% of SPs (stamina<320) capped at 5 innings; middle ~83% at 6; top ~6% at 7
-  const maxSPInnings = staminaAttr < 320 ? 5 : staminaAttr < 470 ? 6 : 7;
+  // Bottom ~11% of SPs (stamina<320) capped at 5 innings; middle tier at 6; only
+  // true top-end stamina arms get a 7th inning leash so 200 IP workhorses stay rare.
+  const maxSPInnings = staminaAttr < 320 ? 5 : staminaAttr < 485 ? 6 : 7;
 
   // Pitch limit: secondary gate (still needed for high-stamina pitchers)
   // stamina=450→87, stamina=500→91, stamina=550→94

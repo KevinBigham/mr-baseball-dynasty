@@ -5,6 +5,8 @@ import LoadingFallback from '../layout/LoadingFallback';
 
 const HallOfFameGallery = lazy(() => import('./HallOfFameGallery'));
 const FranchiseRecordsView = lazy(() => import('./FranchiseRecordsView'));
+const SeasonTimeline = lazy(() => import('../history/SeasonTimeline'));
+const TransactionLog = lazy(() => import('../history/TransactionLog'));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,10 +26,12 @@ function rowBg(s: SeasonSummary): string {
   return 'border-l-2 border-l-gray-800 opacity-70';
 }
 
-type HistoryTab = 'franchise' | 'records' | 'hallOfFame';
+type HistoryTab = 'franchise' | 'timeline' | 'transactions' | 'records' | 'hallOfFame';
 
 const TABS: Array<{ id: HistoryTab; label: string }> = [
   { id: 'franchise', label: 'FRANCHISE' },
+  { id: 'timeline', label: 'TIMELINE' },
+  { id: 'transactions', label: 'MOVES' },
   { id: 'records', label: 'RECORDS' },
   { id: 'hallOfFame', label: 'HALL OF FAME' },
 ];
@@ -193,6 +197,18 @@ export default function HistoryView() {
       {activeTab === 'hallOfFame' && (
         <Suspense fallback={<LoadingFallback />}>
           <HallOfFameGallery />
+        </Suspense>
+      )}
+
+      {activeTab === 'timeline' && (
+        <Suspense fallback={<LoadingFallback />}>
+          <SeasonTimeline />
+        </Suspense>
+      )}
+
+      {activeTab === 'transactions' && (
+        <Suspense fallback={<LoadingFallback />}>
+          <TransactionLog />
         </Suspense>
       )}
     </div>

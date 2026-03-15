@@ -5,6 +5,9 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import type { DraftBoardState, DraftPick } from '../../engine/draft/draftAI';
 import type { DraftProspect } from '../../engine/draft/draftPool';
+import AnalystReaction from './AnalystReaction';
+import DraftGradeReport from './DraftGradeReport';
+import CoachTip from '../shared/CoachTip';
 
 type PosFilter = 'ALL' | 'HITTERS' | 'PITCHERS';
 
@@ -128,10 +131,15 @@ export default function DraftRoom() {
     setAdvancing(true);
     try {
       const engine = getEngine();
+      const pickedName = board.available.find(p => p.playerId === selectedPlayerId)?.name ?? 'Unknown';
       let updated = await engine.makeDraftPick(selectedPlayerId);
       // @ts-expect-error Sprint 04 stub — contract alignment pending
       setBoard(updated as DraftBoardState);
       setSelectedPlayerId(null);
+
+      useUIStore.getState().addToast(`📋 Drafted ${pickedName}!`, 'success', {
+        accent: '#f97316', icon: '📋', duration: 3000,
+      });
 
       // Auto-advance AI picks
       // @ts-expect-error Sprint 04 stub — contract alignment pending
@@ -182,6 +190,9 @@ export default function DraftRoom() {
       // @ts-expect-error Sprint 04 stub — contract alignment pending
       setStandings(standings);
       setGameStarted(true);
+      useUIStore.getState().addToast('🎓 Draft complete! Your new class is ready to compete.', 'success', {
+        accent: '#22c55e', icon: '🎓', duration: 5000,
+      });
     } catch (e) {
       setError(String(e));
       setLoading(false);
@@ -220,6 +231,7 @@ export default function DraftRoom() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#050a0f' }}>
+      <CoachTip section="draft" />
       {/* Header bar */}
       <div
         className="flex items-center justify-between px-4 py-2 shrink-0"
@@ -297,6 +309,23 @@ export default function DraftRoom() {
               <div className="text-gray-700 text-xs text-center py-8">No picks yet</div>
             )}
           </div>
+
+          {/* Analyst Reaction for latest pick */}
+          {board.picks.length > 0 && (() => {
+            const lastPick = board.picks[board.picks.length - 1];
+            return (
+              <div className="p-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <AnalystReaction
+                  pickNumber={lastPick.pickNumber}
+                  round={lastPick.round}
+                  playerName={lastPick.playerName}
+                  position={lastPick.position}
+                  scoutedOvr={lastPick.scoutedOvr}
+                  totalPicks={board.draftOrder.length * board.totalRounds}
+                />
+              </div>
+            );
+          })()}
         </div>
 
         {/* Center: Available players */}
@@ -406,8 +435,12 @@ export default function DraftRoom() {
               </>
             )}
             {draftComplete && (
-              <div className="text-center">
+              <div className="text-center space-y-3">
                 <div className="text-green-400 font-black text-sm mb-2">DRAFT COMPLETE</div>
+                <DraftGradeReport
+                  userPicks={board.picks.filter(p => p.teamId === userTeamId)}
+                  totalPicksInDraft={board.draftOrder.length * board.totalRounds}
+                />
                 <button
                   onClick={handleComplete}
                   className="w-full py-3 font-black text-sm uppercase tracking-widest rounded"

@@ -240,11 +240,9 @@ export default function CompareModal() {
     setLoading(true);
     const promises: Promise<void>[] = [];
     if (leftId) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       promises.push(getEngine().getPlayerProfile(leftId).then(setLeft));
     }
     if (rightId) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       promises.push(getEngine().getPlayerProfile(rightId).then(setRight));
     }
     Promise.all(promises).finally(() => setLoading(false));

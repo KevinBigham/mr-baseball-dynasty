@@ -13,6 +13,8 @@ import FiredScreen from '../dashboard/FiredScreen';
 import MobileNav from './MobileNav';
 import LoadingFallback from './LoadingFallback';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import GameIcon from '../shared/GameIcon';
+import type { IconName } from '../../constants/icons';
 
 // Lazy-load tab-level route components for bundle optimization
 const StandingsView = lazy(() => import('../dashboard/StandingsTable'));
@@ -32,28 +34,28 @@ const FreeAgencyPanel      = lazy(() => import('../offseason/FreeAgencyPanel'));
 const ScoutingReports      = lazy(() => import('../roster/ScoutingReports'));
 
 // ─── 5-Pillar Navigation (UI_EVOLUTION_MARKER_2026) ─────────────────────────
-const NAV_PILLARS: Array<{ id: NavTab; label: string; icon: string; subTabs: Array<{ id: string; label: string }> }> = [
-  { id: 'home', label: 'HOME', icon: '⚾', subTabs: [] },
-  { id: 'team', label: 'TEAM', icon: '📋', subTabs: [
+const NAV_PILLARS: Array<{ id: NavTab; label: string; icon: IconName; subTabs: Array<{ id: string; label: string }> }> = [
+  { id: 'home', label: 'HOME', icon: 'home', subTabs: [] },
+  { id: 'team', label: 'TEAM', icon: 'team', subTabs: [
     { id: 'roster', label: 'ROSTER' },
     { id: 'depth', label: 'DEPTH CHART' },
     { id: 'pipeline', label: 'PROSPECTS' },
     { id: 'devlab', label: 'DEV LAB' },
     { id: 'player', label: 'PLAYER' },
   ]},
-  { id: 'frontoffice', label: 'FRONT OFFICE', icon: '💼', subTabs: [
+  { id: 'frontoffice', label: 'FRONT OFFICE', icon: 'frontOffice', subTabs: [
     { id: 'finances', label: 'FINANCES' },
     { id: 'trades', label: 'TRADES' },
     { id: 'scouting', label: 'SCOUTING' },
     { id: 'freeagency', label: 'FREE AGENCY' },
   ]},
-  { id: 'league', label: 'LEAGUE', icon: '🏆', subTabs: [
+  { id: 'league', label: 'LEAGUE', icon: 'league', subTabs: [
     { id: 'standings', label: 'STANDINGS' },
     { id: 'leaderboards', label: 'LEADERS' },
     { id: 'awards', label: 'AWARDS' },
     { id: 'playoffs', label: 'PLAYOFFS' },
   ]},
-  { id: 'history', label: 'HISTORY', icon: '📖', subTabs: [
+  { id: 'history', label: 'HISTORY', icon: 'history', subTabs: [
     { id: 'history', label: 'TIMELINE' },
     { id: 'records', label: 'RECORDS' },
     { id: 'hof', label: 'HALL OF FAME' },
@@ -196,7 +198,7 @@ export default function Shell() {
       <header className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2 border-b border-dynasty-base shrink-0 safe-top" style={{ backgroundColor: '#0D1628' }} role="banner">
         <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
           <span className="text-orange-500 font-bold text-[10px] sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-500 text-xs hidden sm:inline">⚾</span>
+          <span className="text-gray-500 text-xs hidden sm:inline"><GameIcon name="home" size="sm" /></span>
           <span className="text-gray-500 text-[10px] sm:text-xs">S{season}</span>
         </div>
         {isSimulating && (
@@ -233,7 +235,7 @@ export default function Shell() {
           </button>
           <button
             onClick={() => setShowNewGameConfirm(true)}
-            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0 hidden sm:block"
+            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
             aria-label="Start new game"
           >
             NEW GAME
@@ -281,7 +283,7 @@ export default function Shell() {
               style={effectiveTab === pillar.id ? { backgroundColor: 'rgba(249,115,22,0.08)' } : {}}
               aria-current={effectiveTab === pillar.id ? 'page' : undefined}
             >
-              <span className="text-sm">{pillar.icon}</span>
+              <GameIcon name={pillar.icon} size="md" />
               {pillar.label}
             </button>
           ))}

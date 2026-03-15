@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
+import CoachTip from '../shared/CoachTip';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ export default function FranchiseRecordsView() {
   return (
     <div className="p-4">
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2 mb-4">FRANCHISE RECORD BOOK</div>
+      <CoachTip section="history" />
 
       {loading && (
         <div className="text-orange-400 text-xs animate-pulse">Loading records...</div>

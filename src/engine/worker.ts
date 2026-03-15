@@ -17,7 +17,7 @@ import { createPRNG } from './math/prng.ts';
 import type { RandomGenerator } from './math/prng.ts';
 import { generateAllPlayers } from './player/generation.ts';
 import { simulateSeason, type SeasonSimResult } from './sim/seasonSimulator.ts';
-import { TEAMS } from '../data/teams.ts';
+import { INITIAL_TEAMS, TEAMS } from '../data/teams.ts';
 import { calcBA, calcERA, formatIP, playerOverall, pythagoreanWins } from '../utils/helpers.ts';
 import { simulatePlayoffs, type PlayoffBracket } from './league/playoffs.ts';
 import { computeSeasonAwards, type SeasonAwards } from './league/awards.ts';
@@ -107,7 +107,7 @@ import {
 } from './draft.ts';
 import { computePayrollReport, generateArbitrationCases, type ArbitrationCase } from './finances.ts';
 import { computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages } from './advancedStats.ts';
-import { generateTradeOffers, shopPlayer as shopPlayerEngine } from './trading.ts';
+import { generateTradeOffers, shopPlayer as shopPlayerEngine, evaluatePlayer } from './trading.ts';
 import { generateScoutingReport } from './scouting.ts';
 import {
   createSeasonSimState,
@@ -250,6 +250,16 @@ const api = {
     const result = generateAllPlayers(gen, teams.map((t) => t.teamId));
     players = result.players;
     gen = result.gen;
+
+    // Generate fake career history for MLB/AAA/AA players (1 season per service year)
+    const { generateFakeCareerHistory } = await import('./player/fakeStats.ts');
+    let fakeCareerMap: Map<number, PlayerSeason[]>;
+    let fakeLatestMap: Map<number, PlayerSeason>;
+    [fakeCareerMap, fakeLatestMap, gen] = generateFakeCareerHistory(gen, players, 2026);
+    for (const [pid, seasons] of fakeCareerMap) {
+      careerHistory.set(pid, seasons);
+    }
+    latestPlayerSeasons = fakeLatestMap;
 
     let staffs: Map<number, CoachingStaff>;
     [staffs, gen] = generateAllCoachingStaffs(teams.map((t) => t.teamId), gen);
@@ -1119,11 +1129,57 @@ const api = {
 
     const ps = latestPlayerSeasons.get(playerId);
     const career = careerHistory.get(playerId) ?? [];
+    const team = teams.find((t) => t.teamId === player.teamId);
+
+    // Build scouting grades (20-80 scale) from raw attributes
+    const toGrade = (v: number) => Math.round(20 + (v / 550) * 60);
+    const grades: Record<string, number> = {};
+    if (player.isPitcher && player.pitcherAttributes) {
+      const pa = player.pitcherAttributes;
+      grades['Stuff'] = toGrade(pa.stuff);
+      grades['Movement'] = toGrade(pa.movement);
+      grades['Command'] = toGrade(pa.command);
+      grades['Stamina'] = toGrade(pa.stamina);
+      grades['Durability'] = toGrade(pa.durability);
+    } else if (player.hitterAttributes) {
+      const ha = player.hitterAttributes;
+      grades['Contact'] = toGrade(ha.contact);
+      grades['Power'] = toGrade(ha.power);
+      grades['Eye'] = toGrade(ha.eye);
+      grades['Speed'] = toGrade(ha.speed);
+      grades['Fielding'] = toGrade(ha.fielding);
+      grades['Arm'] = toGrade(ha.armStrength);
+    }
+
     return {
-      player,
-      seasonStats: ps ?? null,
-      careerStats: career,
+      player: {
+        playerId: player.playerId,
+        name: player.name,
+        age: player.age,
+        position: player.position,
+        bats: player.bats,
+        throws: player.throws,
+        overall: player.overall,
+        potential: player.potential,
+        grades,
+        rosterStatus: player.rosterData.rosterStatus,
+        serviceTimeDays: player.rosterData.serviceTimeDays,
+        salary: player.rosterData.salary,
+        contractYearsRemaining: player.rosterData.contractYearsRemaining,
+        isPitcher: player.isPitcher,
+        teamId: player.teamId,
+        teamAbbr: team?.abbreviation ?? '???',
+        optionYearsRemaining: player.rosterData.optionYearsRemaining,
+        tradeValue: evaluatePlayer(player),
+      },
+      seasonStats: (ps as unknown as PlayerProfileData['seasonStats']) ?? null,
+      careerStats: career as unknown as import('../types/player.ts').PlayerSeasonStats[],
     };
+  },
+
+  /** Alias used by PlayerProfile component (scouting not yet implemented) */
+  async getScoutedPlayerProfile(playerId: number): Promise<PlayerProfileData | null> {
+    return api.getPlayerProfile(playerId);
   },
 
   async getSeasonNumber(): Promise<number> {
@@ -2387,7 +2443,7 @@ const api = {
         return {
           season: currentSeason,
           userTeamId: teamId,
-          totalRounds: 10,
+          totalRounds: 20,
           currentRound: 1,
           currentPickInRound: 1,
           overallPick: 1,
@@ -2478,9 +2534,9 @@ const api = {
   // ─── Stub methods (Sprint 04 branch surgery) ──────────────────────
 
   // State management
-  async loadState(_state: any): Promise<void> {
-    // Legacy stub — use loadGameFromSlot() for save/load functionality
-    console.warn('loadState() is deprecated. Use loadGameFromSlot() instead.');
+  async loadState(state: any): Promise<void> {
+    applyLoadedState(state);
+    cache.invalidate();
   },
   async getFullState(): Promise<any> { return buildPersistedState(); },
 
@@ -2489,10 +2545,55 @@ const api = {
   async getTeamPlayers(teamId: number) { return players.filter(p => p.teamId === teamId); },
   async getFullRoster(teamId: number) {
     const roster = players.filter(p => p.teamId === teamId && p.rosterData.rosterStatus !== 'FREE_AGENT' && p.rosterData.rosterStatus !== 'RETIRED' && p.rosterData.rosterStatus !== 'DRAFT_ELIGIBLE');
-    const active = roster.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE');
-    const il = roster.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60');
-    const minors = roster.filter(p => !['MLB_ACTIVE', 'MLB_IL_10', 'MLB_IL_60', 'DFA', 'WAIVERS'].includes(p.rosterData.rosterStatus));
-    return { active, minors, il };
+
+
+    // Map raw Player → RosterPlayer shape expected by UI
+    function toRosterPlayer(p: Player) {
+      const statLine = getPlayerStatLine(p.playerId);
+      return {
+        playerId: p.playerId,
+        name: p.name || `${p.firstName} ${p.lastName}`,
+        position: p.position,
+        age: p.age,
+        bats: p.bats,
+        throws: p.throws,
+        isPitcher: p.isPitcher,
+        overall: p.overall,
+        potential: p.potential,
+        rosterStatus: p.rosterData.rosterStatus,
+        isOn40Man: p.rosterData.isOn40Man,
+        optionYearsRemaining: p.rosterData.optionYearsRemaining,
+        serviceTimeDays: p.rosterData.serviceTimeDays,
+        salary: p.rosterData.salary,
+        contractYearsRemaining: p.rosterData.contractYearsRemaining,
+        injuryInfo: p.rosterData.currentInjury ? {
+          type: p.rosterData.currentInjury.type,
+          severity: p.rosterData.currentInjury.severity,
+          daysRemaining: p.rosterData.currentInjury.recoveryDaysRemaining,
+          description: p.rosterData.currentInjury.description,
+        } : undefined,
+        stats: statLine ?? {},
+      };
+    }
+
+    const active = roster.filter(p => p.rosterData.rosterStatus === 'MLB_ACTIVE').map(toRosterPlayer);
+    const il = roster.filter(p => p.rosterData.rosterStatus === 'MLB_IL_10' || p.rosterData.rosterStatus === 'MLB_IL_60').map(toRosterPlayer);
+    const dfa = roster.filter(p => p.rosterData.rosterStatus === 'DFA' || p.rosterData.rosterStatus === 'WAIVERS').map(toRosterPlayer);
+    const aaa = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_AAA').map(toRosterPlayer);
+    const aa = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_AA').map(toRosterPlayer);
+    const aPlus = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_APLUS').map(toRosterPlayer);
+    const aMinus = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_AMINUS').map(toRosterPlayer);
+    const rookie = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_ROOKIE').map(toRosterPlayer);
+    const intl = roster.filter(p => p.rosterData.rosterStatus === 'MINORS_INTL').map(toRosterPlayer);
+
+    const fortyManCount = roster.filter(p => p.rosterData.isOn40Man).length;
+    const activeCount = active.length;
+
+    return {
+      teamId, season: currentSeason,
+      active, il, dfa, aaa, aa, aPlus, aMinus, rookie, intl,
+      fortyManCount, activeCount,
+    };
   },
   async getPlayerNameMap() { return players.map(p => [p.playerId, `${p.firstName} ${p.lastName}`] as [number, string]); },
   async getTeamNeeds(_teamId: number) { return {}; },
@@ -2689,7 +2790,7 @@ const api = {
       crossedSegment: result.crossedSegment,
       userRecord: result.userRecord,
       isSeasonComplete: result.isSeasonComplete,
-      interrupts: [] as Array<{ type: string; headline: string; detail: string }>,
+      interrupts: result.interrupts ?? [] as Array<{ type: string; headline: string; detail: string }>,
     };
   },
   async simRemainingChunks() {
@@ -3268,16 +3369,26 @@ export interface RosterPlayer {
 export interface StatLine {
   // Batting
   ba?: string;
+  avg?: string;
   hr?: number;
   rbi?: number;
   runs?: number;
+  obp?: string;
+  slg?: string;
+  sb?: number;
+  k?: number;
+  pa?: number;
   // Pitching
   era?: string;
+  w?: number;
+  l?: number;
   wins?: number;
   losses?: number;
-  k?: number;
   ip?: string;
   saves?: number;
+  sv?: number;
+  k9?: string;
+  whip?: string;
 }
 
 export interface LeaderboardEntry {
@@ -3293,9 +3404,31 @@ export interface LeaderboardEntry {
 }
 
 export interface PlayerProfileData {
-  player: Player;
-  seasonStats: PlayerSeason | null;
-  careerStats: PlayerSeason[];
+  player: {
+    playerId: number;
+    name: string;
+    age: number;
+    position: string;
+    bats: string;
+    throws: string;
+    overall: number;
+    potential: number;
+    grades: Record<string, number>;
+    rosterStatus: string;
+    serviceTimeDays: number;
+    salary: number;
+    contractYearsRemaining: number;
+    isPitcher: boolean;
+    teamId: number;
+    teamAbbr: string;
+    optionYearsRemaining: number;
+    tradeValue: number;
+  };
+  seasonStats: {
+    season: number;
+    [key: string]: number;
+  } | null;
+  careerStats: import('../types/player.ts').PlayerSeasonStats[];
 }
 
 export interface PerformanceStats {
@@ -4332,6 +4465,29 @@ function applyLoadedState(state: PersistedGameState): void {
   userTeamId = (state as any).userTeamId ?? 1;
   gen = state.gen;
   teams = state.teams;
+
+  // ─── Migration: patch stale team metadata from INITIAL_TEAMS ─────────
+  // Saves persist the full Team object, but name/city/abbreviation/budget
+  // may have changed in code since the save was created. Overwrite cosmetic
+  // + config fields from the canonical INITIAL_TEAMS while keeping runtime
+  // state (seasonRecord, rotationIndex, bullpenReliefCounter, strategy).
+  const canonical = new Map<number, (typeof INITIAL_TEAMS)[number]>(
+    INITIAL_TEAMS.map(t => [t.teamId, t]),
+  );
+  for (const t of teams) {
+    const src = canonical.get(t.teamId);
+    if (!src) continue;
+    t.name = src.name;
+    t.abbreviation = src.abbreviation;
+    t.city = src.city;
+    t.league = src.league;
+    t.division = src.division;
+    t.parkFactorId = src.parkFactorId;
+    t.budget = src.budget;
+    t.scoutingQuality = src.scoutingQuality;
+    t.coaching = { ...src.coaching };
+  }
+
   players = state.players;
   latestTeamSeasons = state.teamSeasons;
 
@@ -4488,21 +4644,45 @@ function getPlayerStatLine(playerId: number): StatLine | null {
   const player = players.find((p) => p.playerId === playerId);
   if (!player) return null;
 
+  // Access extended fields that may be on the object (from fakeStats or full sim)
+  const ext = ps as any;
+
   if (player.isPitcher) {
+    const outs = ext.outs ?? Math.round(ps.ip * 3);
+    const ha = ext.ha ?? 0;
+    const bba = ext.bba ?? 0;
+    const innings = outs / 3;
     return {
       era: ps.ip > 0 ? calcERA(ps.earnedRuns, ps.ip).toFixed(2) : '-.--',
+      w: ps.wins,
+      l: ps.losses,
       wins: ps.wins,
       losses: ps.losses,
       k: ps.kPitching,
       ip: formatIP(ps.ip),
+      sv: ps.saves,
       saves: ps.saves,
+      k9: innings > 0 ? ((ps.kPitching / innings) * 9).toFixed(1) : '0.0',
+      whip: innings > 0 ? ((ha + bba) / innings).toFixed(2) : '0.00',
     };
   } else {
+    const bb = ext.bb ?? 0;
+    const hbp = ext.hbp ?? 0;
+    const pa = ext.pa ?? (ps.ab + bb + hbp);
+    const doubles = ext.doubles ?? 0;
+    const triples = ext.triples ?? 0;
+    const tb = ps.hits + doubles + triples * 2 + ps.hr * 3;
     return {
       ba: ps.ab > 0 ? calcBA(ps.hits, ps.ab).toFixed(3) : '.000',
+      avg: ps.ab > 0 ? calcBA(ps.hits, ps.ab).toFixed(3) : '.000',
       hr: ps.hr,
       rbi: ps.rbi,
       runs: ps.runs,
+      obp: pa > 0 ? ((ps.hits + bb + hbp) / pa).toFixed(3) : '.000',
+      slg: ps.ab > 0 ? (tb / ps.ab).toFixed(3) : '.000',
+      sb: ext.sb ?? 0,
+      k: ext.k ?? 0,
+      pa,
     };
   }
 }

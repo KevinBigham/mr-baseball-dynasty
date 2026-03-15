@@ -4,10 +4,36 @@ import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 
+type DisplayStatValue = number | string | undefined;
+
+interface DisplayStats {
+  pa?: number;
+  avg?: DisplayStatValue;
+  obp?: DisplayStatValue;
+  slg?: DisplayStatValue;
+  hr?: number;
+  rbi?: number;
+  sb?: number;
+  k?: number;
+  bb?: number;
+  w?: number;
+  l?: number;
+  sv?: number;
+  era?: DisplayStatValue;
+  ip?: DisplayStatValue;
+  k9?: DisplayStatValue;
+  bb9?: DisplayStatValue;
+  whip?: DisplayStatValue;
+}
+
+type PreseasonRosterPlayer = Omit<RosterPlayer, 'stats'> & {
+  stats: DisplayStats;
+};
+
 interface PreseasonData {
-  active: RosterPlayer[];
-  rotation: RosterPlayer[];
-  bullpen: RosterPlayer[];
+  active: PreseasonRosterPlayer[];
+  rotation: PreseasonRosterPlayer[];
+  bullpen: PreseasonRosterPlayer[];
   payroll: number;
   budget: number;
   teamName: string;
@@ -15,7 +41,7 @@ interface PreseasonData {
   fortyManCount: number;
 }
 
-function gradeRoster(players: RosterPlayer[]): { grade: string; color: string; score: number } {
+function gradeRoster(players: PreseasonRosterPlayer[]): { grade: string; color: string; score: number } {
   if (players.length === 0) return { grade: 'N/A', color: 'text-gray-500', score: 0 };
   const avg = players.reduce((s, p) => s + p.overall, 0) / players.length;
   const score = Math.round(20 + (avg / 550) * 60);
@@ -32,7 +58,7 @@ function gradeRoster(players: RosterPlayer[]): { grade: string; color: string; s
   return { grade, color, score };
 }
 
-function GradeCard({ label, players }: { label: string; players: RosterPlayer[] }) {
+function GradeCard({ label, players }: { label: string; players: PreseasonRosterPlayer[] }) {
   const { grade, color } = gradeRoster(players);
   const sorted = [...players].sort((a, b) => b.overall - a.overall).slice(0, 2);
 
@@ -106,7 +132,7 @@ function analyzeRoster(data: PreseasonData): { strengths: string[]; needs: strin
   return { strengths, needs };
 }
 
-function WinProjection({ active, rotation }: { active: RosterPlayer[]; rotation: RosterPlayer[] }) {
+function WinProjection({ active, rotation }: { active: PreseasonRosterPlayer[]; rotation: PreseasonRosterPlayer[] }) {
   // Very rough projection: average OVR → expected win pct
   const allPlayers = [...active, ...rotation];
   const avgOvr = allPlayers.length > 0
@@ -144,11 +170,9 @@ export default function PreseasonPanel() {
         engine.getLeagueTeams(),
       ]);
       const team = teams.find(t => t.teamId === userTeamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      const allActive: RosterPlayer[] = [...roster.active, ...roster.il];
+      const allActive: PreseasonRosterPlayer[] = [...roster.active, ...roster.il];
       const rotation = allActive.filter(p => p.position === 'SP').sort((a, b) => b.overall - a.overall).slice(0, 5);
       const bullpen  = allActive.filter(p => p.position === 'RP' || p.position === 'CL');
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       const payroll  = [...roster.active, ...roster.il, ...(roster.aaa ?? []), ...(roster.aa ?? [])]
         .reduce((s, p) => s + (p.salary ?? 0), 0);
 
@@ -159,9 +183,7 @@ export default function PreseasonPanel() {
         payroll,
         budget: team?.budget ?? 150_000_000,
         teamName: team?.name ?? 'Your Team',
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         activeCount: roster.activeCount ?? allActive.length,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         fortyManCount: roster.fortyManCount ?? 0,
       });
       setLoading(false);

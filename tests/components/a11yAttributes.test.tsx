@@ -5,34 +5,42 @@ import { resolve, join } from 'node:path';
 describe('Accessibility attributes', () => {
   // ── SortHeader keyboard accessibility ─────────────────────────────────────
   describe('RosterView SortHeader', () => {
-    const source = readFileSync(
+    const rosterSource = readFileSync(
       resolve('src/components/roster/RosterView.tsx'), 'utf-8',
     );
+    const sortHeaderSource = readFileSync(
+      resolve('src/components/shared/SortHeader.tsx'), 'utf-8',
+    );
+
+    it('uses the shared SortHeader component in RosterView', () => {
+      expect(rosterSource).toContain("import { SortHeader } from '../shared/SortHeader';");
+      expect(rosterSource).toContain('<SortHeader label="PLAYER"');
+    });
 
     it('has scope="col" on th elements', () => {
-      expect(source).toContain('scope="col"');
+      expect(sortHeaderSource).toContain('scope="col"');
     });
 
     it('has tabIndex={0} for keyboard focus', () => {
-      expect(source).toContain('tabIndex={0}');
+      expect(sortHeaderSource).toContain('tabIndex={0}');
     });
 
     it('has role="button" for ARIA semantics', () => {
-      expect(source).toContain('role="button"');
+      expect(sortHeaderSource).toContain('role="button"');
     });
 
     it('has onKeyDown handler for Enter/Space activation', () => {
-      expect(source).toContain('onKeyDown=');
-      expect(source).toContain("e.key === 'Enter'");
-      expect(source).toContain("e.key === ' '");
+      expect(sortHeaderSource).toContain('onKeyDown=');
+      expect(sortHeaderSource).toContain("e.key === 'Enter'");
+      expect(sortHeaderSource).toContain("e.key === ' '");
     });
 
     it('has aria-sort attribute', () => {
-      expect(source).toContain('aria-sort=');
+      expect(sortHeaderSource).toContain('aria-sort=');
     });
 
     it('has aria-label for sort description', () => {
-      expect(source).toContain('aria-label={`Sort by');
+      expect(sortHeaderSource).toContain('aria-label={`Sort by');
     });
   });
 

@@ -180,7 +180,7 @@ export default function HomeCommandCenter() {
             const active = (roster as any[]).filter((p: any) => p.rosterStatus === 'MLB_ACTIVE').length;
             const fortyMan = (roster as any[]).filter((p: any) => p.isOn40Man).length;
             const injured = (roster as any[]).filter((p: any) =>
-              p.rosterStatus === 'IL_10' || p.rosterStatus === 'IL_60'
+              p.rosterStatus === 'MLB_IL_10' || p.rosterStatus === 'MLB_IL_60'
             ).length;
             setInjuries(injured);
             setRosterSpace({ fortyMan, twentySix: active });
