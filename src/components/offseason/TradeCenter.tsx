@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
@@ -6,6 +6,73 @@ import { useUIStore } from '../../store/uiStore';
 import type { TradeProposal, TradePlayerInfo } from '../../engine/trading';
 import { formatSalary } from '../../utils/format';
 import ConfirmModal from '../layout/ConfirmModal';
+import { useSort, compareSortValues } from '../../hooks/useSort';
+import { SortPills } from '../shared/SortHeader';
+import CoachTip from '../shared/CoachTip';
+
+// ─── Client-side trade value estimator (mirrors engine evaluatePlayer) ───────
+// Used because getTeamPlayers() returns raw Player objects without tradeValue.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rawPlayerToTradeInfo(p: any): TradePlayerInfo {
+  const rd = p.rosterData ?? {};
+  const overall: number = p.overall ?? 0;
+  const potential: number = p.potential ?? 0;
+  const age: number = p.age ?? 25;
+  const salary: number = rd.salary ?? p.salary ?? 0;
+  const contractYearsRemaining: number = rd.contractYearsRemaining ?? p.contractYearsRemaining ?? 1;
+
+  // Estimate trade value (same formula as engine/trading.ts evaluatePlayer)
+  let value = (overall / 550) * 60;
+  const potentialGap = potential - overall;
+  if (potentialGap > 0) value += (potentialGap / 550) * 20;
+  if (age <= 26) value *= 1.1;
+  else if (age <= 29) value *= 1.0;
+  else if (age <= 32) value *= 0.85;
+  else if (age <= 35) value *= 0.65;
+  else value *= 0.4;
+  if (salary < 1_000_000 && contractYearsRemaining >= 3) value *= 1.2;
+  else if (salary > 25_000_000) value *= 0.7;
+  else if (salary > 15_000_000) value *= 0.85;
+  if ((rd.rosterStatus ?? '') === 'MLB_ACTIVE') value *= 1.05;
+  const tradeValue = Math.round(Math.max(0, Math.min(100, value)));
+
+  const isPitcher = p.isPitcher ?? ['SP', 'RP', 'CL'].includes(p.position);
+  return {
+    playerId: p.playerId,
+    name: p.name,
+    position: p.position,
+    age,
+    overall,
+    potential,
+    salary,
+    contractYearsRemaining,
+    tradeValue,
+    isPitcher,
+    stats: p.stats ?? {},
+  };
+}
+
+// ─── Sort keys for trade player lists ────────────────────────────────────────
+type TradeSortKey = 'overall' | 'position' | 'age' | 'salary' | 'tradeValue';
+
+const TRADE_SORT_PILLS: { key: TradeSortKey; label: string }[] = [
+  { key: 'overall', label: 'OVR' },
+  { key: 'position', label: 'POS' },
+  { key: 'age', label: 'AGE' },
+  { key: 'salary', label: 'SAL' },
+  { key: 'tradeValue', label: 'TV' },
+];
+
+function getTradeSortValue(p: TradePlayerInfo, key: TradeSortKey): string | number {
+  switch (key) {
+    case 'overall': return p.overall;
+    case 'position': return p.position;
+    case 'age': return p.age;
+    case 'salary': return p.salary;
+    case 'tradeValue': return p.tradeValue;
+    default: return 0;
+  }
+}
 
 // ─── Trade Offer Card ─────────────────────────────────────────────────────────
 
@@ -79,16 +146,17 @@ function PlayerChip({ player, color, selected, onClick }: {
     orange: selected ? 'border-orange-500 bg-orange-900/30' : 'border-gray-700 bg-gray-800/30 hover:border-orange-600',
   };
 
-  // Format stat line
+  // Format stat line (stats may be pre-formatted strings from getPlayerStatLine)
+  const fmtN = (v: unknown, d: number) => typeof v === 'number' ? v.toFixed(d) : String(v ?? '');
   const statLine = player.isPitcher
     ? [
-        player.stats.era != null ? `${player.stats.era.toFixed(2)} ERA` : null,
-        player.stats.k9 != null ? `${player.stats.k9.toFixed(1)} K/9` : null,
+        player.stats.era != null ? `${fmtN(player.stats.era, 2)} ERA` : null,
+        player.stats.k9 != null ? `${fmtN(player.stats.k9, 1)} K/9` : null,
       ].filter(Boolean).join(' · ')
     : [
-        player.stats.avg != null ? `.${(player.stats.avg * 1000).toFixed(0).padStart(3, '0')}` : null,
+        player.stats.avg != null ? (typeof player.stats.avg === 'number' ? `.${(player.stats.avg * 1000).toFixed(0).padStart(3, '0')}` : player.stats.avg) : null,
         player.stats.hr != null ? `${player.stats.hr} HR` : null,
-        player.stats.ops != null ? `${player.stats.ops.toFixed(3)} OPS` : null,
+        player.stats.ops != null ? `${fmtN(player.stats.ops, 3)} OPS` : null,
       ].filter(Boolean).join(' · ');
 
   return (
@@ -129,13 +197,13 @@ function TeamNeedsBar({ teamId }: { teamId: number }) {
       const engine = getEngine();
       const result = await engine.getTeamNeeds(teamId);
       // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setNeeds(result.needs);
+      setNeeds(result?.needs ?? []);
       // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setStrengths(result.strengths);
+      setStrengths(result?.strengths ?? []);
     })();
   }, [teamId]);
 
-  if (teamId === 0 || (needs.length === 0 && strengths.length === 0)) return null;
+  if (teamId === 0 || (!needs?.length && !strengths?.length)) return null;
 
   const severityColor: Record<string, string> = {
     critical: 'text-red-400 border-red-800 bg-red-950/30',
@@ -182,14 +250,15 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
   const [selectedTheirs, setSelectedTheirs] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [pendingPropose, setPendingPropose] = useState(false);
+  const { sort: mySendSort, toggle: toggleMySendSort } = useSort<TradeSortKey>('overall');
+  const { sort: theirSort, toggle: toggleTheirSort } = useSort<TradeSortKey>('overall');
 
   // Load user's players
   useEffect(() => {
     (async () => {
       const engine = getEngine();
       const players = await engine.getTeamPlayers(userTeamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setMyPlayers(players);
+      setMyPlayers((players as unknown[]).map(rawPlayerToTradeInfo));
     })();
   }, [userTeamId]);
 
@@ -202,10 +271,21 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
     (async () => {
       const engine = getEngine();
       const players = await engine.getTeamPlayers(targetTeamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setTheirPlayers(players);
+      setTheirPlayers((players as unknown[]).map(rawPlayerToTradeInfo));
     })();
   }, [targetTeamId]);
+
+  const sortedMyPlayers = useMemo(() => {
+    return [...myPlayers].sort((a, b) =>
+      compareSortValues(getTradeSortValue(a, mySendSort.key), getTradeSortValue(b, mySendSort.key), mySendSort.dir)
+    );
+  }, [myPlayers, mySendSort]);
+
+  const sortedTheirPlayers = useMemo(() => {
+    return [...theirPlayers].sort((a, b) =>
+      compareSortValues(getTradeSortValue(a, theirSort.key), getTradeSortValue(b, theirSort.key), theirSort.dir)
+    );
+  }, [theirPlayers, theirSort]);
 
   const toggleMine = (id: number) => {
     setSelectedMine(prev => {
@@ -246,10 +326,8 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
           engine.getTeamPlayers(userTeamId),
           engine.getTeamPlayers(targetTeamId),
         ]);
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setMyPlayers(mine);
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setTheirPlayers(theirs);
+        setMyPlayers((mine as unknown[]).map(rawPlayerToTradeInfo));
+        setTheirPlayers((theirs as unknown[]).map(rawPlayerToTradeInfo));
       } else {
         // @ts-expect-error Sprint 04 stub — contract alignment pending
         useUIStore.getState().addToast(result.error ?? 'Trade rejected.', 'error');
@@ -311,11 +389,14 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
       <div className="p-4 grid grid-cols-2 gap-4">
         {/* Your players */}
         <div>
-          <div className="text-red-500 text-xs font-bold tracking-widest mb-2">
+          <div className="text-red-500 text-xs font-bold tracking-widest mb-1">
             YOU SEND ({selectedMine.size}/3) — TV: {myValue}
           </div>
+          <div className="mb-1.5">
+            <SortPills keys={TRADE_SORT_PILLS} currentSort={mySendSort} onSort={toggleMySendSort} compact />
+          </div>
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
-            {myPlayers.map(p => (
+            {sortedMyPlayers.map(p => (
               <PlayerChip
                 key={p.playerId}
                 player={p}
@@ -329,15 +410,18 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
 
         {/* Their players */}
         <div>
-          <div className="text-green-500 text-xs font-bold tracking-widest mb-2">
+          <div className="text-green-500 text-xs font-bold tracking-widest mb-1">
             YOU RECEIVE ({selectedTheirs.size}/3) — TV: {theirValue}
+          </div>
+          <div className="mb-1.5">
+            <SortPills keys={TRADE_SORT_PILLS} currentSort={theirSort} onSort={toggleTheirSort} compact />
           </div>
           <div className="max-h-[250px] overflow-y-auto space-y-0.5">
             {targetTeamId === 0 ? (
               <div className="text-gray-500 text-xs py-4 text-center">Select a team to see their players</div>
             ) : theirPlayers.length === 0 ? (
               <div className="text-gray-500 text-xs py-4 text-center">Loading...</div>
-            ) : theirPlayers.map(p => (
+            ) : sortedTheirPlayers.map(p => (
               <PlayerChip
                 key={p.playerId}
                 player={p}
@@ -435,15 +519,21 @@ function ShopPlayerTab({ onAcceptTrade }: {
   const [shopResults, setShopResults] = useState<TradeProposal[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<TradePlayerInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const { sort: shopSort, toggle: toggleShopSort } = useSort<TradeSortKey>('overall');
 
   useEffect(() => {
     (async () => {
       const engine = getEngine();
       const players = await engine.getTeamPlayers(userTeamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setRoster(players);
+      setRoster((players as unknown[]).map(rawPlayerToTradeInfo));
     })();
   }, [userTeamId]);
+
+  const sortedRoster = useMemo(() => {
+    return [...roster].sort((a, b) =>
+      compareSortValues(getTradeSortValue(a, shopSort.key), getTradeSortValue(b, shopSort.key), shopSort.dir)
+    );
+  }, [roster, shopSort]);
 
   const handleShop = useCallback(async (player: TradePlayerInfo) => {
     setSelectedPlayer(player);
@@ -460,8 +550,11 @@ function ShopPlayerTab({ onAcceptTrade }: {
         <div className="text-gray-400 text-xs font-bold tracking-widest mb-2">
           SELECT A PLAYER TO SHOP
         </div>
+        <div className="mb-2">
+          <SortPills keys={TRADE_SORT_PILLS} currentSort={shopSort} onSort={toggleShopSort} />
+        </div>
         <div className="max-h-48 overflow-y-auto space-y-0.5">
-          {roster.map(p => (
+          {sortedRoster.map(p => (
             <div
               key={p.playerId}
               onClick={() => handleShop(p)}
@@ -667,7 +760,7 @@ export default function TradeCenter({ onTransaction, onDone }: {
   onTransaction?: (tx: { type: 'signing' | 'trade'; description: string }) => void;
   onDone?: () => void;
 } = {}) {
-  const { season } = useGameStore();
+  const { season, userTeamId } = useGameStore();
   const { addTradeRecord } = useLeagueStore();
   const [activeTab, setActiveTab] = useState<TradeTab>('offers');
   const [offers, setOffers] = useState<TradeProposal[]>([]);
@@ -676,27 +769,40 @@ export default function TradeCenter({ onTransaction, onDone }: {
   const [pendingAccept, setPendingAccept] = useState<TradeProposal | null>(null);
   const [refreshesLeft, setRefreshesLeft] = useState(3);
 
+  // Load team list for team selector — uses getTeams() which always has data (unlike getStandings which is empty in preseason)
+  useEffect(() => {
+    (async () => {
+      try {
+        const engine = getEngine();
+        const allTeams = await engine.getTeams();
+        setTeams(
+          (allTeams as any[]).map((t) => ({
+            teamId: t.teamId,
+            name: t.name,
+            abbreviation: t.abbreviation ?? t.name?.slice(0, 3).toUpperCase() ?? '',
+          }))
+        );
+      } catch (err) {
+        console.error('[TradeCenter] getTeams failed:', err);
+      }
+    })();
+  }, []);
+
+  // Load incoming trade offers — separate so it can't block team loading
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const engine = getEngine();
-      const [tradeOffers, standings] = await Promise.all([
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        engine.getTradeOffers(),
-        engine.getStandings(),
-      ]);
-      setOffers(tradeOffers);
-      setTeams(
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        (standings.standings ?? []).map(s => ({
-          teamId: s.teamId,
-          name: s.name,
-          abbreviation: s.abbreviation,
-        }))
-      );
+      try {
+        const engine = getEngine();
+        const tradeOffers = await engine.getTradeOffers(userTeamId);
+        setOffers(tradeOffers);
+      } catch {
+        // getTradeOffers may not be implemented yet; silently continue
+        setOffers([]);
+      }
       setLoading(false);
     })();
-  }, []);
+  }, [userTeamId]);
 
   const handleRefreshOffers = useCallback(async () => {
     if (refreshesLeft <= 0) return;
@@ -751,6 +857,7 @@ export default function TradeCenter({ onTransaction, onDone }: {
 
   return (
     <div className="space-y-4">
+      <CoachTip section="trades" />
       {pendingAccept && (
         <ConfirmModal
           title="ACCEPT TRADE"

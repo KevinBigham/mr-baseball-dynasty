@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react';
+import { getEngine } from '../../engine/engineClient';
 import type { PlayerSeasonStats } from '../../types/player';
+import { formatSeasonLabel } from '../../utils/format';
+import { isEliteStat } from '../../utils/statHighlight';
 
 interface Props {
   seasons: PlayerSeasonStats[];
@@ -33,37 +37,40 @@ export function whip(ha: number, bba: number, outs: number): string {
 }
 
 const HITTING_COLS = [
-  { key: 'season', label: 'YR', width: 'w-12' },
-  { key: 'g', label: 'G', width: 'w-10' },
-  { key: 'pa', label: 'PA', width: 'w-10' },
-  { key: 'avg', label: 'AVG', width: 'w-14' },
-  { key: 'obp', label: 'OBP', width: 'w-14' },
-  { key: 'hr', label: 'HR', width: 'w-10' },
-  { key: 'rbi', label: 'RBI', width: 'w-10' },
-  { key: 'sb', label: 'SB', width: 'w-10' },
-  { key: 'bb', label: 'BB', width: 'w-10' },
-  { key: 'k', label: 'K', width: 'w-10' },
-  { key: 'h', label: 'H', width: 'w-10' },
-  { key: 'r', label: 'R', width: 'w-10' },
+  { key: 'season', label: 'YR', width: 'w-10', stat: '' },
+  { key: 'team', label: 'TM', width: 'w-10', stat: '' },
+  { key: 'g', label: 'G', width: 'w-8', stat: '' },
+  { key: 'pa', label: 'PA', width: 'w-8', stat: '' },
+  { key: 'avg', label: 'AVG', width: 'w-12', stat: 'avg' },
+  { key: 'obp', label: 'OBP', width: 'w-12', stat: 'obp' },
+  { key: 'hr', label: 'HR', width: 'w-8', stat: 'hr' },
+  { key: 'rbi', label: 'RBI', width: 'w-8', stat: 'rbi' },
+  { key: 'sb', label: 'SB', width: 'w-8', stat: 'sb' },
+  { key: 'bb', label: 'BB', width: 'w-8', stat: '' },
+  { key: 'k', label: 'K', width: 'w-8', stat: '' },
+  { key: 'h', label: 'H', width: 'w-8', stat: 'h' },
+  { key: 'r', label: 'R', width: 'w-8', stat: 'r' },
 ];
 
 const PITCHING_COLS = [
-  { key: 'season', label: 'YR', width: 'w-12' },
-  { key: 'g', label: 'G', width: 'w-10' },
-  { key: 'gs', label: 'GS', width: 'w-10' },
-  { key: 'w', label: 'W', width: 'w-10' },
-  { key: 'l', label: 'L', width: 'w-10' },
-  { key: 'sv', label: 'SV', width: 'w-10' },
-  { key: 'era', label: 'ERA', width: 'w-14' },
-  { key: 'ip', label: 'IP', width: 'w-14' },
-  { key: 'whip', label: 'WHIP', width: 'w-14' },
-  { key: 'ka', label: 'K', width: 'w-10' },
-  { key: 'bba', label: 'BB', width: 'w-10' },
+  { key: 'season', label: 'YR', width: 'w-10', stat: '' },
+  { key: 'team', label: 'TM', width: 'w-10', stat: '' },
+  { key: 'g', label: 'G', width: 'w-8', stat: '' },
+  { key: 'gs', label: 'GS', width: 'w-8', stat: '' },
+  { key: 'w', label: 'W', width: 'w-8', stat: 'w' },
+  { key: 'l', label: 'L', width: 'w-8', stat: '' },
+  { key: 'sv', label: 'SV', width: 'w-8', stat: 'sv' },
+  { key: 'era', label: 'ERA', width: 'w-12', stat: 'era' },
+  { key: 'ip', label: 'IP', width: 'w-12', stat: 'ip' },
+  { key: 'whip', label: 'WHIP', width: 'w-12', stat: 'whip' },
+  { key: 'ka', label: 'K', width: 'w-8', stat: '' },
+  { key: 'bba', label: 'BB', width: 'w-8', stat: '' },
 ];
 
-export function hittingRow(s: PlayerSeasonStats): Record<string, string> {
+export function hittingRow(s: PlayerSeasonStats, teamMap?: Map<number, string>): Record<string, string> {
   return {
-    season: String(s.season),
+    season: formatSeasonLabel(s.season),
+    team: teamMap?.get(s.teamId) ?? '—',
     g: fmt(s.g),
     pa: fmt(s.pa),
     avg: avg(s.h, s.ab),
@@ -78,9 +85,10 @@ export function hittingRow(s: PlayerSeasonStats): Record<string, string> {
   };
 }
 
-export function pitchingRow(s: PlayerSeasonStats): Record<string, string> {
+export function pitchingRow(s: PlayerSeasonStats, teamMap?: Map<number, string>): Record<string, string> {
   return {
-    season: String(s.season),
+    season: formatSeasonLabel(s.season),
+    team: teamMap?.get(s.teamId) ?? '—',
     g: fmt(s.gp),
     gs: fmt(s.gs),
     w: fmt(s.w),
@@ -104,6 +112,7 @@ export function totalsHitting(seasons: PlayerSeasonStats[]): Record<string, stri
   }
   return {
     season: `${seasons.length}yr`,
+    team: '',
     g: fmt(t.g),
     pa: fmt(t.pa),
     avg: avg(t.h, t.ab),
@@ -128,6 +137,7 @@ export function totalsPitching(seasons: PlayerSeasonStats[]): Record<string, str
   }
   return {
     season: `${seasons.length}yr`,
+    team: '',
     g: fmt(t.gp),
     gs: fmt(t.gs),
     w: fmt(t.w),
@@ -141,7 +151,30 @@ export function totalsPitching(seasons: PlayerSeasonStats[]): Record<string, str
   };
 }
 
+/** Parse a numeric stat value from a formatted string for elite checking */
+function parseStatNum(val: string): number {
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+}
+
 export default function CareerStatsTable({ seasons, isPitcher }: Props) {
+  const [teamMap, setTeamMap] = useState<Map<number, string>>(new Map());
+
+  // Load team abbreviations once
+  useEffect(() => {
+    (async () => {
+      try {
+        const engine = getEngine();
+        const teams = await engine.getTeams();
+        const map = new Map<number, string>();
+        for (const t of teams as { teamId: number; abbreviation?: string; name?: string }[]) {
+          map.set(t.teamId, t.abbreviation ?? t.name?.slice(0, 3).toUpperCase() ?? '???');
+        }
+        setTeamMap(map);
+      } catch { /* silent */ }
+    })();
+  }, []);
+
   if (seasons.length === 0) {
     return (
       <div className="bloomberg-border">
@@ -154,7 +187,7 @@ export default function CareerStatsTable({ seasons, isPitcher }: Props) {
   }
 
   const cols = isPitcher ? PITCHING_COLS : HITTING_COLS;
-  const rows = seasons.map(s => isPitcher ? pitchingRow(s) : hittingRow(s));
+  const rows = seasons.map(s => isPitcher ? pitchingRow(s, teamMap) : hittingRow(s, teamMap));
   const totals = isPitcher ? totalsPitching(seasons) : totalsHitting(seasons);
 
   return (
@@ -163,13 +196,13 @@ export default function CareerStatsTable({ seasons, isPitcher }: Props) {
         CAREER STATISTICS — {seasons.length} SEASON{seasons.length !== 1 ? 'S' : ''}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="w-full" style={{ fontSize: '11px' }}>
           <thead>
-            <tr className="border-b border-gray-800">
+            <tr style={{ borderBottom: '1px solid #1E2A4A' }}>
               {cols.map(c => (
                 <th
                   key={c.key}
-                  className={`px-2 py-2 text-right text-gray-500 font-bold ${c.width}`}
+                  className={`px-1.5 py-1 text-right text-gray-500 font-bold ${c.width}`}
                 >
                   {c.label}
                 </th>
@@ -180,32 +213,50 @@ export default function CareerStatsTable({ seasons, isPitcher }: Props) {
             {rows.map((row, i) => (
               <tr
                 key={i}
-                className="border-b border-gray-800/50 hover:bg-gray-900/50"
+                className="hover:bg-gray-800/40 transition-colors"
+                style={{
+                  backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
+                  borderBottom: '1px solid rgba(30,42,74,0.3)',
+                }}
               >
-                {cols.map(c => (
-                  <td
-                    key={c.key}
-                    className={`px-2 py-1.5 text-right tabular-nums ${
-                      c.key === 'season' ? 'text-orange-400 font-bold' : 'text-gray-300'
-                    }`}
-                  >
-                    {row[c.key]}
-                  </td>
-                ))}
+                {cols.map(c => {
+                  const val = row[c.key];
+                  // Check elite highlight
+                  const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
+                  return (
+                    <td
+                      key={c.key}
+                      className={`px-1.5 py-0.5 text-right tabular-nums ${
+                        c.key === 'season' ? 'text-orange-400 font-bold' :
+                        c.key === 'team' ? 'text-gray-500' :
+                        elite ? 'text-orange-400 font-bold' :
+                        'text-gray-300'
+                      }`}
+                    >
+                      {val}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
-            {/* Totals row */}
-            <tr className="border-t-2 border-orange-800 bg-gray-900/30">
-              {cols.map(c => (
-                <td
-                  key={c.key}
-                  className={`px-2 py-2 text-right tabular-nums font-bold ${
-                    c.key === 'season' ? 'text-orange-500' : 'text-orange-300'
-                  }`}
-                >
-                  {totals[c.key]}
-                </td>
-              ))}
+            {/* Career totals row */}
+            <tr style={{ borderTop: '2px solid #9a3412' }} className="bg-gray-900/40">
+              {cols.map(c => {
+                const val = totals[c.key];
+                const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
+                return (
+                  <td
+                    key={c.key}
+                    className={`px-1.5 py-1.5 text-right tabular-nums font-bold ${
+                      c.key === 'season' ? 'text-orange-500' :
+                      elite ? 'text-orange-400' :
+                      'text-orange-300'
+                    }`}
+                  >
+                    {val}
+                  </td>
+                );
+              })}
             </tr>
           </tbody>
         </table>

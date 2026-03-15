@@ -4,6 +4,7 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import { STAT_GLOSSARY } from '../../utils/statGlossary';
+import CoachTip from '../shared/CoachTip';
 
 // ─── Stat column definitions ─────────────────────────────────────────────────
 
@@ -305,6 +306,7 @@ export default function Leaderboards() {
   return (
     <div className="p-4">
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2 mb-4">STATISTICAL LEADERBOARDS</div>
+      <CoachTip section="leaderboards" />
 
       {/* Category tabs */}
       <div className="flex gap-1 mb-3 flex-wrap">
@@ -377,6 +379,20 @@ export default function Leaderboards() {
 
       {/* Filters row (hidden for career mode) */}
       {!isCareer && <div className="flex items-center gap-3 mb-3 flex-wrap">
+        {/* Season selector */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-gray-500 text-xs">SEASON:</span>
+          <select
+            value={useGameStore.getState().season}
+            className="bg-gray-900 border border-gray-700 text-gray-300 text-xs px-2 py-1 focus:border-orange-500 focus:outline-none min-h-[44px]"
+            aria-label="Season"
+            disabled
+            title="Historical seasons coming soon"
+          >
+            <option value={useGameStore.getState().season}>{useGameStore.getState().season}</option>
+          </select>
+        </div>
+
         {/* Position filter */}
         <div className="flex items-center gap-1.5">
           <span className="text-gray-500 text-xs">POS:</span>
@@ -489,7 +505,7 @@ export default function Leaderboards() {
                     <td className="px-2 py-1 text-gray-500">{entry.position}</td>
                     {!isCareer && <td className="text-right px-2 py-1 tabular-nums text-gray-500">{entry.age}</td>}
                     {cols.map(col => {
-                      const val = entry.stats[col.key] ?? 0;
+                      const val = entry.stats?.[col.key] ?? 0;
                       const isElite = eliteMap[col.key]?.(val) ?? false;
                       const isSortCol = sortBy === col.key;
                       return (

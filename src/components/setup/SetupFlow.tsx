@@ -10,41 +10,16 @@ import type { OwnerArchetype } from '../../engine/narrative';
 import { DelegationSetupSection } from './DelegationPanel';
 import { getDelegationForDifficulty } from '../../store/gameStore';
 import DraftRoom from '../draft/DraftRoom';
+import { INITIAL_TEAMS } from '../../data/teams';
 
-// ─── Team list ─────────────────────────────────────────────────────────────────
-
-const TEAMS = [
-  { id: 1,  abbr: 'ADM', name: 'New Harbor Admirals',           div: 'AL East',    city: 'New Harbor' },
-  { id: 2,  abbr: 'COL', name: 'Capitol City Colonials',        div: 'AL East',    city: 'Capitol City' },
-  { id: 3,  abbr: 'LOB', name: 'Boston Bay Lobsters',           div: 'AL East',    city: 'Boston Bay' },
-  { id: 4,  abbr: 'STM', name: 'Steel City Steamers',           div: 'AL East',    city: 'Steel City' },
-  { id: 5,  abbr: 'HAM', name: 'Lake City Hammers',             div: 'AL East',    city: 'Lake City' },
-  { id: 6,  abbr: 'WLV', name: 'River City Wolves',             div: 'AL Central', city: 'River City' },
-  { id: 7,  abbr: 'CRU', name: 'South City Crushers',           div: 'AL Central', city: 'South City' },
-  { id: 8,  abbr: 'FOX', name: 'Prairie City Foxes',            div: 'AL Central', city: 'Prairie City' },
-  { id: 9,  abbr: 'MIN', name: 'Twin Peaks Miners',             div: 'AL Central', city: 'Twin Peaks' },
-  { id: 10, abbr: 'MON', name: 'Crown City Monarchs',           div: 'AL Central', city: 'Crown City' },
-  { id: 11, abbr: 'GUL', name: 'Bay City Gulls',                div: 'AL West',    city: 'Bay City' },
-  { id: 12, abbr: 'RAT', name: 'Desert City Rattlers',          div: 'AL West',    city: 'Desert City' },
-  { id: 13, abbr: 'COU', name: 'Sun Valley Cougars',            div: 'AL West',    city: 'Sun Valley' },
-  { id: 14, abbr: 'LUM', name: 'Northwest City Lumberjacks',    div: 'AL West',    city: 'Northwest City' },
-  { id: 15, abbr: 'ANG', name: 'Anaheim Hills Angels',          div: 'AL West',    city: 'Anaheim Hills' },
-  { id: 16, abbr: 'MET', name: 'New Harbor Metros',             div: 'NL East',    city: 'New Harbor' },
-  { id: 17, abbr: 'BRA', name: 'Peach City Brawlers',           div: 'NL East',    city: 'Peach City' },
-  { id: 18, abbr: 'TID', name: 'Palmetto City Tides',           div: 'NL East',    city: 'Palmetto City' },
-  { id: 19, abbr: 'PAT', name: 'Brick City Patriots',           div: 'NL East',    city: 'Brick City' },
-  { id: 20, abbr: 'HUR', name: 'Swamp City Hurricanes',         div: 'NL East',    city: 'Swamp City' },
-  { id: 21, abbr: 'CUB', name: 'Lake City Cubs',                div: 'NL Central', city: 'Lake City' },
-  { id: 22, abbr: 'RED', name: 'Gateway City Redbirds',         div: 'NL Central', city: 'Gateway City' },
-  { id: 23, abbr: 'CIN', name: 'Blue Grass City Reds',          div: 'NL Central', city: 'Blue Grass City' },
-  { id: 24, abbr: 'AST', name: 'Bayou City Astros',             div: 'NL Central', city: 'Bayou City' },
-  { id: 25, abbr: 'BRW', name: 'Lake Front Brewers',            div: 'NL Central', city: 'Lake Front' },
-  { id: 26, abbr: 'DOD', name: 'Harbor Bay Dodgers',            div: 'NL West',    city: 'Harbor Bay' },
-  { id: 27, abbr: 'GNT', name: 'Bay City Giants',               div: 'NL West',    city: 'Bay City' },
-  { id: 28, abbr: 'PAD', name: 'Harbor Lights Padres',          div: 'NL West',    city: 'Harbor Lights' },
-  { id: 29, abbr: 'ROC', name: 'Mile High City Rockies',        div: 'NL West',    city: 'Mile High City' },
-  { id: 30, abbr: 'DIA', name: 'Sandstone Park Diamondbacks',   div: 'NL West',    city: 'Sandstone Park' },
-];
+// ─── Team list (derived from canonical INITIAL_TEAMS — single source of truth)
+const TEAMS = INITIAL_TEAMS.map(t => ({
+  id: t.teamId,
+  abbr: t.abbreviation,
+  name: `${t.city} ${t.name}`,
+  div: `${t.league} ${t.division}`,
+  city: t.city,
+}));
 
 const DIV_ORDER = ['AL East', 'AL Central', 'AL West', 'NL East', 'NL Central', 'NL West'];
 
@@ -83,7 +58,7 @@ function TitleScreen() {
         </button>
         <div className="text-center text-gray-700 text-xs">
           Full minor system — AAA through INTL ·{' '}
-          <span className="text-gray-500">~3,700 players generated</span>
+          <span className="text-gray-500">~5,300 players generated</span>
         </div>
       </div>
 
@@ -749,7 +724,7 @@ export default function SetupFlow() {
           {isDraftMode ? 'GENERATING LEAGUE & DRAFT POOL…' : 'GENERATING LEAGUE…'}
         </div>
         <div className="text-gray-500 text-xs text-center space-y-1">
-          <div>Generating ~3,700 players across 30 franchises</div>
+          <div>Generating ~5,300 players across 30 franchises</div>
           <div>Building MLB + AAA + AA + A+ + A- + Rookie + International</div>
         </div>
         {error && <div className="text-red-400 text-sm mt-4">{error}</div>}

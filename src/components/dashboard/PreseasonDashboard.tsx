@@ -32,7 +32,7 @@ export default function PreseasonDashboard({ onRefreshBreakoutWatch }: Props) {
         <div>
           <div className="text-gray-400 text-sm font-bold">READY FOR OPENING DAY {season}</div>
           <div className="text-gray-500 text-xs">
-            Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~3,700 players
+            Log5 · 25-state Markov · 3-stage PA engine · SDE aging · ~5,300 players
           </div>
         </div>
         <button

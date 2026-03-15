@@ -1,13 +1,42 @@
 import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
+import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 import type { PayrollReport } from '../../engine/finances';
+import FinancialAdvisor from './FinancialAdvisor';
+import CoachTip from '../shared/CoachTip';
 
 // MLB luxury tax threshold (2026 projection)
 const LUXURY_TAX = 237_000_000;
 const CBT_LEVEL_2  = 257_000_000;
 const CBT_LEVEL_3  = 277_000_000;
+
+type DisplayStatValue = number | string | undefined;
+
+interface DisplayStats {
+  pa?: number;
+  avg?: DisplayStatValue;
+  obp?: DisplayStatValue;
+  slg?: DisplayStatValue;
+  hr?: number;
+  rbi?: number;
+  sb?: number;
+  k?: number;
+  bb?: number;
+  w?: number;
+  l?: number;
+  sv?: number;
+  era?: DisplayStatValue;
+  ip?: DisplayStatValue;
+  k9?: DisplayStatValue;
+  bb9?: DisplayStatValue;
+  whip?: DisplayStatValue;
+}
+
+type FinanceRosterPlayer = Omit<RosterPlayer, 'stats'> & {
+  stats: DisplayStats;
+};
 
 function fmt$M(n: number): string {
   return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -18,7 +47,7 @@ function fmt$K(n: number): string {
   return `$${(n / 1_000).toFixed(0)}K`;
 }
 
-function contractLabel(p: RosterPlayer): { label: string; color: string } {
+function contractLabel(p: FinanceRosterPlayer): { label: string; color: string } {
   const svc = p.serviceTimeDays ?? 0;
   const years = Math.floor(svc / 172);
   if (years < 3) return { label: 'Pre-Arb', color: 'text-green-400' };
@@ -181,7 +210,7 @@ function PayrollProjectionChart({
 }
 
 interface FinanceData {
-  roster: RosterPlayer[];
+  roster: FinanceRosterPlayer[];
   budget: number;
   teamName: string;
   payrollReport: PayrollReport | null;
@@ -205,21 +234,15 @@ export default function FinanceView() {
       ]);
 
       const team = teams.find(t => t.teamId === userTeamId);
-      const allPlayers: RosterPlayer[] = [
+      const allPlayers: FinanceRosterPlayer[] = [
         ...roster.active,
         ...roster.il,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.aaa ?? []),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.aa ?? []),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.aPlus ?? []),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.aMinus ?? []),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.rookie ?? []),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        ...(roster.dfa ?? []),
+        ...roster.aaa,
+        ...roster.aa,
+        ...roster.aPlus,
+        ...roster.aMinus,
+        ...roster.rookie,
+        ...roster.dfa,
       ].filter(p => p.salary > 0 && p.contractYearsRemaining > 0);
 
       setData({
@@ -265,6 +288,7 @@ export default function FinanceView() {
       <div className="bloomberg-header -mx-4 -mt-4 px-8 py-2">
         PAYROLL & FINANCES — {data.teamName} — SEASON {season}
       </div>
+      <CoachTip section="finances" />
 
       {/* ── Summary bar ──────────────────────────────────────────────────── */}
       <div className="bloomberg-border bg-gray-900">
@@ -343,6 +367,17 @@ export default function FinanceView() {
           </div>
         </div>
       )}
+
+      {/* ── Financial Advisor ────────────────────────────────────────────── */}
+      <FinancialAdvisor
+        activePlayers={roster as unknown as RosterPlayer[]}
+        budget={budget}
+        onClickPlayer={(id) => {
+          const { setSelectedPlayer, setActiveTab } = useUIStore.getState();
+          setSelectedPlayer(id);
+          setActiveTab('profile');
+        }}
+      />
 
       {/* ── Year projection tabs ──────────────────────────────────────────── */}
       <div className="flex gap-1">

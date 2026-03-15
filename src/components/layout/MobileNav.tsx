@@ -1,11 +1,13 @@
 import { useUIStore, type NavTab } from '../../store/uiStore';
+import GameIcon from '../shared/GameIcon';
+import type { IconName } from '../../constants/icons';
 
-const MOBILE_TABS: Array<{ id: NavTab; label: string; icon: string }> = [
-  { id: 'home',        label: 'HOME',    icon: '⚾' },
-  { id: 'team',        label: 'TEAM',    icon: '📋' },
-  { id: 'frontoffice', label: 'OFFICE',  icon: '💼' },
-  { id: 'league',      label: 'LEAGUE',  icon: '🏆' },
-  { id: 'history',     label: 'HISTORY', icon: '📖' },
+const MOBILE_TABS: Array<{ id: NavTab; label: string; icon: IconName }> = [
+  { id: 'home',        label: 'HOME',    icon: 'home' },
+  { id: 'team',        label: 'TEAM',    icon: 'team' },
+  { id: 'frontoffice', label: 'OFFICE',  icon: 'frontOffice' },
+  { id: 'league',      label: 'LEAGUE',  icon: 'league' },
+  { id: 'history',     label: 'HISTORY', icon: 'history' },
 ];
 
 interface MobileNavProps {
@@ -43,7 +45,7 @@ export default function MobileNav({ onNewGame: _onNewGame }: MobileNavProps) {
           ].join(' ')}
           aria-current={effectiveTab === tab.id ? 'page' : undefined}
         >
-          <span className="text-lg">{tab.icon}</span>
+          <GameIcon name={tab.icon} size="lg" />
           <span className="text-[9px] font-bold tracking-wider uppercase mt-0.5">{tab.label}</span>
         </button>
       ))}

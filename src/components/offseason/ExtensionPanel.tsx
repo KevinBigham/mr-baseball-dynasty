@@ -5,12 +5,13 @@
  * lets user offer extensions, handles acceptance/rejection/counter-offers.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { formatSalary, formatOVR } from '../../utils/format';
 import type { UserTransaction } from './OffseasonSummary';
-import type { RosterPlayer } from '../../types/league';
+import { useSort, compareSortValues } from '../../hooks/useSort';
+import { SortPills } from '../shared/SortHeader';
 
 interface Props {
   onComplete: () => void;
@@ -28,7 +29,7 @@ interface ExtensionCandidate {
   salary: number;
   contractYearsRemaining: number;
   serviceTimeDays: number;
-  stats: RosterPlayer['stats'];
+  stats: ExtensionStats;
 }
 
 type NegotiationStatus = 'idle' | 'offered' | 'accepted' | 'rejected' | 'counter';
@@ -39,6 +40,25 @@ interface NegotiationState {
   offerSalary: number;  // annual in dollars
   counterYears?: number;
   counterSalary?: number;
+}
+
+type DisplayRate = number | string | undefined;
+
+interface ExtensionStats {
+  avg?: DisplayRate;
+  hr?: number;
+  rbi?: number;
+  w?: number;
+  l?: number;
+  era?: DisplayRate;
+}
+
+interface ExtensionOfferResult {
+  ok?: boolean;
+  accepted?: boolean;
+  counterYears?: number;
+  counterSalary?: number;
+  reason?: string;
 }
 
 function ovrColor(ovr: number): string {
@@ -106,8 +126,8 @@ function ExtensionCard({
   const statusColor = c.contractYearsRemaining === 1 ? '#ef4444' : '#f97316';
 
   const statLine = c.isPitcher
-    ? `${c.stats.w ?? 0}-${c.stats.l ?? 0}, ${c.stats.era?.toFixed(2) ?? '—'} ERA`
-    : `.${((c.stats.avg ?? 0) * 1000).toFixed(0).padStart(3, '0')} / ${c.stats.hr ?? 0} HR / ${c.stats.rbi ?? 0} RBI`;
+    ? `${c.stats.w ?? 0}-${c.stats.l ?? 0}, ${typeof c.stats.era === 'number' ? c.stats.era.toFixed(2) : (c.stats.era ?? '—')} ERA`
+    : `${typeof c.stats.avg === 'number' ? c.stats.avg.toFixed(3).replace('0.', '.') : (c.stats.avg ?? '—')} / ${c.stats.hr ?? 0} HR / ${c.stats.rbi ?? 0} RBI`;
 
   return (
     <div className="bloomberg-border bg-gray-900 p-4">
@@ -230,11 +250,39 @@ function ExtensionCard({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+type ExtSortKey = 'overall' | 'age' | 'salary' | 'service' | 'contract';
+
+const EXT_SORT_PILLS: { key: ExtSortKey; label: string }[] = [
+  { key: 'overall', label: 'OVR' },
+  { key: 'age', label: 'AGE' },
+  { key: 'salary', label: 'SAL' },
+  { key: 'service', label: 'SVC' },
+  { key: 'contract', label: 'YRS' },
+];
+
+function getExtSortValue(c: ExtensionCandidate, key: ExtSortKey): number {
+  switch (key) {
+    case 'overall': return c.overall;
+    case 'age': return c.age;
+    case 'salary': return c.salary;
+    case 'service': return c.serviceTimeDays;
+    case 'contract': return c.contractYearsRemaining;
+    default: return 0;
+  }
+}
+
 export default function ExtensionPanel({ onComplete, onTransaction }: Props) {
   const { userTeamId } = useGameStore();
   const [candidates, setCandidates] = useState<ExtensionCandidate[]>([]);
   const [negotiations, setNegotiations] = useState<Map<number, NegotiationState>>(new Map());
   const [busy, setBusy] = useState(false);
+  const { sort: extSort, toggle: toggleExtSort } = useSort<ExtSortKey>('overall');
+
+  const sortedCandidates = useMemo(() => {
+    return [...candidates].sort((a, b) =>
+      compareSortValues(getExtSortValue(a, extSort.key), getExtSortValue(b, extSort.key), extSort.dir)
+    );
+  }, [candidates, extSort]);
   const [loading, setLoading] = useState(true);
 
   // Load extension-eligible players
@@ -245,15 +293,10 @@ export default function ExtensionPanel({ onComplete, onTransaction }: Props) {
       const roster = await engine.getFullRoster(userTeamId);
       const allPlayers = [
         ...roster.active,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...roster.aaa,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...roster.aa,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...roster.aPlus,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...roster.aMinus,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...roster.rookie,
       ];
 
@@ -290,23 +333,21 @@ export default function ExtensionPanel({ onComplete, onTransaction }: Props) {
   const handleOffer = useCallback(async (playerId: number, years: number, salary: number) => {
     setBusy(true);
     const engine = getEngine();
-    const result = await engine.offerExtension(playerId, years, salary);
+    const result: ExtensionOfferResult = await engine.offerExtension(playerId, years, salary);
+    const accepted = result.accepted ?? result.ok ?? false;
+    const hasCounter = typeof result.counterYears === 'number' && typeof result.counterSalary === 'number';
 
     const neg: NegotiationState = {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      status: result.accepted ? 'accepted' : result.counterYears ? 'counter' : 'rejected',
+      status: accepted ? 'accepted' : hasCounter ? 'counter' : 'rejected',
       offerYears: years,
       offerSalary: salary,
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       counterYears: result.counterYears,
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       counterSalary: result.counterSalary,
     };
 
     setNegotiations(prev => new Map(prev).set(playerId, neg));
 
-    // @ts-expect-error Sprint 04 stub — contract alignment pending
-    if (result.accepted) {
+    if (accepted) {
       const c = candidates.find(c => c.playerId === playerId);
       if (c) {
         onTransaction({
@@ -325,8 +366,7 @@ export default function ExtensionPanel({ onComplete, onTransaction }: Props) {
 
     setBusy(true);
     const engine = getEngine();
-    // @ts-expect-error Sprint 04 stub — contract alignment pending
-    const result = await engine.acceptCounterOffer(playerId, neg.counterYears, neg.counterSalary);
+    const result = await engine.acceptCounterOffer(playerId);
 
     if (result.ok) {
       setNegotiations(prev => {
@@ -394,7 +434,11 @@ export default function ExtensionPanel({ onComplete, onTransaction }: Props) {
         </div>
       </div>
 
-      {candidates.map(c => (
+      <div className="bloomberg-border bg-gray-900 px-4 py-2">
+        <SortPills keys={EXT_SORT_PILLS} currentSort={extSort} onSort={toggleExtSort} />
+      </div>
+
+      {sortedCandidates.map(c => (
         <ExtensionCard
           key={c.playerId}
           candidate={c}

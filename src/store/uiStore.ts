@@ -10,6 +10,12 @@ export interface ToastItem {
   id: number;
   message: string;
   type: 'success' | 'error' | 'info';
+  /** Optional left-border accent color override (e.g. '#fbbf24' for milestone gold) */
+  accent?: string;
+  /** Optional emoji/icon prefix */
+  icon?: string;
+  /** Auto-dismiss duration in ms (default 3000) */
+  duration?: number;
 }
 
 let _toastId = 0;
@@ -34,7 +40,7 @@ interface UIStore {
   setLeaderboardCategory: (c: 'hitting' | 'pitching') => void;
   setModal: (name: string | null) => void;
   setComparePlayerIds: (ids: [number, number] | null) => void;
-  addToast: (message: string, type: ToastItem['type']) => void;
+  addToast: (message: string, type: ToastItem['type'], opts?: Pick<ToastItem, 'accent' | 'icon' | 'duration'>) => void;
   removeToast: (id: number) => void;
   setRosterViewMode: (mode: string | null) => void;
 }
@@ -84,9 +90,9 @@ export const useUIStore = create<UIStore>((set) => ({
   setLeaderboardCategory: c => set({ leaderboardCategory: c }),
   setModal: name => set({ modalOpen: name }),
   setComparePlayerIds: ids => set({ comparePlayerIds: ids }),
-  addToast: (message, type) => {
+  addToast: (message, type, opts?) => {
     const id = ++_toastId;
-    set(s => ({ toasts: [...s.toasts, { id, message, type }] }));
+    set(s => ({ toasts: [...s.toasts, { id, message, type, ...opts }] }));
   },
   removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
   setRosterViewMode: (mode) => set({ rosterViewMode: mode }),

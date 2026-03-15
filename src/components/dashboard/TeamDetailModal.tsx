@@ -2,8 +2,21 @@ import { useEffect, useState } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer, StandingsRow } from '../../types/league';
+import type { Team } from '../../types/team';
 import { formatSalary } from '../../utils/format';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+
+type DisplayStatValue = number | string | undefined;
+
+interface DisplayStats {
+  avg?: DisplayStatValue;
+  hr?: number;
+  era?: DisplayStatValue;
+}
+
+type TeamDetailRosterPlayer = Omit<RosterPlayer, 'stats'> & {
+  stats: DisplayStats;
+};
 
 interface TeamInfo {
   teamId: number; name: string; abbreviation: string;
@@ -30,7 +43,7 @@ export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props
   useEscapeKey(onClose);
   const { setActiveTab, setSelectedTeam } = useUIStore();
   const [teamInfo, setTeamInfo] = useState<TeamInfo | null>(null);
-  const [topPlayers, setTopPlayers] = useState<RosterPlayer[]>([]);
+  const [topPlayers, setTopPlayers] = useState<TeamDetailRosterPlayer[]>([]);
   const [payroll, setPayroll] = useState(0);
   const [rosterStats, setRosterStats] = useState({ active: 0, fortyMan: 0, avgAge: 0, avgOvr: 0 });
   const [loading, setLoading] = useState(true);
@@ -46,24 +59,20 @@ export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props
       if (cancelled) return;
 
       const team = teams.find(t => t.teamId === teamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      if (team) setTeamInfo(team);
+      if (team) setTeamInfo(mapTeamInfo(team));
 
       const all = [...roster.active, ...roster.il];
       const sorted = all.sort((a, b) => b.overall - a.overall).slice(0, 8);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       setTopPlayers(sorted);
 
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      const totalSalary = all.reduce((s, p) => s + (p.salary || 0), 0);
+      const totalSalary = all.reduce((s, p) => s + p.salary, 0);
       setPayroll(totalSalary);
 
       const avgAge = all.length > 0 ? all.reduce((s, p) => s + p.age, 0) / all.length : 0;
       const avgOvr = all.length > 0 ? all.reduce((s, p) => s + p.overall, 0) / all.length : 0;
       setRosterStats({
         active: roster.active.length,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        fortyMan: roster.fortyManCount ?? 0,
+        fortyMan: roster.fortyManCount,
         avgAge: Math.round(avgAge * 10) / 10,
         avgOvr,
       });
@@ -125,8 +134,8 @@ export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props
                 {topPlayers.map(p => {
                   const g = ovrGrade(p.overall);
                   const keyStat = p.isPitcher
-                    ? `${p.stats.era?.toFixed(2) ?? '—'} ERA`
-                    : `${p.stats.avg?.toFixed(3) ?? '—'} / ${p.stats.hr ?? 0} HR`;
+                    ? `${typeof p.stats.era === 'number' ? p.stats.era.toFixed(2) : (p.stats.era ?? '—')} ERA`
+                    : `${typeof p.stats.avg === 'number' ? p.stats.avg.toFixed(3) : (p.stats.avg ?? '—')} / ${p.stats.hr ?? 0} HR`;
                   return (
                     <div key={p.playerId} className="flex items-center justify-between py-1 border-b border-gray-800/50 text-xs">
                       <div className="flex items-center gap-2">
@@ -165,6 +174,19 @@ export default function TeamDetailModal({ teamId, standingsRow, onClose }: Props
       </div>
     </div>
   );
+}
+
+function mapTeamInfo(team: Team): TeamInfo {
+  return {
+    teamId: team.teamId,
+    name: team.name,
+    abbreviation: team.abbreviation,
+    league: team.league,
+    division: team.division,
+    budget: Math.round(team.budget / 1_000_000),
+    wins: team.seasonRecord.wins,
+    losses: team.seasonRecord.losses,
+  };
 }
 
 function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {

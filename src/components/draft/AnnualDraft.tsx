@@ -1,9 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import type { DraftBoardState, DraftPick } from '../../engine/draft/draftAI';
 import type { DraftProspect } from '../../engine/draft/draftPool';
+import { useSort, compareSortValues } from '../../hooks/useSort';
+import { SortSpan } from '../shared/SortHeader';
 
 type PosFilter = 'ALL' | 'HITTERS' | 'PITCHERS';
+type DraftSortKey = 'rank' | 'name' | 'position' | 'age' | 'ovr' | 'pot';
+
+function getDraftSortValue(p: DraftProspect, key: DraftSortKey): string | number {
+  switch (key) {
+    case 'rank': return p.rank;
+    case 'name': return p.name.toLowerCase();
+    case 'position': return p.position;
+    case 'age': return p.age;
+    case 'ovr': return p.scoutedOvr;
+    case 'pot': return p.scoutedPot;
+    default: return 0;
+  }
+}
 
 interface Props {
   season: number;
@@ -142,6 +157,14 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
     return true;
   });
 
+  const { sort: draftSort, toggle: toggleDraftSort } = useSort<DraftSortKey>('rank', 'asc');
+
+  const sortedAvailable = useMemo(() => {
+    return [...filteredAvailable].sort((a, b) =>
+      compareSortValues(getDraftSortValue(a, draftSort.key), getDraftSortValue(b, draftSort.key), draftSort.dir)
+    );
+  }, [filteredAvailable, draftSort]);
+
   const userPicks = (board.picks ?? []).filter((p: DraftPick) => p.teamId === userTeamId);
 
   return (
@@ -152,7 +175,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
           <span className="text-orange-500 font-black text-xs tracking-widest">
             {season} AMATEUR DRAFT
           </span>
-          <span className="text-gray-500 text-xs">5 Rounds</span>
+          <span className="text-gray-500 text-xs">{board.totalRounds} Rounds</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-gray-500 text-xs tabular-nums">
@@ -226,17 +249,17 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
             )}
           </div>
           <div className="overflow-y-auto flex-1 px-1 py-1" style={{ fontSize: '11px' }}>
-            {/* Column headers */}
+            {/* Column headers — sortable */}
             <div className="flex items-center gap-3 px-3 py-1 text-gray-500 text-xs border-b border-gray-800">
-              <span className="w-8">RK</span>
-              <span className="flex-1">NAME</span>
-              <span className="w-6 text-center">POS</span>
-              <span className="w-6 text-center">AGE</span>
+              <SortSpan className="w-8" label="RK" sortKey="rank" currentSort={draftSort} onSort={toggleDraftSort} />
+              <SortSpan className="flex-1" label="NAME" sortKey="name" currentSort={draftSort} onSort={toggleDraftSort} />
+              <SortSpan className="w-6 text-center" label="POS" sortKey="position" currentSort={draftSort} onSort={toggleDraftSort} />
+              <SortSpan className="w-6 text-center" label="AGE" sortKey="age" currentSort={draftSort} onSort={toggleDraftSort} />
               <span className="w-6">B/T</span>
-              <span className="w-10 text-right">OVR</span>
-              <span className="w-10 text-right">POT</span>
+              <SortSpan className="w-10 text-right" label="OVR" sortKey="ovr" currentSort={draftSort} onSort={toggleDraftSort} />
+              <SortSpan className="w-10 text-right" label="POT" sortKey="pot" currentSort={draftSort} onSort={toggleDraftSort} />
             </div>
-            {filteredAvailable.slice(0, 100).map((p: DraftProspect) => (
+            {sortedAvailable.slice(0, 100).map((p: DraftProspect) => (
               <div
                 key={p.playerId}
                 onClick={() => setSelectedId(p.playerId)}

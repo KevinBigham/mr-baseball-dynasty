@@ -5,6 +5,8 @@ import { useGameStore } from '../../store/gameStore';
 import type { StandingsRow } from '../../types/league';
 import { tiebreakCompare } from '../../engine/standings';
 import TeamDetailModal from './TeamDetailModal';
+import PowerRankings from './PowerRankings';
+import CoachTip from '../shared/CoachTip';
 import { SkeletonTable } from '../layout/Skeleton';
 
 function computeGB(rows: StandingsRow[]): StandingsRow[] {
@@ -201,6 +203,8 @@ export default function StandingsView() {
         </div>
       </div>
 
+      <CoachTip section="standings" />
+
       {/* ── Division view ──────────────────────────────────────────────── */}
       {view === 'divisions' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -290,6 +294,11 @@ export default function StandingsView() {
           </div>
         </div>
       )}
+
+      {/* ── Power Rankings ──────────────────────────────────────────────── */}
+      <div className="mt-4">
+        <PowerRankings />
+      </div>
 
       {/* Team detail modal */}
       {detailTeamId !== null && (

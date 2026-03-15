@@ -12,7 +12,7 @@ import type { RandomGenerator } from '../math/prng';
 import { developPlayer } from '../player/development';
 import { bonusesFromCoaching } from '../staffEffects';
 import { generateFreeAgentClass, processAISignings } from '../freeAgency';
-import { generateAnnualDraftClass } from '../draft/draftPool';
+import { ANNUAL_DRAFT_CLASS_SIZE, generateAnnualDraftClass } from '../draft/draftPool';
 import { generateIntlClass, processAIIntlSignings } from '../internationalSigning';
 import { ensureMinimumRosters } from '../rosterGuard';
 
@@ -146,7 +146,7 @@ export function advanceOffseason(input: OffseasonInput): OffseasonResult {
   let nextPlayerId = input.nextDraftPlayerId;
 
   try {
-    const [draftClass, nextGen] = generateAnnualDraftClass(gen, input.season + 1, 150);
+    const [draftClass, nextGen] = generateAnnualDraftClass(gen, input.season + 1, ANNUAL_DRAFT_CLASS_SIZE);
     gen = nextGen;
     for (const prospect of draftClass) {
       prospect.playerId = nextPlayerId++;

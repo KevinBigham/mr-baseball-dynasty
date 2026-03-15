@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { RosterPlayer } from '../../types/league';
 import { getEngine } from '../../engine/engineClient';
+import AgingBadge from '../shared/AgingBadge';
 
 // ─── OVR grade helper ─────────────────────────────────────────────────────────
 function ovrGrade(ovr: number): { grade: string; color: string; bg: string } {
@@ -46,6 +47,7 @@ function PositionSlot({ position, players, onClickPlayer }: {
         <div className="flex items-center justify-center gap-1.5 mt-0.5">
           <span className={`text-xs font-bold tabular-nums ${g.color}`}>{g.grade}</span>
           <span className="text-gray-500 text-[10px]">Age {starter.age}</span>
+          <AgingBadge age={starter.age} position={starter.position} compact />
         </div>
       </div>
       {/* Backup */}
@@ -89,7 +91,7 @@ function PitcherCard({ player, role, onClickPlayer, selected, onSelect }: {
       <div className="flex items-center gap-3 shrink-0">
         <span className="text-gray-500 text-[10px] tabular-nums">
           {player.isPitcher
-            ? `${player.stats.era?.toFixed(2) ?? '—'} ERA`
+            ? `${typeof player.stats.era === 'number' ? player.stats.era.toFixed(2) : (player.stats.era ?? '—')} ERA`
             : ''}
         </span>
         <span className="text-gray-500 text-[10px] uppercase font-bold">{role}</span>
@@ -106,7 +108,7 @@ function LineupRow({ player, slot, selected, onSelect }: {
   onSelect: () => void;
 }) {
   const g = ovrGrade(player.overall);
-  const avg = player.stats.avg?.toFixed(3).replace('0.', '.') ?? '—';
+  const avg = typeof player.stats.avg === 'number' ? player.stats.avg.toFixed(3).replace('0.', '.') : (player.stats.avg ?? '—');
   return (
     <div
       className={[

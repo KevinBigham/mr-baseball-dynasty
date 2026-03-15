@@ -5,13 +5,32 @@ import { useUIStore } from '../../store/uiStore';
 import type { RosterPlayer } from '../../types/league';
 import { formatSalary } from '../../utils/format';
 import ConfirmModal from '../layout/ConfirmModal';
+import { useSort, compareSortValues } from '../../hooks/useSort';
+import { SortHeader } from '../shared/SortHeader';
 
 interface FAPlayer extends RosterPlayer {
   projectedSalary: number;
   projectedYears: number;
 }
 
-type SortKey = 'overall' | 'age' | 'position' | 'salary' | 'stat';
+type FASortKey = 'name' | 'position' | 'age' | 'overall' | 'market' | 'projSalary' | 'projYears' | 'stat';
+
+function getFASortValue(p: FAPlayer, key: FASortKey): string | number {
+  switch (key) {
+    case 'name': return p.name.toLowerCase();
+    case 'position': return p.position;
+    case 'age': return p.age;
+    case 'overall': return p.overall;
+    case 'market': return getMarketInterest(p).level;
+    case 'projSalary': return p.projectedSalary;
+    case 'projYears': return p.projectedYears;
+    case 'stat': {
+      if (p.isPitcher) return p.stats.era ?? 99;
+      return (typeof p.stats.obp === 'number' ? p.stats.obp : 0) + (typeof p.stats.slg === 'number' ? p.stats.slg : 0);
+    }
+    default: return 0;
+  }
+}
 
 // ─── Market interest level ────────────────────────────────────────────────────
 function getMarketInterest(p: FAPlayer): { label: string; color: string; level: number } {
@@ -73,9 +92,10 @@ function OfferModal({
   const overBudget = newPayroll > budgetMil;
 
   // Key stat line
+  const fmtN = (v: unknown, d: number) => typeof v === 'number' ? v.toFixed(d) : (v ?? '—');
   const statLine = player.isPitcher
-    ? `${player.stats.era?.toFixed(2) ?? '—'} ERA · ${player.stats.k9?.toFixed(1) ?? '—'} K/9 · ${player.stats.whip?.toFixed(2) ?? '—'} WHIP`
-    : `${player.stats.avg?.toFixed(3) ?? '—'} AVG · ${player.stats.hr ?? 0} HR · ${((player.stats.obp ?? 0) + (player.stats.slg ?? 0)).toFixed(3)} OPS`;
+    ? `${fmtN(player.stats.era, 2)} ERA · ${fmtN(player.stats.k9, 1)} K/9 · ${fmtN(player.stats.whip, 2)} WHIP`
+    : `${fmtN(player.stats.avg, 3)} AVG · ${player.stats.hr ?? 0} HR · ${fmtN(typeof player.stats.obp === 'number' && typeof player.stats.slg === 'number' ? player.stats.obp + player.stats.slg : null, 3)} OPS`;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
@@ -215,7 +235,7 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
   const { season, userTeamId } = useGameStore();
   const [freeAgents, setFreeAgents] = useState<FAPlayer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<SortKey>('overall');
+  const { sort: faSort, toggle: toggleFASort } = useSort<FASortKey>('overall');
   const [posFilter, setPosFilter] = useState<string>('ALL');
   const [offerPlayer, setOfferPlayer] = useState<FAPlayer | null>(null);
   const [signings, setSignings] = useState(0);
@@ -248,7 +268,6 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
 
       // Compute payroll
       const allPlayers = [...roster.active, ...roster.il];
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       const payroll = allPlayers.reduce((s, p) => s + (p.salary || 0), 0);
       setCurrentPayroll(payroll);
 
@@ -292,28 +311,10 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
 
   // Sorting
   const sorted = useMemo(() => {
-    const arr = [...freeAgents];
-    arr.sort((a, b) => {
-      switch (sortKey) {
-        case 'overall': return b.overall - a.overall;
-        case 'age': return a.age - b.age;
-        case 'salary': return b.projectedSalary - a.projectedSalary;
-        case 'position': return a.position.localeCompare(b.position);
-        case 'stat': {
-          // Sort by primary stat: ERA for pitchers, OPS for hitters
-          const aVal = a.isPitcher ? (a.stats.era ?? 99) : ((a.stats.obp ?? 0) + (a.stats.slg ?? 0));
-          const bVal = b.isPitcher ? (b.stats.era ?? 99) : ((b.stats.obp ?? 0) + (b.stats.slg ?? 0));
-          // For ERA lower is better; for OPS higher is better
-          // Group pitchers and hitters: pitchers first by ERA asc, then hitters by OPS desc
-          if (a.isPitcher && b.isPitcher) return aVal - bVal;
-          if (!a.isPitcher && !b.isPitcher) return bVal - aVal;
-          return a.isPitcher ? -1 : 1;
-        }
-        default: return 0;
-      }
-    });
-    return arr;
-  }, [freeAgents, sortKey]);
+    return [...freeAgents].sort((a, b) =>
+      compareSortValues(getFASortValue(a, faSort.key), getFASortValue(b, faSort.key), faSort.dir)
+    );
+  }, [freeAgents, faSort]);
 
   // Position filter
   const positions = useMemo(() => ['ALL', ...new Set(freeAgents.map(p => p.position))], [freeAgents]);
@@ -390,20 +391,6 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
         {/* Controls */}
         <div className="px-4 py-2 flex items-center gap-4 border-b border-gray-800 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500 text-xs">SORT:</span>
-            {(['overall', 'age', 'salary', 'position', 'stat'] as SortKey[]).map(key => (
-              <button
-                key={key}
-                onClick={() => setSortKey(key)}
-                className={`text-xs px-2 py-1 transition-colors ${
-                  sortKey === key ? 'text-orange-400 bg-orange-900/30' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                {key === 'stat' ? 'STATS' : key.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
             <span className="text-gray-500 text-xs">POS:</span>
             <select
               value={posFilter}
@@ -413,24 +400,24 @@ export default function FreeAgencyPanel({ onDone, onTransaction }: {
               {positions.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <div className="ml-auto text-gray-500 text-xs">{filtered.length} available</div>
+          <div className="ml-auto text-gray-500 text-xs">{filtered.length} available · Click column headers to sort</div>
         </div>
 
         {/* FA Table */}
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-900">
-              <tr className="text-gray-500 text-xs border-b border-gray-800">
-                <th className="text-left px-3 py-1.5">NAME</th>
-                <th className="text-left px-2 py-1.5">POS</th>
-                <th className="text-right px-2 py-1.5">AGE</th>
-                <th className="text-right px-2 py-1.5">OVR</th>
-                <th className="text-center px-2 py-1.5">MKT</th>
-                <th className="text-right px-2 py-1.5">STAT1</th>
-                <th className="text-right px-2 py-1.5">STAT2</th>
-                <th className="text-right px-2 py-1.5">STAT3</th>
-                <th className="text-right px-2 py-1.5">PROJ $</th>
-                <th className="text-right px-2 py-1.5">YRS</th>
+              <tr className="border-b border-gray-800">
+                <SortHeader label="NAME" sortKey="name" currentSort={faSort} onSort={toggleFASort} align="left" />
+                <SortHeader label="POS" sortKey="position" currentSort={faSort} onSort={toggleFASort} align="left" />
+                <SortHeader label="AGE" sortKey="age" currentSort={faSort} onSort={toggleFASort} align="right" />
+                <SortHeader label="OVR" sortKey="overall" currentSort={faSort} onSort={toggleFASort} align="right" />
+                <SortHeader label="MKT" sortKey="market" currentSort={faSort} onSort={toggleFASort} align="center" />
+                <SortHeader label="STAT" sortKey="stat" currentSort={faSort} onSort={toggleFASort} align="right" />
+                <th className="text-right px-2 py-1.5 text-gray-500 text-xs">ST2</th>
+                <th className="text-right px-2 py-1.5 text-gray-500 text-xs">ST3</th>
+                <SortHeader label="PROJ $" sortKey="projSalary" currentSort={faSort} onSort={toggleFASort} align="right" />
+                <SortHeader label="YRS" sortKey="projYears" currentSort={faSort} onSort={toggleFASort} align="right" />
                 <th className="px-2 py-1.5" />
               </tr>
             </thead>

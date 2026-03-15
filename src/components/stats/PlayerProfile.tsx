@@ -5,42 +5,56 @@ import { useGameStore } from '../../store/gameStore';
 import { assignTraits, type PlayerTrait } from '../../engine/playerTraits';
 import type { PlayerProfileData, RosterPlayer } from '../../types/league';
 import CareerStatsTable from './CareerStatsTable';
+import AgingBadge from '../shared/AgingBadge';
+import MilestoneCard from '../shared/MilestoneCard';
 import { SkeletonProfile } from '../layout/Skeleton';
 import { STAT_GLOSSARY } from '../../utils/statGlossary';
+import { gradeHeatBg, gradeLabel } from '../../utils/gradeColor';
 
-// ─── Scouting grade box ───────────────────────────────────────────────────────
+type ScoutingInfo = { confidence: number; scouted: boolean };
+type MaybeScoutedProfile = PlayerProfileData & { scoutingInfo?: ScoutingInfo };
 
-function GradeBox({ label, value }: { label: string; value: number }) {
-  const { cls, bg } =
-    value >= 70 ? { cls: 'grade-80', bg: 'bg-green-900/30 border-green-700' } :
-    value >= 60 ? { cls: 'grade-70', bg: 'bg-green-900/20 border-green-800' } :
-    value >= 50 ? { cls: 'grade-60', bg: 'bg-blue-900/20 border-blue-800' } :
-    value >= 40 ? { cls: 'grade-50', bg: 'bg-gray-800 border-gray-700' } :
-    value >= 30 ? { cls: 'grade-40', bg: 'bg-orange-900/20 border-orange-900' } :
-                  { cls: 'grade-30', bg: 'bg-red-900/20 border-red-900' };
+// ─── HBD-style heat map grade cell ───────────────────────────────────────────
 
+function HeatGradeCell({ label, grade }: { label: string; grade: number }) {
   return (
-    <div className={`flex flex-col items-center border px-3 py-2 ${bg}`}>
-      <span className="text-gray-500 text-xs">{label}</span>
-      <span className={`text-xl font-bold tabular-nums ${cls}`}>{value}</span>
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-gray-500 text-[9px] font-bold tracking-wider">{label}</span>
+      <div
+        className="w-9 h-7 flex items-center justify-center rounded text-xs font-bold tabular-nums"
+        style={{
+          backgroundColor: gradeHeatBg(grade),
+          color: '#fff',
+          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+        }}
+        title={`${label}: ${grade} (${gradeLabel(grade)})`}
+      >
+        {grade}
+      </div>
     </div>
   );
 }
 
-// ─── Attribute bar (20-80 scale) ─────────────────────────────────────────────
+// ─── Projected grade cell (shows projection with delta) ─────────────────────
 
-function AttrBar({ label, value, max = 80 }: { label: string; value: number; max?: number }) {
-  const pct = Math.min(100, (value / max) * 100);
-  const color = value >= 70 ? 'bg-green-500' : value >= 55 ? 'bg-blue-500' : value >= 40 ? 'bg-orange-500' : 'bg-red-600';
+function ProjectedGradeCell({ label, current, projected }: { label: string; current: number; projected: number }) {
+  const delta = projected - current;
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-gray-500 w-8 text-right">{label}</span>
-      <div className="flex-1 h-2 bg-gray-800 rounded overflow-hidden">
-        <div className={`h-full rounded transition-all ${color}`} style={{ width: `${pct}%` }} />
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-gray-500 text-[9px] font-bold tracking-wider">{label}</span>
+      <div
+        className="w-9 h-7 flex items-center justify-center rounded text-xs font-bold tabular-nums relative"
+        style={{
+          backgroundColor: gradeHeatBg(projected),
+          color: '#fff',
+          textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+          opacity: 0.7,
+          border: '1px dashed rgba(255,255,255,0.3)',
+        }}
+        title={`${label} projected: ${projected} (${delta >= 0 ? '+' : ''}${delta})`}
+      >
+        {projected}
       </div>
-      <span className={`w-6 tabular-nums font-bold ${value >= 70 ? 'text-green-400' : value >= 55 ? 'text-blue-400' : value >= 40 ? 'text-orange-400' : 'text-red-400'}`}>
-        {value}
-      </span>
     </div>
   );
 }
@@ -278,7 +292,17 @@ function ExtensionPanel({ player, onExtended }: {
       // @ts-expect-error Sprint 04 stub — contract alignment pending
       setResult(res);
       // @ts-expect-error Sprint 04 stub — contract alignment pending
-      if (res.accepted) onExtended();
+      if (res.accepted) {
+        useUIStore.getState().addToast(`✍️ ${player.name} signed a ${years}-year extension!`, 'success', {
+          accent: '#22c55e', icon: '✍️', duration: 4000,
+        });
+        onExtended();
+      // @ts-expect-error Sprint 04 stub — contract alignment pending
+      } else if (res.rejected) {
+        useUIStore.getState().addToast(`❌ ${player.name} rejected the offer.`, 'error', {
+          accent: '#ef4444', icon: '❌', duration: 3000,
+        });
+      }
     } catch { /* silent */ }
     setSubmitting(false);
   }, [player.playerId, years, salary, onExtended]);
@@ -446,8 +470,12 @@ export default function PlayerProfile() {
   const [error, setError] = useState<string | null>(null);
   const [advStats, setAdvStats] = useState<Record<string, number> | null>(null);
 
-  const [scoutingInfo, setScoutingInfo] = useState<{ confidence: number; scouted: boolean } | null>(null);
+  const [scoutingInfo, setScoutingInfo] = useState<ScoutingInfo | null>(null);
   const [scouting, setScouting] = useState(false);
+
+  const extractScoutingInfo = (profileData: PlayerProfileData | null): ScoutingInfo | null => (
+    (profileData as MaybeScoutedProfile | null)?.scoutingInfo ?? null
+  );
 
   useEffect(() => {
     if (!selectedPlayerId || !gameStarted) return;
@@ -456,15 +484,12 @@ export default function PlayerProfile() {
     setAdvStats(null);
     setScoutingInfo(null);
     Promise.all([
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getScoutedPlayerProfile(selectedPlayerId),
       getEngine().getAdvancedStats(selectedPlayerId),
     ])
       .then(([profileData, adv]) => {
         setData(profileData);
-        if ((profileData as { scoutingInfo?: { confidence: number; scouted: boolean } }).scoutingInfo) {
-          setScoutingInfo((profileData as { scoutingInfo: { confidence: number; scouted: boolean } }).scoutingInfo);
-        }
+        setScoutingInfo(extractScoutingInfo(profileData));
         if (adv) setAdvStats(adv as unknown as Record<string, number>);
       })
       .catch(e => setError(String(e)))
@@ -479,12 +504,9 @@ export default function PlayerProfile() {
       const result = await engine.scoutPlayer(selectedPlayerId);
       if (result.ok) {
         // Re-fetch profile with updated scouting data
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const profileData = await engine.getScoutedPlayerProfile(selectedPlayerId);
         setData(profileData);
-        if ((profileData as { scoutingInfo?: { confidence: number; scouted: boolean } }).scoutingInfo) {
-          setScoutingInfo((profileData as { scoutingInfo: { confidence: number; scouted: boolean } }).scoutingInfo);
-        }
+        setScoutingInfo(extractScoutingInfo(profileData));
         useUIStore.getState().addToast('Scouting report updated!', 'success');
       } else {
         useUIStore.getState().addToast((result as { error?: string }).error ?? 'Scouting failed', 'error');
@@ -582,8 +604,9 @@ export default function PlayerProfile() {
               {player.teamAbbr}
             </span>
           </div>
-          <span className="text-gray-500 font-normal text-xs">
+          <span className="text-gray-500 font-normal text-xs flex items-center gap-2">
             {player.position} · {player.bats}/{player.throws} · AGE {player.age}
+            <AgingBadge age={player.age} position={player.position} />
           </span>
         </div>
 
@@ -602,12 +625,20 @@ export default function PlayerProfile() {
             <div className="text-gray-200 font-bold">
               {player.contractYearsRemaining}Y · ${(player.salary / 1_000_000).toFixed(1)}M/yr
             </div>
-            <div className={`text-xs ${contractStatus.color}`}>{contractStatus.label}</div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`text-xs font-bold ${contractStatus.color}`}>{contractStatus.label}</span>
+              <span className="text-gray-500 text-[10px]">
+                ${((player.contractYearsRemaining * player.salary) / 1_000_000).toFixed(1)}M total
+              </span>
+            </div>
+            <div className="text-gray-500 text-[10px] mt-0.5">
+              {Math.floor(player.serviceTimeDays / 172)}.{player.serviceTimeDays % 172} yrs service
+            </div>
           </div>
           <div className="px-4 py-3">
             <div className="text-gray-500 text-xs">STATUS</div>
             <div className="text-orange-400 font-bold text-sm">
-              {player.rosterStatus.replace(/_/g, ' ')}
+              {(player.rosterStatus ?? 'UNKNOWN').replace(/_/g, ' ')}
             </div>
           </div>
           <div className="px-4 py-3">
@@ -669,7 +700,6 @@ export default function PlayerProfile() {
             // Reload player profile to reflect updated contract
             if (selectedPlayerId) {
               getEngine().getPlayerProfile(selectedPlayerId)
-                // @ts-expect-error Sprint 04 stub — contract alignment pending
                 .then(setData)
                 .catch(() => {
                   useUIStore.getState().addToast('Failed to load player', 'error');
@@ -679,29 +709,68 @@ export default function PlayerProfile() {
         />
       )}
 
-      {/* ── Scouting grades + attribute bars ─────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bloomberg-border">
-          <div className="bloomberg-header flex items-center gap-2">
-            <span>SCOUTING GRADES (20–80)</span>
-            {scoutingInfo && !isUserTeam && (
-              <span className={`text-xs font-normal ${scoutingInfo.scouted ? 'text-green-400' : 'text-gray-500'}`}>
-                {scoutingInfo.scouted ? `${Math.round(scoutingInfo.confidence * 100)}% CONF` : 'ESTIMATED'}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-2 flex-wrap p-3">
-            {Object.entries(player.grades).map(([label, val]) => (
-              <GradeBox key={label} label={label} value={val} />
-            ))}
-          </div>
+      {/* ── HBD-style Scouting Grades Heat Map ─────────────────────────── */}
+      <div className="bloomberg-border">
+        <div className="bloomberg-header flex items-center gap-2">
+          <span>SCOUTING GRADES (20–80)</span>
+          {scoutingInfo && !isUserTeam && (
+            <span className={`text-xs font-normal ${scoutingInfo.scouted ? 'text-green-400' : 'text-gray-500'}`}>
+              {scoutingInfo.scouted ? `${Math.round(scoutingInfo.confidence * 100)}% CONF` : 'ESTIMATED'}
+            </span>
+          )}
         </div>
+        <div className="p-3 space-y-3">
+          {/* Current grades row */}
+          <div>
+            <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1.5">CURRENT</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {Object.entries(player.grades).map(([label, val]) => (
+                <HeatGradeCell key={label} label={label} grade={val} />
+              ))}
+            </div>
+          </div>
 
-        <div className="bloomberg-border">
-          <div className="bloomberg-header">ATTRIBUTE BREAKDOWN</div>
-          <div className="p-3 space-y-1.5">
-            {Object.entries(player.grades).map(([label, val]) => (
-              <AttrBar key={label} label={label} value={val} />
+          {/* Projected grades row */}
+          <div>
+            <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1.5 flex items-center gap-2">
+              PROJECTED
+              <span className="text-gray-700 font-normal text-[9px]">
+                {player.age <= 26 ? '(ceiling)' : player.age <= 30 ? '(stable)' : '(aging decline)'}
+              </span>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {Object.entries(player.grades).map(([label, val]) => {
+                // Simple projection model: ascent players trend toward potential,
+                // prime players stay, decline players lose
+                const ovrGrade = ovrScale;
+                const potGrade = potScale;
+                let projected = val;
+                if (player.age <= 26) {
+                  // Ascending: project upward toward potential proportionally
+                  const headroom = potGrade - ovrGrade;
+                  projected = Math.min(80, val + Math.round(headroom * 0.4));
+                } else if (player.age >= 31) {
+                  // Declining: lose grades based on age past 30
+                  const agePast30 = player.age - 30;
+                  projected = Math.max(20, val - Math.round(agePast30 * 1.5));
+                }
+                return (
+                  <ProjectedGradeCell key={label} label={label} current={val} projected={projected} />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Grade legend */}
+          <div className="flex items-center gap-3 pt-1 border-t border-gray-800">
+            {[
+              { g: 80, l: 'Elite' }, { g: 65, l: 'Plus' }, { g: 50, l: 'Avg' },
+              { g: 35, l: 'Below' }, { g: 20, l: 'Poor' },
+            ].map(({ g, l }) => (
+              <div key={g} className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded" style={{ backgroundColor: gradeHeatBg(g) }} />
+                <span className="text-gray-500 text-[9px]">{g} {l}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -710,7 +779,7 @@ export default function PlayerProfile() {
       {/* ── Season stats ─────────────────────────────────────────────────── */}
       {s && (
         <div className="bloomberg-border">
-          <div className="bloomberg-header">SEASON {s.season} STATISTICS</div>
+          <div className="bloomberg-header">{s.season === 0 ? 'PRE-SEASON' : s.season} STATISTICS</div>
 
           {isPitcher ? (
             <>
@@ -836,6 +905,9 @@ export default function PlayerProfile() {
           </div>
         </div>
       )}
+
+      {/* ── Career Milestones ──────────────────────────────────────────────── */}
+      <MilestoneCard playerName={player.name} seasons={data.careerStats} isPitcher={isPitcher} />
 
       {/* ── Career Stats Table ────────────────────────────────────────────── */}
       <CareerStatsTable seasons={data.careerStats} isPitcher={isPitcher} />

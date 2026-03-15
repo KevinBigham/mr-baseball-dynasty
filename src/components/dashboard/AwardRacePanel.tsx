@@ -24,9 +24,10 @@ function CandidateRow({
   const barPct = maxScore > 0 ? (c.score / maxScore) * 100 : 0;
   const barColor = rank === 1 ? '#fbbf24' : rank <= 3 ? '#f97316' : '#6b7280';
 
+  const fmtN = (v: unknown, d: number) => typeof v === 'number' ? v.toFixed(d) : (v ?? '—');
   const statLine = c.isPitcher
-    ? `${c.stats.era?.toFixed(2)} ERA · ${c.stats.w}-${c.stats.l} · ${c.stats.k9?.toFixed(1)} K/9`
-    : `${c.stats.ops?.toFixed(3)} OPS · ${c.stats.hr} HR · ${c.stats.avg?.toFixed(3)} AVG`;
+    ? `${fmtN(c.stats.era, 2)} ERA · ${c.stats.w}-${c.stats.l} · ${fmtN(c.stats.k9, 1)} K/9`
+    : `${fmtN(c.stats.ops, 3)} OPS · ${c.stats.hr} HR · ${fmtN(c.stats.avg, 3)} AVG`;
 
   return (
     <div
