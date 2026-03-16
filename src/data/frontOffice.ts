@@ -192,52 +192,48 @@ const BACKSTORIES: Record<FORoleId, string[]> = {
 
 // ─── Staff generation ──────────────────────────────────────────────────────────
 
-// Deterministic helpers that use the seeded PRNG when provided, Math.random as fallback
-function _nextFloat(gen?: RandomGenerator): [number, RandomGenerator | undefined] {
-  if (gen) {
-    const [raw, next] = gen.next();
-    return [((Number(raw) >>> 0) / 0xffffffff), next];
-  }
-  return [Math.random(), undefined];
+// Deterministic helpers that require a seeded PRNG.
+function _nextFloat(gen: RandomGenerator): [number, RandomGenerator] {
+  const [raw, next] = gen.next();
+  return [((Number(raw) >>> 0) / 0xffffffff), next];
 }
 
-function generateId(gen?: RandomGenerator): [string, RandomGenerator | undefined] {
+function generateId(gen: RandomGenerator): [string, RandomGenerator] {
   let f: number;
-  let next: RandomGenerator | undefined;
+  let next: RandomGenerator;
   [f, next] = _nextFloat(gen);
   return [f.toString(36).slice(2, 10) || '00000000', next];
 }
 
-function pickRandom<T>(arr: T[], gen?: RandomGenerator): [T, RandomGenerator | undefined] {
+function pickRandom<T>(arr: T[], gen: RandomGenerator): [T, RandomGenerator] {
   let f: number;
-  let next: RandomGenerator | undefined;
+  let next: RandomGenerator;
   [f, next] = _nextFloat(gen);
   return [arr[Math.floor(f * arr.length)], next];
 }
 
-function generateStaffOVR(salaryRange: [number, number], targetSalary: number, gen?: RandomGenerator): [number, RandomGenerator | undefined] {
+function generateStaffOVR(salaryRange: [number, number], targetSalary: number, gen: RandomGenerator): [number, RandomGenerator] {
   const [min, max] = salaryRange;
   const range = max - min;
   const salaryCentered = (targetSalary - min) / range;
   const ovr = Math.round(40 + salaryCentered * 55);
   let f: number;
-  let next: RandomGenerator | undefined;
+  let next: RandomGenerator;
   [f, next] = _nextFloat(gen);
   return [Math.max(40, Math.min(95, ovr + Math.round((f - 0.5) * 10))), next];
 }
 
-function generateSalary(salaryRange: [number, number], gen?: RandomGenerator): [number, RandomGenerator | undefined] {
+function generateSalary(salaryRange: [number, number], gen: RandomGenerator): [number, RandomGenerator] {
   const [min, max] = salaryRange;
   let f: number;
-  let next: RandomGenerator | undefined;
+  let next: RandomGenerator;
   [f, next] = _nextFloat(gen);
   const raw = min + f * (max - min);
   return [Math.round(raw * 10) / 10, next];
 }
 
-/** Generate N candidate staff members for a given role.
- *  Pass an optional seeded PRNG for deterministic output. */
-export function generateFOCandidates(roleId: FORoleId, count = 4, gen?: RandomGenerator): FOStaffMember[] {
+/** Generate N candidate staff members for a given role using a seeded PRNG. */
+export function generateFOCandidates(roleId: FORoleId, count = 4, gen: RandomGenerator): FOStaffMember[] {
   const role = FO_ROLES.find(r => r.id === roleId);
   if (!role) return [];
 

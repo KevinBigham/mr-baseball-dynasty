@@ -2,6 +2,7 @@ import type { RandomGenerator } from 'pure-rand';
 import type { Player, PlayerGameStats, PitcherGameStats } from '../../types/player';
 import type { Team } from '../../types/team';
 import type { BoxScore, GameResult, PAOutcome } from '../../types/game';
+import type { TeamChemistryState } from '../../types/chemistry';
 import { createPRNG } from '../math/prng';
 import { resolvePlateAppearance } from './plateAppearance';
 import { applyOutcome, INITIAL_INNING_STATE, type MarkovState } from './markov';
@@ -10,6 +11,7 @@ import {
   createInitialFSMContext, startGame, shouldUseMannedRunner,
   type GameFSMContext,
 } from './fsm';
+import { buildHalfInningChemBonuses } from './chemistryModifiers';
 
 // ─── Lineup and pitcher selection ────────────────────────────────────────────
 
@@ -169,6 +171,8 @@ function simulateHalfInning(
   parkFactor: (typeof PARK_FACTORS)[number],
   defenseRating: number,
   mannedRunner: boolean,
+  batterChemBonus?: number,
+  pitcherChemBonus?: number,
 ): [number, number, RandomGenerator] { // [runs, lineupPosAfter, gen]
   let markov: MarkovState = { ...INITIAL_INNING_STATE };
   // Track which batter is on each base (by playerId) so we can credit runs scored
@@ -196,6 +200,8 @@ function simulateHalfInning(
       timesThrough: timesThroughRef.value,
       parkFactor,
       defenseRating,
+      batterChemBonus,
+      pitcherChemBonus,
     };
 
     let paResult: import('../../types/game').PAResult;
@@ -376,6 +382,10 @@ export interface SimulateGameInput {
   userRotationOrder?: number[];
   /** The user's team ID — needed to know which team gets the custom orders */
   userTeamId?: number;
+  /** Optional chemistry state for the home team (RFC 6.1 + 6.2 modifiers). */
+  homeChemistry?: TeamChemistryState;
+  /** Optional chemistry state for the away team (RFC 6.1 + 6.2 modifiers). */
+  awayChemistry?: TeamChemistryState;
 }
 
 export function simulateGame(input: SimulateGameInput): GameResult {
@@ -454,6 +464,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
   for (let inning = 1; inning <= MAX_INNINGS; inning++) {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
     const topManned = shouldUseMannedRunner({ ...ctx, inning, isTop: true });
+    // Chemistry: away team bats, home team pitches
+    const topIsClose = Math.abs(ctx.homeScore - ctx.awayScore) <= 2;
+    const topChem = buildHalfInningChemBonuses(input.awayChemistry, input.homeChemistry, topIsClose);
     let awayRuns: number;
     [awayRuns, awayLineupPos, gen] = simulateHalfInning(
       gen,
@@ -468,6 +481,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       parkFactor,
       homeDefRating,
       topManned,
+      topChem.batterChemBonus,
+      topChem.pitcherChemBonus,
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
 
@@ -494,6 +509,9 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     }
 
     const bottomManned = shouldUseMannedRunner({ ...ctx, inning, isTop: false });
+    // Chemistry: home team bats, away team pitches
+    const bottomIsClose = Math.abs(ctx.homeScore - ctx.awayScore) <= 2;
+    const bottomChem = buildHalfInningChemBonuses(input.homeChemistry, input.awayChemistry, bottomIsClose);
     let homeRuns: number;
     [homeRuns, homeLineupPos, gen] = simulateHalfInning(
       gen,
@@ -508,6 +526,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       parkFactor,
       awayDefRating,
       bottomManned,
+      bottomChem.batterChemBonus,
+      bottomChem.pitcherChemBonus,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
 

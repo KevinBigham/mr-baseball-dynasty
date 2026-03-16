@@ -19,7 +19,7 @@ import { generateAllPlayers } from './player/generation.ts';
 import { simulateSeason, type SeasonSimResult } from './sim/seasonSimulator.ts';
 import { INITIAL_TEAMS, TEAMS } from '../data/teams.ts';
 import { calcBA, calcERA, formatIP, playerOverall, pythagoreanWins } from '../utils/helpers.ts';
-import { simulatePlayoffs, type PlayoffBracket } from './league/playoffs.ts';
+import { simulateFullPlayoffs, type PlayoffBracket, type PlayoffSeries } from './sim/playoffSimulator.ts';
 import { computeSeasonAwards, type SeasonAwards } from './league/awards.ts';
 import { sortNewsFeed, generateInjuryNewsItems, type NewsStory } from './league/newsFeed.ts';
 import * as News from './league/newsFeed.ts';
@@ -41,7 +41,7 @@ import type { TeamBidModifier } from './roster/freeAgency.ts';
 import { generateAllCoachingStaffs } from './ai/coachingStaff.ts';
 import { classifyAllTeams } from './ai/gmStrategy.ts';
 import { assignMarketSizes } from './roster/financials.ts';
-import type { CoachingStaff, DraftPick, OffseasonRecap, TeamStrategy } from '../types/offseason.ts';
+import type { CoachingStaff, OffseasonRecap, TeamStrategy } from '../types/offseason.ts';
 import type { TransactionLogEntry, RosterTransaction, RosterStatus } from '../types/roster.ts';
 import type { OwnerEvaluation, OwnerProfile } from '../types/owner.ts';
 import type { ClubhouseEvent, TeamChemistryState } from '../types/chemistry.ts';
@@ -98,13 +98,17 @@ import { lintFeatureManifest } from '../features/manifestLint.ts';
 import { getInjuryRiskMultiplier } from '../data/frontOffice.ts';
 import { bonusesFromCoaching, DEFAULT_BONUSES } from './staffEffects.ts';
 import {
+  autoPickForUser as autoPickDraftForUser,
+  completeDraftBoard,
   createDraftBoardState,
   makeUserDraftPick,
   runAIPicksUntilUserTurn,
   teamOnClockId,
+  type DraftMode,
   type DraftBoardEntry,
   type DraftBoardState,
 } from './draft.ts';
+import type { DraftPick as DraftBoardPick } from './draft/draftAI.ts';
 import { computePayrollReport, generateArbitrationCases, type ArbitrationCase } from './finances.ts';
 import { computeAdvancedHitting, computeAdvancedPitching, computeLeagueAverages } from './advancedStats.ts';
 import { generateTradeOffers, shopPlayer as shopPlayerEngine, evaluatePlayer } from './trading.ts';
@@ -142,6 +146,12 @@ let gen: RandomGenerator | null = null;
 let coachingStaffs: Map<number, CoachingStaff> = new Map();
 let transactionLog: TransactionLogEntry[] = [];
 let latestOffseasonRecap: OffseasonRecap | null = null;
+
+function getPlayoffSeriesLoserId(series: PlayoffSeries): number {
+  return series.winnerId === series.higherSeed.teamId
+    ? series.lowerSeed.teamId
+    : series.higherSeed.teamId;
+}
 let ownerProfiles: Map<number, OwnerProfile> = new Map();
 let teamChemistry: Map<number, TeamChemistryState> = new Map();
 let clubhouseEvents: ClubhouseEvent[] = [];
@@ -179,6 +189,7 @@ const cache = new WorkerCache();
 // Only these game IDs get full box scores retained for storage
 let featuredGameIds: Set<number> = new Set();
 let activeDraftState: DraftBoardState | null = null;
+let activeDraftMode: DraftMode | null = null;
 let devAssignments: Map<number, import('../engine/devPrograms').DevProgram> = new Map();
 let lineupOrders: Map<number, number[]> = new Map();
 let rotationOrders: Map<number, number[]> = new Map();
@@ -231,6 +242,7 @@ const api = {
     seasonHistory.length = 0;
     ownerEvaluationHistory.length = 0;
     activeDraftState = null;
+    activeDraftMode = null;
     careerHistory = new Map();
     awardsHistory = [];
     lineupOrders = new Map();
@@ -314,7 +326,7 @@ const api = {
         // Post progress to main thread
         postMessage({ type: 'sim-progress', complete, total });
       },
-      { injuryRiskMultipliers },
+      { injuryRiskMultipliers, teamChemistry },
     );
 
     latestTeamSeasons = result.teamSeasons;
@@ -403,52 +415,56 @@ const api = {
   async simulatePostseason(): Promise<PlayoffBracket | null> {
     if (latestTeamSeasons.length === 0 || !gen) return null;
 
-    let bracket: PlayoffBracket;
-    [bracket, gen] = simulatePlayoffs(
-      teams,
-      latestTeamSeasons,
-      players,
-      currentSeason,
-      gen,
-    );
+    const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
+    cache.setStandings(currentSeason, standings);
+
+    const baseSeed = (rngSeed ^ (currentSeason * 2654435761) ^ latestGameResults.length) >>> 0;
+    const bracket = simulateFullPlayoffs(standings, teams, players, baseSeed);
+    if (!bracket) {
+      latestPlayoffBracket = null;
+      cache.invalidate();
+      return null;
+    }
 
     latestPlayoffBracket = bracket;
     cache.invalidate();
 
     // Generate playoff news stories
     const teamNameMap = buildTeamNameMap();
-    for (const series of [...bracket.wildCardSeries, ...bracket.divisionSeries, ...bracket.championshipSeries]) {
+    for (const series of [...bracket.wildCardRound, ...bracket.divisionSeries, ...bracket.championshipSeries]) {
+      const loserTeamId = getPlayoffSeriesLoserId(series);
       latestNewsFeed.push(News.generatePlayoffStory(
         currentSeason,
         series,
         series.round,
-        teamNameMap.get(series.winnerTeamId) ?? 'Unknown',
-        teamNameMap.get(series.loserTeamId) ?? 'Unknown',
+        teamNameMap.get(series.winnerId) ?? 'Unknown',
+        teamNameMap.get(loserTeamId) ?? 'Unknown',
       ));
       const seriesScore = `${Math.max(series.higherSeedWins, series.lowerSeedWins)}-${Math.min(series.higherSeedWins, series.lowerSeedWins)}`;
       logPlayoffSeries(eventLog, currentSeason, {
         kind: 'playoff',
         round: series.round,
-        winnerTeamId: series.winnerTeamId,
-        loserTeamId: series.loserTeamId,
+        winnerTeamId: series.winnerId,
+        loserTeamId,
         seriesScore,
       });
     }
     if (bracket.worldSeries) {
+      const loserTeamId = getPlayoffSeriesLoserId(bracket.worldSeries);
       latestNewsFeed.push(News.generatePlayoffStory(
         currentSeason,
         bracket.worldSeries,
         'WS',
-        teamNameMap.get(bracket.worldSeries.winnerTeamId) ?? 'Unknown',
-        teamNameMap.get(bracket.worldSeries.loserTeamId) ?? 'Unknown',
+        teamNameMap.get(bracket.worldSeries.winnerId) ?? 'Unknown',
+        teamNameMap.get(loserTeamId) ?? 'Unknown',
       ));
       const ws = bracket.worldSeries;
       const seriesScore = `${Math.max(ws.higherSeedWins, ws.lowerSeedWins)}-${Math.min(ws.higherSeedWins, ws.lowerSeedWins)}`;
       logPlayoffSeries(eventLog, currentSeason, {
         kind: 'playoff',
         round: 'WS',
-        winnerTeamId: ws.winnerTeamId,
-        loserTeamId: ws.loserTeamId,
+        winnerTeamId: ws.winnerId,
+        loserTeamId,
         seriesScore,
       });
     }
@@ -592,7 +608,7 @@ const api = {
 
     // ── Build league history entry ───────────────────────────────────────
     {
-      const champion = latestPlayoffBracket?.worldSeries?.winnerTeamId;
+      const champion = latestPlayoffBracket?.championId;
       const champTeam = champion ? teams.find(t => t.teamId === champion) : null;
       const bestTeam = [...latestTeamSeasons].sort((a, b) => b.wins - a.wins)[0];
       const bestTeamObj = bestTeam ? teams.find(t => t.teamId === bestTeam.teamId) : null;
@@ -997,9 +1013,10 @@ const api = {
     }
 
     if (hadCompletedSeason) {
-      refreshDraftBoard(1);
+      refreshDraftBoard(userTeamId, 'annual');
     } else {
       activeDraftState = null;
+      activeDraftMode = null;
     }
 
     const saveState = buildPersistedState();
@@ -1014,7 +1031,7 @@ const api = {
 
   async getStandings(): Promise<TeamStandingRow[]> {
     const cached = cache.getStandings(currentSeason);
-    if (cached) return cached as TeamStandingRow[];
+    if (cached) return cached as unknown as TeamStandingRow[];
     const standings = buildStandings({ teamSeasons: latestTeamSeasons, gameResults: latestGameResults });
     cache.setStandings(currentSeason, standings);
     return standings;
@@ -1972,6 +1989,15 @@ const api = {
     const topBatters = batEntries.slice(0, 10);
     const topPitchers = pitchEntries.slice(0, 10);
 
+    const userTeamChemistry = teamChemistry.get(userTeamId) ?? null;
+    const recentClubhouseEvents = clubhouseEvents
+      .filter((event) => event.teamId === userTeamId)
+      .sort((a, b) => {
+        if (b.season !== a.season) return b.season - a.season;
+        return b.eventId - a.eventId;
+      })
+      .slice(0, 6);
+
     // Cache the full leaders list too
     cache.setBattingLeaders(currentSeason, batEntries.slice(0, 25));
     cache.setPitchingLeaders(currentSeason, pitchEntries.slice(0, 25));
@@ -1986,6 +2012,8 @@ const api = {
       news: latestNewsFeed,
       teamNames: Array.from(buildTeamNameMap().entries()),
       gamesPlayed: latestGameResults.length,
+      userTeamChemistry,
+      recentClubhouseEvents,
     };
 
     cache.setDashboard(currentSeason, bundle);
@@ -2436,22 +2464,11 @@ const api = {
   async getDraftBoard(teamId = userTeamId): Promise<DraftBoardListing> {
     return timedEndpointCall('getDraftBoard', async () => {
       if (!activeDraftState || activeDraftState.userTeamId !== teamId) {
-        refreshDraftBoard(teamId);
+        refreshDraftBoard(teamId, activeDraftMode ?? 'annual');
       }
 
       if (!activeDraftState) {
-        return {
-          season: currentSeason,
-          userTeamId: teamId,
-          totalRounds: 20,
-          currentRound: 1,
-          currentPickInRound: 1,
-          overallPick: 1,
-          teamOnClockId: null,
-          completed: true,
-          picks: [],
-          available: [],
-        };
+        return buildEmptyDraftBoardListing(teamId);
       }
 
       const playersById = buildPlayersByIdMap();
@@ -2467,7 +2484,7 @@ const api = {
     return timedEndpointCall('makeDraftPick', async () => {
       const draftTeamId = activeDraftState?.userTeamId ?? userTeamId;
       if (!activeDraftState) {
-        refreshDraftBoard(draftTeamId);
+        refreshDraftBoard(draftTeamId, activeDraftMode ?? 'annual');
       }
 
       if (!activeDraftState) {
@@ -2489,7 +2506,8 @@ const api = {
 
       if (pickResult.pick) {
         const draftPick = pickResult.pick;
-        const details = `Drafted ${draftPick.playerName} (Rd ${draftPick.round}, Pick ${draftPick.pick})`;
+        const overallPick = draftPick.pick ?? draftPick.pickNumber;
+        const details = `Drafted ${draftPick.playerName} (Rd ${draftPick.round}, Pick ${overallPick})`;
         transactionLog.push({
           date: 0,
           season: currentSeason,
@@ -2499,13 +2517,13 @@ const api = {
             playerId: draftPick.playerId,
             teamId: draftPick.teamId,
             round: draftPick.round,
-            pick: draftPick.pick,
+            pick: overallPick,
           },
           description: details,
         });
         logDraftPick(eventLog, currentSeason, {
           kind: 'draft',
-          pickNumber: draftPick.pick,
+          pickNumber: overallPick,
           playerId: draftPick.playerId,
           playerName: draftPick.playerName,
           teamId: draftPick.teamId,
@@ -2528,6 +2546,64 @@ const api = {
         pick: pickResult.pick,
         board: buildDraftBoardListing(activeDraftState),
       };
+    });
+  },
+
+  async autoPickForUser(): Promise<DraftBoardListing> {
+    return timedEndpointCall('makeDraftPick', async () => {
+      const draftTeamId = activeDraftState?.userTeamId ?? userTeamId;
+      if (!activeDraftState) {
+        refreshDraftBoard(draftTeamId, activeDraftMode ?? 'annual');
+      }
+
+      if (!activeDraftState) {
+        return buildEmptyDraftBoardListing(draftTeamId);
+      }
+
+      const playersById = buildPlayersByIdMap();
+      activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+
+      const [updatedState, pickResult] = autoPickDraftForUser(activeDraftState, playersById);
+      activeDraftState = updatedState;
+
+      if (pickResult.pick) {
+        const draftPick = pickResult.pick;
+        const overallPick = draftPick.pick ?? draftPick.pickNumber;
+        const details = `Drafted ${draftPick.playerName} (Rd ${draftPick.round}, Pick ${overallPick})`;
+        transactionLog.push({
+          date: 0,
+          season: currentSeason,
+          teamId: draftPick.teamId,
+          transaction: {
+            type: 'DRAFT_PICK',
+            playerId: draftPick.playerId,
+            teamId: draftPick.teamId,
+            round: draftPick.round,
+            pick: overallPick,
+          },
+          description: details,
+        });
+        logDraftPick(eventLog, currentSeason, {
+          kind: 'draft',
+          pickNumber: overallPick,
+          playerId: draftPick.playerId,
+          playerName: draftPick.playerName,
+          teamId: draftPick.teamId,
+          position: String(draftPick.position),
+          prospectType: draftPick.type,
+        });
+      }
+
+      activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+      players = Array.from(playersById.values());
+      cache.invalidate();
+
+      const saveState = buildPersistedState();
+      if (saveState) {
+        createAutosave(saveState, 'Draft Updated');
+      }
+
+      return buildDraftBoardListing(activeDraftState);
     });
   },
 
@@ -2895,16 +2971,70 @@ const api = {
   },
 
   // Draft
-  async startDraft() { return api.getDraftBoard(); },
-  async startAnnualDraft() { return api.getDraftBoard(); },
-  async autoAdvanceDraft() { return { done: true, picks: [] as any[] }; },
-  async completeDraft() {
-    activeDraftState = null;
+  async startDraft(mode: 'snake10' | 'snake25' | 'snake26') {
+    refreshDraftBoard(userTeamId, mode);
+    return activeDraftState ? buildDraftBoardListing(activeDraftState) : buildEmptyDraftBoardListing(userTeamId);
+  },
+  async startAnnualDraft() {
+    refreshDraftBoard(userTeamId, 'annual');
+    return activeDraftState ? buildDraftBoardListing(activeDraftState) : buildEmptyDraftBoardListing(userTeamId);
+  },
+  async autoAdvanceDraft() {
+    const draftTeamId = activeDraftState?.userTeamId ?? userTeamId;
+    if (!activeDraftState) {
+      refreshDraftBoard(draftTeamId, activeDraftMode ?? 'annual');
+    }
+    if (!activeDraftState) {
+      return buildEmptyDraftBoardListing(draftTeamId);
+    }
+
+    const playersById = buildPlayersByIdMap();
+    activeDraftState = runAIPicksUntilUserTurn(activeDraftState, playersById);
+    players = Array.from(playersById.values());
     cache.invalidate();
+    return buildDraftBoardListing(activeDraftState);
+  },
+  async completeDraft() {
+    if (!activeDraftState) {
+      return { draftedCount: 0 };
+    }
+
+    const playersById = buildPlayersByIdMap();
+    const result = completeDraftBoard(activeDraftState, playersById);
+    players = Array.from(playersById.values());
+    activeDraftState = null;
+    activeDraftMode = null;
+    cache.invalidate();
+    return result;
   },
   async completeAnnualDraft() {
+    if (!activeDraftState) {
+      return { draftedCount: 0 };
+    }
+
+    const playersById = buildPlayersByIdMap();
+    const result = completeDraftBoard(activeDraftState, playersById);
+    players = Array.from(playersById.values());
+    if (latestOffseasonRecap) {
+      latestOffseasonRecap = {
+        ...latestOffseasonRecap,
+        draftResult: {
+          picks: activeDraftState.picks.map((pick) => ({
+            playerId: pick.playerId,
+            playerName: pick.playerName,
+            teamId: pick.teamId,
+            round: pick.round,
+            pick: pick.pick ?? pick.pickNumber,
+            position: String(pick.position),
+            type: pick.type ?? 'amateur',
+          })),
+        },
+      };
+    }
     activeDraftState = null;
+    activeDraftMode = null;
     cache.invalidate();
+    return result;
   },
 
   // Awards/stats/leaderboards
@@ -3292,16 +3422,21 @@ export interface DraftBoardListing {
   currentRound: number;
   currentPickInRound: number;
   overallPick: number;
+  draftOrder: number[];
   teamOnClockId: number | null;
+  pickingTeamId: number | null;
+  pickingTeamAbbr: string;
+  isUserTurn: boolean;
   completed: boolean;
-  picks: DraftPick[];
+  isComplete: boolean;
+  picks: DraftBoardPick[];
   available: DraftBoardEntry[];
 }
 
 export interface DraftPickResponse {
   ok: boolean;
   reason?: string;
-  pick?: DraftPick;
+  pick?: DraftBoardPick;
   board?: DraftBoardListing;
 }
 
@@ -3338,14 +3473,18 @@ export interface TeamStandingRow {
   city: string;
   name: string;
   abbreviation: string;
+  league: 'AL' | 'NL';
+  division: 'East' | 'Central' | 'West';
   conferenceId: number;
   divisionId: number;
   wins: number;
   losses: number;
-  pct: string;
+  pct: number;
+  gb: number;
   runsScored: number;
   runsAllowed: number;
   pythWins: number;
+  pythagWins: number;
   divisionRank: number;
 }
 
@@ -4161,11 +4300,12 @@ function sourceTeamSeasonsForDraft(): TeamSeason[] {
   }));
 }
 
-function refreshDraftBoard(userTeamId: number): void {
+function refreshDraftBoard(userTeamId: number, mode: DraftMode = activeDraftMode ?? 'annual'): void {
   if (!gen) {
     gen = createPRNG(rngSeed + currentSeason + 1000);
   }
 
+  activeDraftMode = mode;
   removeDraftEligiblePool();
   const sourceTeamSeasons = sourceTeamSeasonsForDraft();
   let draftState: DraftBoardState;
@@ -4176,6 +4316,7 @@ function refreshDraftBoard(userTeamId: number): void {
     currentSeason,
     userTeamId,
     gen,
+    { mode },
   );
 
   if (draftPlayers.length > 0) {
@@ -4186,10 +4327,34 @@ function refreshDraftBoard(userTeamId: number): void {
   activeDraftState = runAIPicksUntilUserTurn(draftState, playersById);
 }
 
+function buildEmptyDraftBoardListing(teamId: number): DraftBoardListing {
+  return {
+    season: currentSeason,
+    userTeamId: teamId,
+    totalRounds: 20,
+    currentRound: 1,
+    currentPickInRound: 0,
+    overallPick: 1,
+    draftOrder: [],
+    teamOnClockId: null,
+    pickingTeamId: null,
+    pickingTeamAbbr: '',
+    isUserTurn: false,
+    completed: true,
+    isComplete: true,
+    picks: [],
+    available: [],
+  };
+}
+
 function buildDraftBoardListing(state: DraftBoardState): DraftBoardListing {
+  const teamOnClock = teamOnClockId(state);
   const available = state.board
     .filter((entry) => entry.draftedByTeamId == null)
-    .sort((a, b) => b.scoutRank - a.scoutRank);
+    .sort((a, b) => a.rank - b.rank || b.scoutedPot - a.scoutedPot || a.playerId - b.playerId);
+  const pickingTeamAbbr = teamOnClock == null
+    ? ''
+    : teams.find((team) => team.teamId === teamOnClock)?.abbreviation ?? `T${teamOnClock}`;
 
   return {
     season: state.season,
@@ -4198,8 +4363,13 @@ function buildDraftBoardListing(state: DraftBoardState): DraftBoardListing {
     currentRound: state.currentRound,
     currentPickInRound: state.currentPickInRound,
     overallPick: state.overallPick,
-    teamOnClockId: teamOnClockId(state),
+    draftOrder: [...state.draftOrder],
+    teamOnClockId: teamOnClock,
+    pickingTeamId: teamOnClock,
+    pickingTeamAbbr,
+    isUserTurn: teamOnClock === state.userTeamId,
     completed: state.completed,
+    isComplete: state.completed,
     picks: [...state.picks],
     available,
   };
@@ -4594,10 +4764,10 @@ function buildStandings(data: {
   teamSeasons: TeamSeason[];
   gameResults: GameResult[];
 }): TeamStandingRow[] {
-  return data.teamSeasons.map((ts) => {
+  const rows = data.teamSeasons.map((ts) => {
     const team = teams.find((t) => t.teamId === ts.teamId)!;
     const totalGames = ts.wins + ts.losses;
-    const pct = totalGames > 0 ? (ts.wins / totalGames).toFixed(3) : '.000';
+    const pct = totalGames > 0 ? ts.wins / totalGames : 0;
     const pythWins = totalGames > 0
       ? Math.round(pythagoreanWins(ts.runsScored, ts.runsAllowed, totalGames))
       : 0;
@@ -4607,15 +4777,37 @@ function buildStandings(data: {
       city: team.city,
       name: team.name,
       abbreviation: team.abbreviation,
+      league: team.league,
+      division: team.division,
       conferenceId: team.conferenceId,
       divisionId: team.divisionId,
       wins: ts.wins,
       losses: ts.losses,
       pct,
+      gb: 0,
       runsScored: ts.runsScored,
       runsAllowed: ts.runsAllowed,
       pythWins,
+      pythagWins: pythWins,
       divisionRank: ts.divisionRank,
+    };
+  });
+
+  const leaders = new Map<string, { teamId: number; wins: number; losses: number }>();
+  for (const row of rows) {
+    const key = `${row.league}-${row.division}`;
+    const current = leaders.get(key);
+    if (!current || row.wins > current.wins || (row.wins === current.wins && row.losses < current.losses)) {
+      leaders.set(key, { teamId: row.teamId, wins: row.wins, losses: row.losses });
+    }
+  }
+
+  return rows.map((row) => {
+    const leader = leaders.get(`${row.league}-${row.division}`);
+    if (!leader || leader.teamId === row.teamId) return row;
+    return {
+      ...row,
+      gb: ((leader.wins - row.wins) + (row.losses - leader.losses)) / 2,
     };
   });
 }

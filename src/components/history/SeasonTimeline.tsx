@@ -16,7 +16,26 @@ type TimelineEntry = {
   icon: string;
   headline: string;
   body: string;
-  category: 'award' | 'division' | 'development' | 'retirement' | 'trade' | 'moment' | 'summary' | 'league' | 'milestone' | 'rumor';
+  category:
+    | 'award'
+    | 'division'
+    | 'development'
+    | 'retirement'
+    | 'trade'
+    | 'moment'
+    | 'summary'
+    | 'league'
+    | 'milestone'
+    | 'rumor'
+    | 'injury'
+    | 'transaction'
+    | 'signing'
+    | 'standings'
+    | 'playoff'
+    | 'draft'
+    | 'clubhouse'
+    | 'ownership'
+    | 'record';
   isUserTeam: boolean;
   priority: number;
 };
@@ -73,6 +92,15 @@ const CATEGORY_COLORS: Record<string, string> = {
   league: '#06b6d4',
   milestone: '#eab308',
   rumor: '#94a3b8',
+  injury: '#ef4444',
+  transaction: '#94a3b8',
+  signing: '#3b82f6',
+  standings: '#06b6d4',
+  playoff: '#f97316',
+  draft: '#a855f7',
+  clubhouse: '#fb923c',
+  ownership: '#eab308',
+  record: '#14b8a6',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -86,6 +114,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   league: 'LEAGUE',
   milestone: 'MILESTONE',
   rumor: 'RUMOR',
+  injury: 'INJURY',
+  transaction: 'TRANSACTION',
+  signing: 'SIGNING',
+  standings: 'STANDINGS',
+  playoff: 'PLAYOFF',
+  draft: 'DRAFT',
+  clubhouse: 'CLUBHOUSE',
+  ownership: 'OWNERSHIP',
+  record: 'RECORD',
 };
 
 type FilterMode = 'all' | 'my-team' | 'awards' | 'trades' | 'moments';

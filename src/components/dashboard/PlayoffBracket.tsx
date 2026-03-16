@@ -3,6 +3,16 @@ import type { PlayoffBracket, PlayoffSeries } from '../../engine/sim/playoffSimu
 import { useGameStore } from '../../store/gameStore';
 import { getEngine } from '../../engine/engineClient';
 
+function isRenderableSeries(series: PlayoffSeries | null | undefined): series is PlayoffSeries {
+  return Boolean(
+    series &&
+    series.higherSeed &&
+    series.lowerSeed &&
+    typeof series.higherSeed.teamId === 'number' &&
+    typeof series.lowerSeed.teamId === 'number',
+  );
+}
+
 // ─── Series card ──────────────────────────────────────────────────────────────
 
 function SeriesCard({ series, userTeamId }: { series: PlayoffSeries; userTeamId: number }) {
@@ -119,18 +129,26 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
     return () => { cancelled = true; };
   }, [bracket]);
 
+  const alTeams = Array.isArray((bracket as Partial<PlayoffBracket>).alTeams) ? bracket.alTeams : [];
+  const nlTeams = Array.isArray((bracket as Partial<PlayoffBracket>).nlTeams) ? bracket.nlTeams : [];
+  const wildCardRound = Array.isArray((bracket as Partial<PlayoffBracket>).wildCardRound) ? bracket.wildCardRound.filter(isRenderableSeries) : [];
+  const divisionSeries = Array.isArray((bracket as Partial<PlayoffBracket>).divisionSeries) ? bracket.divisionSeries.filter(isRenderableSeries) : [];
+  const championshipSeries = Array.isArray((bracket as Partial<PlayoffBracket>).championshipSeries) ? bracket.championshipSeries.filter(isRenderableSeries) : [];
+  const worldSeries = isRenderableSeries(bracket.worldSeries ?? undefined) ? bracket.worldSeries : null;
+
   const allPlayoffTeamIds = new Set([
-    ...bracket.alTeams.map(t => t.teamId),
-    ...bracket.nlTeams.map(t => t.teamId),
+    ...alTeams.map(t => t.teamId),
+    ...nlTeams.map(t => t.teamId),
   ]);
   const userMadePlayoffs = allPlayoffTeamIds.has(userTeamId);
 
-  const alWC = bracket.wildCardRound.filter((_, i) => i < 2);
-  const nlWC = bracket.wildCardRound.filter((_, i) => i >= 2);
-  const alDS = bracket.divisionSeries.filter((_, i) => i < 2);
-  const nlDS = bracket.divisionSeries.filter((_, i) => i >= 2);
-  const alCS = bracket.championshipSeries.filter((_, i) => i === 0);
-  const nlCS = bracket.championshipSeries.filter((_, i) => i === 1);
+  const alWC = wildCardRound.filter((_, i) => i < 2);
+  const nlWC = wildCardRound.filter((_, i) => i >= 2);
+  const alDS = divisionSeries.filter((_, i) => i < 2);
+  const nlDS = divisionSeries.filter((_, i) => i >= 2);
+  const alCS = championshipSeries.filter((_, i) => i === 0);
+  const nlCS = championshipSeries.filter((_, i) => i === 1);
+  const hasBracketData = alWC.length > 0 || nlWC.length > 0 || alDS.length > 0 || nlDS.length > 0 || alCS.length > 0 || nlCS.length > 0 || worldSeries !== null;
 
   return (
     <div className="bloomberg-border bg-gray-900">
@@ -151,9 +169,9 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
           {bracket.championId === userTeamId && (
             <div className="text-yellow-300 text-xs mt-1 font-bold">YOUR FRANCHISE WINS IT ALL!</div>
           )}
-          {bracket.worldSeries && (
+          {worldSeries && (
             <div className="text-gray-500 text-xs mt-2 tabular-nums">
-              World Series: {bracket.worldSeries.higherSeedWins}-{bracket.worldSeries.lowerSeedWins}
+              World Series: {worldSeries.higherSeedWins}-{worldSeries.lowerSeedWins}
             </div>
           )}
           {mvp && (
@@ -174,8 +192,15 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
       </div>
 
       <div className="p-4 overflow-x-auto">
+        {!hasBracketData && (
+          <div className="text-gray-500 text-xs py-6 text-center">
+            Postseason bracket data is not available for this save yet.
+          </div>
+        )}
+
         {/* AL Bracket */}
-        <div className="mb-6">
+        {hasBracketData && (
+          <div className="mb-6">
           <div className="text-gray-500 text-[10px] font-bold tracking-[0.15em] mb-3 border-b border-gray-800 pb-1">
             AMERICAN LEAGUE
           </div>
@@ -186,21 +211,22 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
             <Connector />
             <RoundColumn title="ALCS" series={alCS} userTeamId={userTeamId} />
           </div>
-        </div>
+          </div>
+        )}
 
         {/* World Series */}
-        {bracket.worldSeries && (
+        {worldSeries && (
           <div className="mb-6 flex flex-col items-center">
             <div className="text-orange-500 text-[10px] font-bold tracking-[0.15em] mb-3 border-b border-orange-800 pb-1 px-8">
               WORLD SERIES
             </div>
-            <SeriesCard series={bracket.worldSeries} userTeamId={userTeamId} />
-            {bracket.worldSeries.games.length > 0 && (
+            <SeriesCard series={worldSeries} userTeamId={userTeamId} />
+            {(worldSeries.games ?? []).length > 0 && (
               <div className="mt-3 space-y-0.5">
-                {bracket.worldSeries.games.map(g => {
+                {(worldSeries.games ?? []).map(g => {
                   const findAbbr = (id: number) =>
-                    bracket.alTeams.find(t => t.teamId === id)?.abbreviation ??
-                    bracket.nlTeams.find(t => t.teamId === id)?.abbreviation ?? '???';
+                    alTeams.find(t => t.teamId === id)?.abbreviation ??
+                    nlTeams.find(t => t.teamId === id)?.abbreviation ?? '???';
                   return (
                     <div key={g.gameNumber} className="text-gray-500 text-[10px] flex items-center gap-2 justify-center tabular-nums">
                       <span className="text-gray-500 w-5">G{g.gameNumber}</span>
@@ -220,7 +246,8 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
         )}
 
         {/* NL Bracket */}
-        <div>
+        {hasBracketData && (
+          <div>
           <div className="text-gray-500 text-[10px] font-bold tracking-[0.15em] mb-3 border-b border-gray-800 pb-1">
             NATIONAL LEAGUE
           </div>
@@ -231,7 +258,8 @@ export default function PlayoffBracketView({ bracket }: { bracket: PlayoffBracke
             <Connector />
             <RoundColumn title="NLCS" series={nlCS} userTeamId={userTeamId} />
           </div>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -26,7 +26,7 @@ export default function FrontOfficeBriefing() {
     gamePhase, seasonPhase, seasonsManaged,
   } = useGameStore();
 
-  const { standings, roster, franchiseHistory } = useLeagueStore();
+  const { standings, roster, franchiseHistory, teamChemistry, clubhouseEvents } = useLeagueStore();
   const { setActiveTab } = useUIStore();
 
   const standingsRows = standings?.standings ?? null;
@@ -35,18 +35,18 @@ export default function FrontOfficeBriefing() {
   const scoutingQuality = 0.6;
 
   const dials = useMemo(() => buildDials({
-    ownerPatience, teamMorale, scoutingQuality, roster, standings: standingsRows,
+    ownerPatience, teamMorale, teamChemistry, clubhouseEvents, scoutingQuality, roster, standings: standingsRows,
     userTeamId, gamePhase,
-  }), [ownerPatience, teamMorale, scoutingQuality, roster, standingsRows, userTeamId, gamePhase]);
+  }), [ownerPatience, teamMorale, teamChemistry, clubhouseEvents, scoutingQuality, roster, standingsRows, userTeamId, gamePhase]);
 
   const threads = useMemo(() => buildStoryThreads({
-    ownerPatience, teamMorale, ownerArchetype, roster, standings: standingsRows,
+    ownerPatience, teamMorale, teamChemistry, clubhouseEvents, ownerArchetype, roster, standings: standingsRows,
     userTeamId, gamePhase, seasonPhase, seasonsManaged, franchiseHistory,
-  }), [ownerPatience, teamMorale, ownerArchetype, roster, standingsRows, userTeamId, gamePhase, seasonPhase, seasonsManaged, franchiseHistory]);
+  }), [ownerPatience, teamMorale, teamChemistry, clubhouseEvents, ownerArchetype, roster, standingsRows, userTeamId, gamePhase, seasonPhase, seasonsManaged, franchiseHistory]);
 
   const actions = useMemo(() => buildActionQueue({
-    roster, ownerPatience, gamePhase, seasonPhase, teamMorale,
-  }), [roster, ownerPatience, gamePhase, seasonPhase, teamMorale]);
+    roster, ownerPatience, gamePhase, seasonPhase, teamMorale, teamChemistry, clubhouseEvents,
+  }), [roster, ownerPatience, gamePhase, seasonPhase, teamMorale, teamChemistry, clubhouseEvents]);
 
   const teamName = getTeamName(userTeamId);
 

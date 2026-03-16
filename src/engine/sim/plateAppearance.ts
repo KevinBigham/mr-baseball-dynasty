@@ -16,6 +16,16 @@ export interface PAInput {
   timesThrough: number; // 1, 2, or 3+ (for TTO penalty)
   parkFactor: ParkFactor;
   defenseRating: number; // 0–550 team defense quality
+  /**
+   * Batting-team chemistry bonus (RFC 6.1 + 6.2).
+   * Positive = batter benefits (more contact, fewer Ks). Bounded [−0.035, +0.025].
+   */
+  batterChemBonus?: number;
+  /**
+   * Pitching-team chemistry bonus (RFC 6.2).
+   * Positive = pitcher is better (more Ks). Bounded [−0.003, +0.003].
+   */
+  pitcherChemBonus?: number;
 }
 
 // ─── Modifier computation ─────────────────────────────────────────────────────
@@ -281,6 +291,18 @@ export function resolvePlateAppearance(
 
   const hRates = hitterToRates(h);
   const pRates = pitcherToRates(p);
+
+  // Apply chemistry modifiers (RFC 6.1 + 6.2) before base modifier computation.
+  // batterChemBonus > 0 → batter makes more contact → fewer Ks.
+  // pitcherChemBonus > 0 → pitcher is better → more Ks.
+  const bcb = input.batterChemBonus ?? 0;
+  const pcb = input.pitcherChemBonus ?? 0;
+  if (bcb !== 0) {
+    hRates.kRate = Math.max(0.05, hRates.kRate * (1 - bcb));
+  }
+  if (pcb !== 0) {
+    pRates.kRate = Math.min(0.38, Math.max(0.08, pRates.kRate * (1 + pcb)));
+  }
 
   // Compute combined modifier (fatigue + TTO + platoon)
   const fatigue = computeFatigue(p, input.pitchCount);

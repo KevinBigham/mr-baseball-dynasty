@@ -85,13 +85,18 @@ function OwnerPatiencePanel() {
 
 function MoralePanel() {
   const { teamMorale } = useGameStore();
-  const status = getMoraleStatus(teamMorale);
-  const pct    = teamMorale / 100;
+  const { teamChemistry, clubhouseEvents } = useLeagueStore();
+  const morale = teamChemistry?.morale ?? teamMorale;
+  const cohesion = teamChemistry?.cohesion ?? morale;
+  const status = getMoraleStatus(morale);
+  const pct    = morale / 100;
+  const recentEvent = clubhouseEvents[0] ?? null;
+  const cohesionColor = cohesion >= 65 ? '#4ade80' : cohesion >= 45 ? '#fbbf24' : '#ef4444';
 
   // 5-pip indicator
   const pips = Array.from({ length: 5 }, (_, i) => {
     const threshold = (i + 1) * 20;
-    return teamMorale >= threshold;
+    return morale >= threshold;
   });
 
   return (
@@ -104,11 +109,23 @@ function MoralePanel() {
             <div className="font-bold text-xs tracking-widest" style={{ color: status.color }}>
               {status.emoji} {status.label}
             </div>
-            <div className="text-gray-500 text-xs mt-0.5">Team chemistry & confidence</div>
+            <div className="text-gray-500 text-xs mt-0.5">Worker-owned chemistry pulse</div>
           </div>
           <div className="font-black text-2xl tabular-nums" style={{ color: status.color }}>
-            {teamMorale}
+            {morale}
           </div>
+        </div>
+
+        <div className="rounded px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-500 text-[10px] uppercase">Cohesion</span>
+            <span className="text-xs font-bold" style={{ color: cohesionColor }}>{cohesion}</span>
+          </div>
+          {recentEvent && (
+            <div className="text-gray-500 text-[10px] mt-1.5 leading-snug">
+              {recentEvent.description}
+            </div>
+          )}
         </div>
 
         {/* Pips */}
@@ -252,6 +269,16 @@ const TYPE_STYLES: Record<string, { border: string; bg: string }> = {
   league:      { border: 'rgba(96,165,250,0.3)',  bg: 'rgba(96,165,250,0.04)' },
   rumor:       { border: 'rgba(167,139,250,0.3)', bg: 'rgba(167,139,250,0.04)' },
   milestone:   { border: 'rgba(251,191,36,0.4)',  bg: 'rgba(251,191,36,0.05)' },
+  injury:      { border: 'rgba(248,113,113,0.35)', bg: 'rgba(127,29,29,0.18)' },
+  transaction: { border: 'rgba(148,163,184,0.3)', bg: 'rgba(30,41,59,0.22)' },
+  trade:       { border: 'rgba(34,197,94,0.35)', bg: 'rgba(20,83,45,0.18)' },
+  signing:     { border: 'rgba(59,130,246,0.35)', bg: 'rgba(30,58,138,0.18)' },
+  standings:   { border: 'rgba(59,130,246,0.35)', bg: 'rgba(30,64,175,0.14)' },
+  playoff:     { border: 'rgba(251,191,36,0.4)', bg: 'rgba(120,53,15,0.18)' },
+  draft:       { border: 'rgba(168,85,247,0.35)', bg: 'rgba(88,28,135,0.18)' },
+  clubhouse:   { border: 'rgba(249,115,22,0.35)', bg: 'rgba(124,45,18,0.18)' },
+  ownership:   { border: 'rgba(250,204,21,0.35)', bg: 'rgba(113,63,18,0.18)' },
+  record:      { border: 'rgba(45,212,191,0.35)', bg: 'rgba(17,94,89,0.18)' },
 };
 
 function NewsCard({ item, isUserTeam }: { item: NewsItem; isUserTeam?: boolean }) {

@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "mr-baseball-dynasty",
-      "runtimeExecutable": "/Users/kevin/.nvm/versions/node/v24.14.0/bin/node",
-      "runtimeArgs": ["/Users/kevin/.nvm/versions/node/v24.14.0/bin/npm", "run", "dev"],
+      "name": "dev",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/tkevinbigham/Downloads/MBD/mr-baseball-dynasty-clean && ./node_modules/.bin/vite --host"],
       "port": 5173
     }
   ]

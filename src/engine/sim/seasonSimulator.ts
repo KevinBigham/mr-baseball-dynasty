@@ -4,6 +4,7 @@ import type { SimulateGameInput } from './gameSimulator';
 import type { GameResult, ScheduleEntry } from '../../types/game';
 import type { Player, PlayerSeason, PlayerSeasonStats, PitcherGameStats } from '../../types/player';
 import type { Team, TeamSeason, TeamSeasonStats } from '../../types/team';
+import type { TeamChemistryState } from '../../types/chemistry';
 import type { SeasonResult } from '../../types/league'; // used internally by simulateSeasonFromSchedule
 import type { RandomGenerator } from '../math/prng';
 import { processSeasonInjuries, type InjuryEvent } from '../injuries';
@@ -122,6 +123,8 @@ async function simulateSeasonFromSchedule(
     userRotationOrder?: number[];
     injuryRateMultiplier?: number;
     recoverySpeedMultiplier?: number;
+    /** Per-team chemistry state from the previous season. Used to apply RFC 6.1 + 6.2 modifiers. */
+    teamChemistry?: Map<number, TeamChemistryState>;
   },
 ): Promise<SeasonResult> {
   const season = options?.season ?? new Date().getFullYear();
@@ -204,6 +207,8 @@ async function simulateSeasonFromSchedule(
       awayTeam: awayWithRotation,
       players,
       seed: gameSeed,
+      homeChemistry: options?.teamChemistry?.get(entry.homeTeamId),
+      awayChemistry: options?.teamChemistry?.get(entry.awayTeamId),
       ...(isUserGame ? {
         userTeamId: options!.userTeamId,
         userLineupOrder: options!.userLineupOrder,
@@ -364,7 +369,11 @@ export async function simulateSeason(
   _season: number,
   baseSeed: number,
   onProgress?: (complete: number, total: number) => void,
-  _options?: { injuryRiskMultipliers?: Map<number, number> },
+  _options?: {
+    injuryRiskMultipliers?: Map<number, number>;
+    /** Per-team chemistry state (from previous season offseason advance). Wires RFC 6.1 + 6.2 modifiers. */
+    teamChemistry?: Map<number, TeamChemistryState>;
+  },
 ): Promise<SeasonSimResult> {
   const schedule = generateScheduleTemplate();
   const total = schedule.length;
@@ -372,7 +381,7 @@ export async function simulateSeason(
   const result = await simulateSeasonFromSchedule(teams, players, schedule, baseSeed, onProgress
     ? (pct: number) => onProgress(Math.round(pct * total), total)
     : undefined,
-    { season: _season },
+    { season: _season, teamChemistry: _options?.teamChemistry },
   );
 
   // Convert TeamSeasonStats[] → TeamSeason[]

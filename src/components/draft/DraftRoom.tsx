@@ -3,8 +3,9 @@ import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
-import type { DraftBoardState, DraftPick } from '../../engine/draft/draftAI';
-import type { DraftProspect } from '../../engine/draft/draftPool';
+import type { DraftPick } from '../../engine/draft/draftAI';
+import type { DraftBoardEntry } from '../../engine/draft';
+import type { DraftBoardListing } from '../../engine/worker';
 import AnalystReaction from './AnalystReaction';
 import DraftGradeReport from './DraftGradeReport';
 import CoachTip from '../shared/CoachTip';
@@ -47,7 +48,7 @@ function ProspectRow({
   selected,
   onSelect,
 }: {
-  prospect: DraftProspect;
+  prospect: DraftBoardEntry;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -84,7 +85,7 @@ export default function DraftRoom() {
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
 
-  const [board, setBoard] = useState<DraftBoardState | null>(null);
+  const [board, setBoard] = useState<DraftBoardListing | null>(null);
   const [posFilter, setPosFilter] = useState<PosFilter>('ALL');
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,17 +99,14 @@ export default function DraftRoom() {
       try {
         const engine = getEngine();
         const state = await engine.getDraftBoard();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setBoard(state as DraftBoardState);
+        setBoard(state);
         setLoading(false);
 
         // If it's not the user's turn at start, auto-advance
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        if (!(state as DraftBoardState).isUserTurn && !(state as DraftBoardState).isComplete) {
+        if (!state.isUserTurn && !state.isComplete) {
           setAdvancing(true);
           const updated = await engine.autoAdvanceDraft();
-          // @ts-expect-error Sprint 04 stub — contract alignment pending
-          setBoard(updated as DraftBoardState);
+          setBoard(updated);
           setAdvancing(false);
         }
       } catch (e) {
@@ -132,9 +130,14 @@ export default function DraftRoom() {
     try {
       const engine = getEngine();
       const pickedName = board.available.find(p => p.playerId === selectedPlayerId)?.name ?? 'Unknown';
-      let updated = await engine.makeDraftPick(selectedPlayerId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setBoard(updated as DraftBoardState);
+      const result = await engine.makeDraftPick(selectedPlayerId);
+      if (!result.ok || !result.board) {
+        setError(result.reason ?? 'Failed to make draft pick.');
+        return;
+      }
+
+      let updated = result.board;
+      setBoard(updated);
       setSelectedPlayerId(null);
 
       useUIStore.getState().addToast(`📋 Drafted ${pickedName}!`, 'success', {
@@ -142,12 +145,9 @@ export default function DraftRoom() {
       });
 
       // Auto-advance AI picks
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      if (!(updated as DraftBoardState).isComplete && !(updated as DraftBoardState).isUserTurn) {
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
+      if (!updated.isComplete && !updated.isUserTurn) {
         updated = await engine.autoAdvanceDraft();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setBoard(updated as DraftBoardState);
+        setBoard(updated);
       }
     } catch (e) {
       setError(String(e));
@@ -162,14 +162,13 @@ export default function DraftRoom() {
     setAdvancing(true);
     try {
       const engine = getEngine();
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       let updated = await engine.autoPickForUser();
-      setBoard(updated as DraftBoardState);
+      setBoard(updated);
       setSelectedPlayerId(null);
 
-      if (!(updated as DraftBoardState).isComplete && !(updated as DraftBoardState).isUserTurn) {
+      if (!updated.isComplete && !updated.isUserTurn) {
         updated = await engine.autoAdvanceDraft();
-        setBoard(updated as DraftBoardState);
+        setBoard(updated);
       }
     } catch (e) {
       setError(String(e));
@@ -187,7 +186,6 @@ export default function DraftRoom() {
       setSelectedTeam(userTeamId);
       setSeason(2026);
       const standings = await engine.getStandings();
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       setStandings(standings);
       setGameStarted(true);
       useUIStore.getState().addToast('🎓 Draft complete! Your new class is ready to compete.', 'success', {

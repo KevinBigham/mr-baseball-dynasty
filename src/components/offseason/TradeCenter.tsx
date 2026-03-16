@@ -772,8 +772,10 @@ export default function TradeCenter({ onTransaction, onDone }: {
   // Load team list for team selector — uses getTeams() which always has data (unlike getStandings which is empty in preseason)
   useEffect(() => {
     (async () => {
+      const engine = getEngine() as { getTeams?: () => Promise<unknown[]> };
+      if (typeof engine.getTeams !== 'function') return;
+
       try {
-        const engine = getEngine();
         const allTeams = await engine.getTeams();
         setTeams(
           (allTeams as any[]).map((t) => ({
@@ -782,8 +784,8 @@ export default function TradeCenter({ onTransaction, onDone }: {
             abbreviation: t.abbreviation ?? t.name?.slice(0, 3).toUpperCase() ?? '',
           }))
         );
-      } catch (err) {
-        console.error('[TradeCenter] getTeams failed:', err);
+      } catch {
+        useUIStore.getState().addToast('Could not load league team list', 'error');
       }
     })();
   }, []);

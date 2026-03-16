@@ -126,13 +126,10 @@ export function useSeasonSimulation() {
       const userLosses     = userTeamSeason?.record.losses ?? 81;
 
       const allPlayoffIds = bracket ? new Set([
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...bracket.alTeams.map(t => t.teamId),
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         ...bracket.nlTeams.map(t => t.teamId),
       ]) : new Set<number>();
       const isPlayoff  = allPlayoffIds.has(userTeamId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       const isChampion = bracket?.championId === userTeamId;
 
       // @ts-expect-error Sprint 04 stub — contract alignment pending

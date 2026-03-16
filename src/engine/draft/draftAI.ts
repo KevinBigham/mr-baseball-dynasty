@@ -8,6 +8,7 @@ import { nextInt } from '../math/prng';
 
 export interface DraftPick {
   round: number;
+  pick?: number;         // Overall pick (worker/event-log alias)
   pickNumber: number;    // Overall pick (1-indexed)
   teamId: number;
   teamAbbr: string;
@@ -15,6 +16,8 @@ export interface DraftPick {
   playerName: string;
   position: Position;
   scoutedOvr: number;
+  scoutedPot?: number;
+  type?: string;
 }
 
 export interface DraftBoardState {

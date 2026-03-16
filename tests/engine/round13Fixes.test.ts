@@ -2,6 +2,8 @@
  * Round 13 — Tests for gameplay integrity, engine hardening, and edge case fixes.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { Player, Position, HitterAttributes, PitcherAttributes } from '../../src/types/player';
 import type { Team } from '../../src/types/team';
 import type { StandingsRow } from '../../src/types/league';
@@ -190,6 +192,11 @@ describe('P0-3 — FO staff PRNG determinism', () => {
     // At least one property should differ
     const allSame = result1.every((r, i) => r.name === result2[i].name && r.ovr === result2[i].ovr);
     expect(allSame).toBe(false);
+  });
+
+  it('frontOffice generation contains no Math.random fallback', () => {
+    const src = readFileSync(resolve('src/data/frontOffice.ts'), 'utf8');
+    expect(src).not.toContain('Math.random');
   });
 });
 

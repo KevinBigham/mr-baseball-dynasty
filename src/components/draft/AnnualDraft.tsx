@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
-import type { DraftBoardState, DraftPick } from '../../engine/draft/draftAI';
-import type { DraftProspect } from '../../engine/draft/draftPool';
+import type { DraftPick } from '../../engine/draft/draftAI';
+import type { DraftBoardEntry } from '../../engine/draft';
+import type { DraftBoardListing } from '../../engine/worker';
 import { useSort, compareSortValues } from '../../hooks/useSort';
 import { SortSpan } from '../shared/SortHeader';
 
 type PosFilter = 'ALL' | 'HITTERS' | 'PITCHERS';
 type DraftSortKey = 'rank' | 'name' | 'position' | 'age' | 'ovr' | 'pot';
 
-function getDraftSortValue(p: DraftProspect, key: DraftSortKey): string | number {
+function getDraftSortValue(p: DraftBoardEntry, key: DraftSortKey): string | number {
   switch (key) {
     case 'rank': return p.rank;
     case 'name': return p.name.toLowerCase();
@@ -51,7 +52,7 @@ function MiniPickRow({ pick, isUser }: { pick: DraftPick; isUser: boolean }) {
 }
 
 export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
-  const [board, setBoard] = useState<DraftBoardState | null>(null);
+  const [board, setBoard] = useState<DraftBoardListing | null>(null);
   const [posFilter, setPosFilter] = useState<PosFilter>('ALL');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,17 +65,14 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
       try {
         const engine = getEngine();
         const state = await engine.startAnnualDraft();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setBoard(state as DraftBoardState);
+        setBoard(state);
         setLoading(false);
 
         // Auto-advance if not user's turn
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        if (!(state as DraftBoardState).isUserTurn && !(state as DraftBoardState).isComplete) {
+        if (!state.isUserTurn && !state.isComplete) {
           setAdvancing(true);
           const updated = await engine.autoAdvanceDraft();
-          // @ts-expect-error Sprint 04 stub — contract alignment pending
-          setBoard(updated as DraftBoardState);
+          setBoard(updated);
           setAdvancing(false);
         }
       } catch (e) {
@@ -95,17 +93,18 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
     setAdvancing(true);
     try {
       const engine = getEngine();
-      let updated = await engine.makeDraftPick(selectedId);
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      setBoard(updated as DraftBoardState);
+      const result = await engine.makeDraftPick(selectedId);
+      if (!result.ok || !result.board) {
+        return;
+      }
+
+      let updated = result.board;
+      setBoard(updated);
       setSelectedId(null);
 
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      if (!(updated as DraftBoardState).isComplete && !(updated as DraftBoardState).isUserTurn) {
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
+      if (!updated.isComplete && !updated.isUserTurn) {
         updated = await engine.autoAdvanceDraft();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        setBoard(updated as DraftBoardState);
+        setBoard(updated);
       }
     } finally {
       setAdvancing(false);
@@ -117,14 +116,13 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
     setAdvancing(true);
     try {
       const engine = getEngine();
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       let updated = await engine.autoPickForUser();
-      setBoard(updated as DraftBoardState);
+      setBoard(updated);
       setSelectedId(null);
 
-      if (!(updated as DraftBoardState).isComplete && !(updated as DraftBoardState).isUserTurn) {
+      if (!updated.isComplete && !updated.isUserTurn) {
         updated = await engine.autoAdvanceDraft();
-        setBoard(updated as DraftBoardState);
+        setBoard(updated);
       }
     } finally {
       setAdvancing(false);
@@ -135,8 +133,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
     setLoading(true);
     const engine = getEngine();
     const result = await engine.completeAnnualDraft();
-    // @ts-expect-error Sprint 04 stub — contract alignment pending
-    onComplete((result as { draftedCount: number }).draftedCount);
+    onComplete(result.draftedCount);
   }, [onComplete]);
 
   if (loading) {
@@ -151,7 +148,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
 
   if (!board) return null;
 
-  const filteredAvailable = (board.available ?? []).filter((p: DraftProspect) => {
+  const filteredAvailable = (board.available ?? []).filter((p: DraftBoardEntry) => {
     if (posFilter === 'HITTERS') return !p.isPitcher;
     if (posFilter === 'PITCHERS') return p.isPitcher;
     return true;
@@ -259,7 +256,7 @@ export default function AnnualDraft({ season, userTeamId, onComplete }: Props) {
               <SortSpan className="w-10 text-right" label="OVR" sortKey="ovr" currentSort={draftSort} onSort={toggleDraftSort} />
               <SortSpan className="w-10 text-right" label="POT" sortKey="pot" currentSort={draftSort} onSort={toggleDraftSort} />
             </div>
-            {sortedAvailable.slice(0, 100).map((p: DraftProspect) => (
+            {sortedAvailable.slice(0, 100).map((p: DraftBoardEntry) => (
               <div
                 key={p.playerId}
                 onClick={() => setSelectedId(p.playerId)}

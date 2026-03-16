@@ -4,6 +4,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, FO_CANDIDATES_PER_ROLE, generateFOCandidates } from '../../data/frontOffice';
+import { createPRNG } from '../../engine/math/prng';
 import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
 import type { StandingsRow } from '../../types/league';
 import type { OwnerArchetype } from '../../engine/narrative';
@@ -22,6 +23,15 @@ const TEAMS = INITIAL_TEAMS.map(t => ({
 }));
 
 const DIV_ORDER = ['AL East', 'AL Central', 'AL West', 'NL East', 'NL Central', 'NL West'];
+
+function buildFOCandidateSeed(userTeamId: number, difficulty: string, roleId: FORoleId): number {
+  let seed = (userTeamId * 1009) >>> 0;
+  const input = `${difficulty}:${roleId}`;
+  for (let i = 0; i < input.length; i++) {
+    seed = ((seed * 31) + input.charCodeAt(i)) >>> 0;
+  }
+  return seed || 1;
+}
 
 // ─── Helper components ─────────────────────────────────────────────────────────
 
@@ -437,6 +447,13 @@ function FrontOfficeScreen({ onStartGame, startError }: { onStartGame: () => voi
   const teamName = TEAMS.find(t => t.id === userTeamId)?.name ?? 'Unknown';
   const openRoles = FO_ROLES.filter(r => !frontOffice.some(s => s.roleId === r.id));
   const coreHired = frontOffice.filter(s => ['gm', 'scout_dir', 'analytics'].includes(s.roleId)).length;
+  const openCandidatePicker = useCallback((roleId: FORoleId) => {
+    const seed = buildFOCandidateSeed(userTeamId, difficulty, roleId);
+    setCandidatesFor({
+      roleId,
+      candidates: generateFOCandidates(roleId, FO_CANDIDATES_PER_ROLE[difficulty] ?? 6, createPRNG(seed)),
+    });
+  }, [difficulty, userTeamId]);
 
   const handleHire = useCallback((candidate: FOStaffMember) => {
     const projected = foSpent + candidate.salary;
@@ -591,7 +608,7 @@ function FrontOfficeScreen({ onStartGame, startError }: { onStartGame: () => voi
                 return (
                   <div
                     key={role.id}
-                    onClick={() => canAffordMin && setCandidatesFor({ roleId: role.id, candidates: generateFOCandidates(role.id, FO_CANDIDATES_PER_ROLE[difficulty] ?? 6) })}
+                    onClick={() => canAffordMin && openCandidatePicker(role.id)}
                     className="rounded-lg p-3 flex items-center gap-3 transition-all duration-100"
                     style={{
                       cursor:     canAffordMin ? 'pointer' : 'default',
@@ -687,13 +704,13 @@ export default function SetupFlow() {
     try {
       const engine = getEngine();
       const seed   = Date.now() % 2147483647;
-      await engine.newGame(seed);
+      await engine.newGame(seed, userTeamId);
 
       // FO staff lives in Zustand gameStore — no worker call needed.
 
       if (isDraftMode) {
         // Start the draft and transition to draft screen
-        await engine.startDraft();
+        await engine.startDraft(startMode);
         setUserTeamId(userTeamId);
         setSelectedTeam(userTeamId);
         setSeason(2026);
