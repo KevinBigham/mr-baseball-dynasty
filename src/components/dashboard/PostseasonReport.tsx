@@ -6,7 +6,8 @@ import { useState, useEffect } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
-import type { SeasonResult, AwardCandidate } from '../../types/league';
+import type { SeasonResult } from '../../types/league';
+import type { AwardRaceData } from '../../types/awardRace';
 import type { AwardWinner, DivisionChampion } from '../../engine/player/awards';
 import type { PlayoffBracket } from '../../engine/sim/playoffSimulator';
 import type { AIRosterMove } from '../../engine/aiRosterManager';
@@ -49,11 +50,7 @@ interface Props {
   lastBreakouts: number;
   lastBusts: number;
   playoffBracket: PlayoffBracket | null;
-  awardRaceData: {
-    mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-    cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
-    roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-  } | null;
+  awardRaceData: AwardRaceData | null;
   onEnterOffseason: () => void;
 }
 

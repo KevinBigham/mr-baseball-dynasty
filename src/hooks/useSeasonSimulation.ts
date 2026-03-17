@@ -9,7 +9,8 @@ import { getEngine } from '../engine/engineClient';
 import { useGameStore } from '../store/gameStore';
 import { useLeagueStore, generateKeyMoment, type SeasonSummary } from '../store/leagueStore';
 import { useUIStore } from '../store/uiStore';
-import type { SeasonResult, AwardCandidate } from '../types/league';
+import type { SeasonResult } from '../types/league';
+import { normalizeAwardRaceData, type AwardRaceData } from '../types/awardRace';
 import type { PressContext } from '../data/pressConference';
 import type { PlayoffBracket } from '../engine/sim/playoffSimulator';
 import {
@@ -52,11 +53,7 @@ export interface SimState {
   postSimArcPO: boolean | undefined;
   postSimArcChamp: boolean | undefined;
   playoffBracket: PlayoffBracket | null;
-  awardRaceData: {
-    mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-    cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
-    roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-  } | null;
+  awardRaceData: AwardRaceData | null;
 }
 
 export function useSeasonSimulation() {
@@ -87,7 +84,7 @@ export function useSeasonSimulation() {
   const [postSimArcPO,     setPostSimArcPO]     = useState<boolean | undefined>(undefined);
   const [postSimArcChamp,  setPostSimArcChamp]  = useState<boolean | undefined>(undefined);
   const [playoffBracket,   setPlayoffBracket]   = useState<PlayoffBracket | null>(null);
-  const [awardRaceData,    setAwardRaceData]    = useState<SimState['awardRaceData']>(null);
+  const [awardRaceData,    setAwardRaceData]    = useState<AwardRaceData | null>(null);
 
   const simulateSeason = useCallback(async () => {
     setError(null);
@@ -112,7 +109,7 @@ export function useSeasonSimulation() {
       setStandings(standings as any);
       setLeaderboard(hrLeaders as any);
       setPlayoffBracket(bracket as any);
-      setAwardRaceData(awardRace as any);
+      setAwardRaceData(normalizeAwardRaceData(awardRace));
       setSimProgress(1);
 
       // Resolve MFSN predictions

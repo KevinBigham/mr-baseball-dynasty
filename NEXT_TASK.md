@@ -13,10 +13,10 @@ When this task is complete, the Architect or Ops agent replaces it with the next
 
 TASK_ID: MBD-010
 TITLE: Fix Postseason TypeError Bug
-TASK_OWNER_ROLE: Builder
-CURRENT_STAGE: Build
-NEXT_HANDLER_ROLE: Reviewer
-STATUS: Not started
+TASK_OWNER_ROLE: Ops
+CURRENT_STAGE: Ops
+NEXT_HANDLER_ROLE: Architect
+STATUS: Review approved — Ops must stage MBD-007 + MBD-010 files explicitly (NOT git add -A), commit, push. See .codex/MBD/handoff.md for exact file list and scope caveat.
 OWNER: Codex (Builder)
 REVIEWER: Claude Code
 

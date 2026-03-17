@@ -27,7 +27,14 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -39,6 +46,9 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4

@@ -256,6 +256,7 @@ When the current task is complete and the Architect is not available:
 - [ ] **If NO: STOP. Write proposal to `ACTIVE/CONTROL/PROPOSED_NEXT_TASK.md`. End session.**
 - [ ] If YES: implement ONLY the assigned task (no extras, no scope creep)
 - [ ] Run verification: `npx tsc --noEmit && npm run test && npx vite build`
+- [ ] **Rotate `NEXT_TASK.md` metadata in place:** set `TASK_OWNER_ROLE` → Reviewer, `CURRENT_STAGE` → Review, `NEXT_HANDLER_ROLE` → Ops, update `STATUS`
 - [ ] Update `.codex/MBD/status.md`, `changelog.md`, `handoff.md` before closing
 
 ### Reviewer (Claude Code) — Before/During/After
@@ -265,7 +266,8 @@ When the current task is complete and the Architect is not available:
 - [ ] **If NO: STOP. Write proposal to `ACTIVE/CONTROL/PROPOSED_NEXT_TASK.md`. End session.**
 - [ ] If YES: review ONLY — do not implement anything
 - [ ] Flag: hidden coupling, hot-file churn, scope creep, schema risk, broken tests
-- [ ] Update `NEXT_TASK.md` status in place and update `.codex/MBD/status.md`, `handoff.md` before closing
+- [ ] **Rotate `NEXT_TASK.md` metadata in place:** set `TASK_OWNER_ROLE` → Ops, `CURRENT_STAGE` → Ops, `NEXT_HANDLER_ROLE` → Architect, update `STATUS`
+- [ ] Update `.codex/MBD/status.md`, `changelog.md`, `handoff.md` before closing
 - [ ] **Do NOT implement features unless explicitly reassigned by Architect or Kevin**
 
 ### Architect (ChatGPT) — Before/During/After

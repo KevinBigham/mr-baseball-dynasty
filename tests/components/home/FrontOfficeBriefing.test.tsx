@@ -9,7 +9,7 @@ const mockGameStore = {
   teamMorale: 60, gamePhase: 'preseason', seasonPhase: 'early', seasonsManaged: 0,
 };
 
-const mockLeagueStore = {
+const mockLeagueStore: any = {
   standings: null,
   teamChemistry: null,
   clubhouseEvents: [],

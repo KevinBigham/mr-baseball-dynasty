@@ -45,6 +45,7 @@ import type { CoachingStaff, OffseasonRecap, TeamStrategy } from '../types/offse
 import type { TransactionLogEntry, RosterTransaction, RosterStatus } from '../types/roster.ts';
 import type { OwnerEvaluation, OwnerProfile } from '../types/owner.ts';
 import type { ClubhouseEvent, TeamChemistryState } from '../types/chemistry.ts';
+import { createEmptyAwardRaceData } from '../types/awardRace.ts';
 import { validateTransaction, executeTransaction, countFortyMan, countTwentySix } from './roster/rosterManager.ts';
 import {
   aiProposeTrades,
@@ -190,6 +191,7 @@ const cache = new WorkerCache();
 let featuredGameIds: Set<number> = new Set();
 let activeDraftState: DraftBoardState | null = null;
 let activeDraftMode: DraftMode | null = null;
+let activeStartupDraftSlot: number | null = null;
 let devAssignments: Map<number, import('../engine/devPrograms').DevProgram> = new Map();
 let lineupOrders: Map<number, number[]> = new Map();
 let rotationOrders: Map<number, number[]> = new Map();
@@ -243,6 +245,7 @@ const api = {
     ownerEvaluationHistory.length = 0;
     activeDraftState = null;
     activeDraftMode = null;
+    activeStartupDraftSlot = null;
     careerHistory = new Map();
     awardsHistory = [];
     lineupOrders = new Map();
@@ -2971,8 +2974,8 @@ const api = {
   },
 
   // Draft
-  async startDraft(mode: 'snake10' | 'snake25' | 'snake26') {
-    refreshDraftBoard(userTeamId, mode);
+  async startDraft(mode: 'snake10' | 'snake25' | 'snake26', userDraftSlot: number | null = null) {
+    refreshDraftBoard(userTeamId, mode, userDraftSlot);
     return activeDraftState ? buildDraftBoardListing(activeDraftState) : buildEmptyDraftBoardListing(userTeamId);
   },
   async startAnnualDraft() {
@@ -3004,6 +3007,7 @@ const api = {
     players = Array.from(playersById.values());
     activeDraftState = null;
     activeDraftMode = null;
+    activeStartupDraftSlot = null;
     cache.invalidate();
     return result;
   },
@@ -3033,6 +3037,7 @@ const api = {
     }
     activeDraftState = null;
     activeDraftMode = null;
+    activeStartupDraftSlot = null;
     cache.invalidate();
     return result;
   },
@@ -3050,15 +3055,9 @@ const api = {
     return [...batting, ...pitching];
   },
   async getAwardRace() {
-    return latestSeasonAwards ?? {
-      season: currentSeason,
-      alMVP: { awardName: 'AL MVP', playerId: 0, playerName: '', teamId: 0, statLine: '' },
-      nlMVP: { awardName: 'NL MVP', playerId: 0, playerName: '', teamId: 0, statLine: '' },
-      alCyYoung: { awardName: 'AL Cy Young', playerId: 0, playerName: '', teamId: 0, statLine: '' },
-      nlCyYoung: { awardName: 'NL Cy Young', playerId: 0, playerName: '', teamId: 0, statLine: '' },
-      alROY: null,
-      nlROY: null,
-    };
+    // `latestSeasonAwards` contains final winners, not race leaderboards.
+    // Return an honest empty race payload until candidate tracking is implemented.
+    return createEmptyAwardRaceData();
   },
   async getStaffBonuses(_teamId?: number) {
     const targetTeamId = _teamId ?? 1;
@@ -4300,12 +4299,17 @@ function sourceTeamSeasonsForDraft(): TeamSeason[] {
   }));
 }
 
-function refreshDraftBoard(userTeamId: number, mode: DraftMode = activeDraftMode ?? 'annual'): void {
+function refreshDraftBoard(
+  userTeamId: number,
+  mode: DraftMode = activeDraftMode ?? 'annual',
+  userDraftSlot: number | null = activeStartupDraftSlot,
+): void {
   if (!gen) {
     gen = createPRNG(rngSeed + currentSeason + 1000);
   }
 
   activeDraftMode = mode;
+  activeStartupDraftSlot = mode === 'annual' ? null : userDraftSlot;
   removeDraftEligiblePool();
   const sourceTeamSeasons = sourceTeamSeasonsForDraft();
   let draftState: DraftBoardState;
@@ -4316,7 +4320,7 @@ function refreshDraftBoard(userTeamId: number, mode: DraftMode = activeDraftMode
     currentSeason,
     userTeamId,
     gen,
-    { mode },
+    { mode, userDraftSlot: activeStartupDraftSlot },
   );
 
   if (draftPlayers.length > 0) {
