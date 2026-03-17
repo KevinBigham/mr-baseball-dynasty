@@ -376,6 +376,16 @@ export function createDraftBoardState(
   let draftOrder = snake ? teamIds : buildAnnualDraftOrder(teamSeasons);
   if (snake) {
     [draftOrder, gen] = shuffleTeamIds(draftOrder, gen);
+    // P2: Honor requested startup draft slot for the user's team
+    const requestedSlot = options.userDraftSlot;
+    if (requestedSlot != null && requestedSlot >= 1 && requestedSlot <= draftOrder.length) {
+      const currentIdx = draftOrder.indexOf(userTeamId);
+      if (currentIdx !== -1) {
+        const targetIdx = requestedSlot - 1; // convert 1-based to 0-based
+        draftOrder.splice(currentIdx, 1);
+        draftOrder.splice(targetIdx, 0, userTeamId);
+      }
+    }
   }
 
   let draftPlayers: Player[];
