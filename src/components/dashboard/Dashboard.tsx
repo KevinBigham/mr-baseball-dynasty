@@ -13,9 +13,11 @@ import { useSeasonSimulation } from '../../hooks/useSeasonSimulation';
 import { useOffseasonFlow } from '../../hooks/useOffseasonFlow';
 import { useInSeasonFlow } from '../../hooks/useInSeasonFlow';
 import { getOwnerArchetype } from '../../engine/narrative';
+import type { NewsItem } from '../../engine/narrative';
 import { generatePreseasonPredictions } from '../../engine/predictions';
 import { detectArcType } from '../../engine/storyboard';
 import { generateSeasonArc } from '../../engine/storyboard';
+import type { NewsCategory, NewsPriority, NewsStory } from '../../engine/league/newsFeed';
 import { getTeamLabel } from '../../data/teamOptions';
 import {
   OwnerPatiencePanel, MoralePanel, BreakoutWatchPanel, NewsFeedPanel,
@@ -48,18 +50,61 @@ const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
 const PostseasonReport   = lazy(() => import('./PostseasonReport'));
 const OffseasonDashboard = lazy(() => import('./OffseasonDashboard'));
 
+const NEWS_ICONS: Record<NewsCategory, string> = {
+  injury: '🏥',
+  transaction: '📋',
+  trade: '🤝',
+  signing: '✍️',
+  award: '🏅',
+  development: '📈',
+  standings: '📊',
+  playoff: '🏆',
+  draft: '🧢',
+  clubhouse: '🤝',
+  ownership: '👔',
+  record: '📚',
+};
+
+const NEWS_PRIORITY: Record<NewsPriority, number> = {
+  breaking: 5,
+  major: 4,
+  minor: 2,
+  routine: 1,
+};
+
+function mapWorkerNewsItems(news: NewsStory[], userTeamId: number): NewsItem[] {
+  return news.map((story) => ({
+    id: story.id,
+    headline: story.headline,
+    body: story.body,
+    type: story.category,
+    icon: NEWS_ICONS[story.category] ?? '📰',
+    priority: NEWS_PRIORITY[story.priority] ?? 1,
+    season: story.season,
+    isUserTeam: story.teamIds.includes(userTeamId),
+    category: story.category,
+    teamIds: story.teamIds,
+    playerIds: story.playerIds,
+    gameDay: story.gameDay,
+    source: 'worker',
+  }));
+}
+
 export default function Dashboard() {
   const {
     season, userTeamId, isSimulating, simProgress, gamePhase, seasonPhase,
     setOwnerArchetype, ownerPatience, seasonsManaged,
     adjustOwnerPatience, adjustTeamMorale, setGamePhase, setSeasonPhase,
     tutorialActive, setTutorialActive, difficulty,
+    gameStarted, gamesCompleted, setTeamMorale,
   } = useGameStore();
 
   const {
     setPresserAvailable, presserAvailable, presserDone, setPresserDone,
     mfsnReport, setMFSNReport,
     poachEvent, resolvePoachEvent,
+    setStandings, setRoster, syncWorkerNewsItems,
+    setTeamChemistry, setClubhouseEvents, setPlayoffBracket, setSeasonAwards,
     standings: currentStandings,
     moments, weeklyStories,
     franchiseHistory,
@@ -84,6 +129,51 @@ export default function Dashboard() {
   useEffect(() => {
     setOwnerArchetype(getOwnerArchetype(userTeamId));
   }, [userTeamId, setOwnerArchetype]);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const engine = getEngine();
+        const [bundle, roster] = await Promise.all([
+          engine.getDashboardBundle(),
+          engine.getFullRoster(userTeamId),
+        ]);
+
+        if (cancelled) return;
+
+        setStandings({ season: bundle.season, standings: bundle.standings });
+        setRoster(roster as any);
+        syncWorkerNewsItems(mapWorkerNewsItems(bundle.news, userTeamId));
+        setTeamChemistry(bundle.userTeamChemistry);
+        setClubhouseEvents(bundle.recentClubhouseEvents);
+        setPlayoffBracket(bundle.bracket);
+        setSeasonAwards(bundle.awards);
+        if (bundle.userTeamChemistry) {
+          setTeamMorale(bundle.userTeamChemistry.morale);
+        }
+      } catch {
+        // Non-fatal: existing screen-level fetchers and stores can still render.
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [
+    gameStarted,
+    userTeamId,
+    gamePhase,
+    gamesCompleted,
+    setStandings,
+    setRoster,
+    syncWorkerNewsItems,
+    setTeamChemistry,
+    setClubhouseEvents,
+    setPlayoffBracket,
+    setSeasonAwards,
+    setTeamMorale,
+  ]);
 
   // Auto-start tutorial for rookie difficulty, first season
   useEffect(() => {

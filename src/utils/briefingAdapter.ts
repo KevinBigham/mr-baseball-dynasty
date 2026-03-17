@@ -11,15 +11,24 @@ import type { RosterData, StandingsRow } from '../types/league';
 import type { GamePhase, SeasonPhase } from '../store/gameStore';
 import type { OwnerArchetype } from '../engine/narrative';
 import type { SeasonSummary } from '../store/leagueStore';
+import type { ClubhouseEvent, TeamChemistryState } from '../types/chemistry';
 import { getOwnerStatus } from '../engine/narrative';
 import { getMoraleStatus } from '../engine/narrative';
 import { getArchetypeInfo } from '../engine/narrative';
+
+function getChemistryValues(teamMorale: number, teamChemistry?: TeamChemistryState | null) {
+  const morale = teamChemistry?.morale ?? teamMorale;
+  const cohesion = teamChemistry?.cohesion ?? morale;
+  return { morale, cohesion };
+}
 
 // ─── Dials ───────────────────────────────────────────────────────────────────
 
 export function buildDials(opts: {
   ownerPatience: number;
   teamMorale: number;
+  teamChemistry?: TeamChemistryState | null;
+  clubhouseEvents?: ClubhouseEvent[];
   scoutingQuality: number;
   roster: RosterData | null;
   standings: StandingsRow[] | null;
@@ -27,7 +36,9 @@ export function buildDials(opts: {
   gamePhase: GamePhase;
 }): BriefingDial[] {
   const ownerStatus = getOwnerStatus(opts.ownerPatience);
-  const moraleStatus = getMoraleStatus(opts.teamMorale);
+  const { morale, cohesion } = getChemistryValues(opts.teamMorale, opts.teamChemistry);
+  const moraleStatus = getMoraleStatus(morale);
+  const recentEvent = opts.clubhouseEvents?.[0] ?? null;
 
   // Contention Confidence: composite of win%, games back, and win count.
   // Signal: REAL when standings exist (derived from actual game results).
@@ -117,16 +128,20 @@ export function buildDials(opts: {
     {
       id: 'clubhouse',
       label: 'Clubhouse Temperature',
-      value: opts.teamMorale,
+      value: morale,
       status: moraleStatus.label,
       color: moraleStatus.color,
       source: 'real',
-      sourceNote: 'Tracked by the game engine based on performance and events',
-      desc: opts.teamMorale >= 70
-        ? 'The clubhouse is energized and unified.'
-        : opts.teamMorale >= 40
-        ? 'The clubhouse is stable but watchful.'
-        : 'Clubhouse tension is rising.',
+      sourceNote: recentEvent
+        ? 'Worker-owned chemistry state plus latest clubhouse event'
+        : 'Tracked by the game engine based on chemistry state',
+      desc: recentEvent
+        ? `Morale ${morale} · Cohesion ${cohesion}. ${recentEvent.description}`
+        : morale >= 70
+        ? `Morale ${morale} · Cohesion ${cohesion}. The clubhouse is energized and unified.`
+        : morale >= 40
+        ? `Morale ${morale} · Cohesion ${cohesion}. The clubhouse is stable but watchful.`
+        : `Morale ${morale} · Cohesion ${cohesion}. Clubhouse tension is rising.`,
     },
   ];
 }
@@ -136,6 +151,8 @@ export function buildDials(opts: {
 export function buildStoryThreads(opts: {
   ownerPatience: number;
   teamMorale: number;
+  teamChemistry?: TeamChemistryState | null;
+  clubhouseEvents?: ClubhouseEvent[];
   ownerArchetype: OwnerArchetype;
   roster: RosterData | null;
   standings: StandingsRow[] | null;
@@ -146,6 +163,8 @@ export function buildStoryThreads(opts: {
   franchiseHistory: SeasonSummary[];
 }): { urgent: StoryThread | null; mystery: StoryThread | null; longArc: StoryThread | null } {
   const arcInfo = getArchetypeInfo(opts.ownerArchetype);
+  const { morale, cohesion } = getChemistryValues(opts.teamMorale, opts.teamChemistry);
+  const latestClubhouseEvent = opts.clubhouseEvents?.[0] ?? null;
 
   // ── Urgent Problem ──
   // Priority cascade: owner patience > roster over limit > roster short > DFA pending > IL returns > heavy IL > low morale
@@ -197,11 +216,18 @@ export function buildStoryThreads(opts: {
         actionLabel: 'VIEW IL', actionTab: 'roster',
       };
     }
-  } else if (opts.teamMorale <= 30) {
+  } else if (latestClubhouseEvent && ['clubhouse_crisis', 'clubhouse_friction', 'morale_collapse'].includes(latestClubhouseEvent.kind)) {
+    urgent = {
+      type: 'urgent', icon: '🤝', color: latestClubhouseEvent.kind === 'clubhouse_crisis' ? '#ef4444' : '#fb923c',
+      title: 'Clubhouse Warning',
+      body: latestClubhouseEvent.description,
+      actionLabel: 'VIEW ROSTER', actionTab: 'roster',
+    };
+  } else if (morale <= 30 || (opts.teamChemistry && cohesion <= 35)) {
     urgent = {
       type: 'urgent', icon: '💀', color: '#ef4444',
-      title: 'Clubhouse Morale Collapsing',
-      body: `Team morale at ${opts.teamMorale}%. Players are frustrated. Winning fixes everything — but so do roster moves.`,
+      title: opts.teamChemistry && cohesion <= 35 ? 'Clubhouse Cohesion Fracturing' : 'Clubhouse Morale Collapsing',
+      body: `Morale ${morale} / Cohesion ${cohesion}. Winning fixes everything — but so do roster moves.`,
       actionLabel: 'VIEW ROSTER', actionTab: 'roster',
     };
   }
@@ -308,8 +334,12 @@ export function buildActionQueue(opts: {
   gamePhase: GamePhase;
   seasonPhase: SeasonPhase;
   teamMorale: number;
+  teamChemistry?: TeamChemistryState | null;
+  clubhouseEvents?: ClubhouseEvent[];
 }): ActionQueueTask[] {
   const tasks: ActionQueueTask[] = [];
+  const { morale, cohesion } = getChemistryValues(opts.teamMorale, opts.teamChemistry);
+  const latestClubhouseEvent = opts.clubhouseEvents?.[0] ?? null;
 
   // Roster illegality
   if (opts.roster) {
@@ -380,11 +410,18 @@ export function buildActionQueue(opts: {
   }
 
   // Clubhouse issues
-  if (opts.teamMorale <= 35) {
+  if (latestClubhouseEvent && ['clubhouse_crisis', 'clubhouse_friction', 'morale_collapse'].includes(latestClubhouseEvent.kind)) {
+    tasks.push({
+      id: aid(), category: 'general', priority: latestClubhouseEvent.kind === 'clubhouse_crisis' ? 'critical' : 'medium',
+      title: latestClubhouseEvent.kind === 'clubhouse_crisis' ? 'CLUBHOUSE CRISIS' : 'CLUBHOUSE TENSION',
+      subtitle: latestClubhouseEvent.description,
+      icon: '🤝', actionLabel: 'ROSTER', actionTab: 'roster',
+    });
+  } else if (morale <= 35 || (opts.teamChemistry && cohesion <= 35)) {
     tasks.push({
       id: aid(), category: 'general', priority: 'medium',
-      title: 'LOW CLUBHOUSE MORALE',
-      subtitle: `Morale at ${opts.teamMorale}% — winning or roster moves can help`,
+      title: opts.teamChemistry && cohesion <= 35 ? 'LOW CLUBHOUSE COHESION' : 'LOW CLUBHOUSE MORALE',
+      subtitle: `Morale ${morale}% · Cohesion ${cohesion}% — winning or roster moves can help`,
       icon: '😞', actionLabel: 'ROSTER', actionTab: 'roster',
     });
   }
@@ -414,10 +451,13 @@ export function buildDigest(opts: {
   roster: RosterData | null;
   ownerPatience: number;
   teamMorale: number;
+  teamChemistry?: TeamChemistryState | null;
+  clubhouseEvents?: ClubhouseEvent[];
   gamePhase: GamePhase;
   newsItems: Array<{ headline: string; icon: string; type: string }>;
 }): DigestBlock[] {
   const blocks: DigestBlock[] = [];
+  const { morale, cohesion } = getChemistryValues(opts.teamMorale, opts.teamChemistry);
 
   // Results
   if (opts.standings) {
@@ -476,11 +516,29 @@ export function buildDigest(opts: {
       {
         icon: '🏟️',
         label: 'Clubhouse Morale',
-        detail: `${opts.teamMorale}%`,
-        color: opts.teamMorale >= 55 ? '#4ade80' : opts.teamMorale >= 30 ? '#fbbf24' : '#ef4444',
+        detail: `${morale}%`,
+        color: morale >= 55 ? '#4ade80' : morale >= 30 ? '#fbbf24' : '#ef4444',
+      },
+      {
+        icon: '🧩',
+        label: 'Clubhouse Cohesion',
+        detail: `${cohesion}%`,
+        color: cohesion >= 60 ? '#4ade80' : cohesion >= 40 ? '#fbbf24' : '#ef4444',
       },
     ],
   });
+
+  if ((opts.clubhouseEvents?.length ?? 0) > 0) {
+    blocks.push({
+      section: 'CLUBHOUSE NOTES',
+      entries: opts.clubhouseEvents!.slice(0, 2).map((event) => ({
+        icon: '🤝',
+        label: event.kind.replace(/_/g, ' ').toUpperCase(),
+        detail: event.description,
+        color: ['clubhouse_crisis', 'morale_collapse'].includes(event.kind) ? '#ef4444' : '#fbbf24',
+      })),
+    });
+  }
 
   // News highlights
   if (opts.newsItems.length > 0) {

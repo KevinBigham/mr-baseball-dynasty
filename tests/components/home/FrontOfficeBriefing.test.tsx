@@ -9,8 +9,10 @@ const mockGameStore = {
   teamMorale: 60, gamePhase: 'preseason', seasonPhase: 'early', seasonsManaged: 0,
 };
 
-const mockLeagueStore = {
+const mockLeagueStore: any = {
   standings: null,
+  teamChemistry: null,
+  clubhouseEvents: [],
   roster: {
     teamId: 1, season: 2026,
     active: Array.from({ length: 26 }, (_, i) => ({
@@ -122,5 +124,29 @@ describe('FrontOfficeBriefing — zero-urgent state', () => {
     expect(allClear).toBeTruthy();
     // Check the helpful subtitle
     expect(screen.getByText(/long-term strategy/)).toBeTruthy();
+  });
+});
+
+describe('FrontOfficeBriefing — chemistry-driven urgency', () => {
+  it('surfaces clubhouse warning when chemistry event exists', () => {
+    mockLeagueStore.teamChemistry = {
+      teamId: 1,
+      cohesion: 28,
+      morale: 32,
+      lastUpdatedSeason: 2026,
+    };
+    mockLeagueStore.clubhouseEvents = [{
+      eventId: 1,
+      teamId: 1,
+      season: 2026,
+      kind: 'clubhouse_crisis',
+      description: 'Sources say the clubhouse is fractured. Multiple cliques have formed.',
+    }];
+
+    render(<FrontOfficeBriefing />);
+    expect(screen.getByTestId('urgent-card').textContent).toContain('Clubhouse Warning');
+
+    mockLeagueStore.teamChemistry = null;
+    mockLeagueStore.clubhouseEvents = [];
   });
 });

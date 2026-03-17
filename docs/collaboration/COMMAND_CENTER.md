@@ -1,48 +1,52 @@
 # COMMAND_CENTER.md
 
 ## Current sprint
-Sprint 04 — Green Branch + Promotion Prep
+Sprint 04 — Chemistry Canonicalization + Stability Hardening
 
 ## Shared branch
-`claude/baseball-dynasty-sim-UjlF2`
+`task/mbd-repo-stabilize`
 
 ## Active sessions
 
-| Agent | Branch | Session / PR | Status | Last updated |
-|---|---|---|---|---|
-| Claude (Opus 4.6) | `claude/baseball-dynasty-sim-UjlF2` | `session_011dsEjrELHhenEUteCnsDCH` | pushed / review | 2026-03-08 |
-| Codex (GPT-5.4) | `work` (local-only) | no PR — origin missing | in progress / blocked on push | 2026-03-08 |
+| Agent | Branch | Status | Last updated |
+|---|---|---|---|
+| Codex | `task/mbd-repo-stabilize` | local implementation in progress | 2026-03-15 |
+| Claude Code | review / design lane | awaiting updated diff review | 2026-03-15 |
 
 ## Lane ownership
 
 ### Codex
-Owner: control-plane, green-branch work, readiness, diagnostics, CI/test/build truth
+Owner: implementation, deterministic hardening, dashboard/store contract alignment, postseason/stability fixes
 
 ### Claude
-Owner: cadence surfaces, targeted tests, promotion packet
+Owner: architecture review, balance review, next-step design packet
 
 ## Hot files
-- Shell.tsx
-- uiStore.ts
-- worker.ts
-- src/features/*
-- save/persistence files
+- `src/engine/worker.ts`
+- `src/engine/workerCache.ts`
+- `src/store/leagueStore.ts`
+- `src/components/dashboard/*`
+- `src/components/home/*`
 
 ## Merge rule
-Nothing is "shared" until pushed.
-Nothing is "done" until reported.
-Nothing is "promoted" until reviewed.
+Nothing is shared until reviewed.
+Nothing is done until the verification gate is green.
+Do not overwrite in-flight draft/setup worker changes outside the touched hunks.
 
 ## Current blockers
-- Chemistry v1 Slice 1A is merged to public main (PR #15).
-- Archetype rename (`clubhouse_cancer` → `clubhouse_disruptor`) is complete and live.
+- Chemistry Slice 1A and 1B are implemented in source and worker persistence.
+- Dashboard/home chemistry now reads from worker-owned state, but gameplay modifiers are still deferred.
+- Front-office determinism fallback and standalone playoff bracket drift are fixed locally.
 
 ## Next architect decision
-- Slice 1A approved.
-- Claude owns Chemistry v1 Slice 1B:
-  - player bridge
-  - roster aggregation
-  - snapshot skeleton
-- Codex owns the Slice 1B review guard.
-- No UI, worker, or gameplay effect wiring in Slice 1B.
-- No broad personality schema expansion and no UI promotion in Slice 1A.
+- Phase 1 and Phase 2 work is now represented in source:
+  - typed dashboard bundle
+  - worker-owned chemistry hydration
+  - dashboard/home/franchise chemistry surfaces
+  - real playoff bracket rendering path
+  - deterministic front-office candidate generation
+  - TradeCenter error-path cleanup
+- Next task is MBD-007:
+  - bounded chemistry gameplay effects
+  - keep save compatibility
+  - keep worker changes localized

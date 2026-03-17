@@ -6,7 +6,7 @@
 import type { TeamSeason, TeamStrategy } from '../../types/team';
 import type { Player } from '../../types/player';
 import type { OwnerProfile, OwnerEvaluation } from '../../types/owner';
-import type { PlayoffBracket } from './playoffs';
+import type { PlayoffBracket } from '../sim/playoffSimulator';
 
 export interface EvaluationInput {
   season: number;

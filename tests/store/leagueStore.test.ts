@@ -136,6 +136,87 @@ describe('leagueStore — addNewsItems', () => {
   });
 });
 
+describe('leagueStore — normalization + worker sync', () => {
+  beforeEach(() => {
+    useLeagueStore.getState().resetAll();
+  });
+
+  it('normalizes raw standings arrays into store shape', () => {
+    useLeagueStore.getState().setStandings([
+      {
+        teamId: 1,
+        name: 'Test Team',
+        abbreviation: 'TST',
+        league: 'AL',
+        division: 'East',
+        wins: 50,
+        losses: 40,
+        pct: 0.556,
+        gb: 0,
+        runsScored: 400,
+        runsAllowed: 350,
+        pythagWins: 52,
+      },
+    ]);
+
+    expect(useLeagueStore.getState().standings?.standings).toHaveLength(1);
+    expect(useLeagueStore.getState().standings?.standings[0].league).toBe('AL');
+  });
+
+  it('normalizes full-roster worker payloads into store roster shape', () => {
+    useLeagueStore.getState().setRoster({
+      teamId: 1,
+      season: 2026,
+      active: [],
+      il: [],
+      dfa: [],
+      aaa: [{
+        playerId: 1,
+        name: 'AAA Player',
+        position: 'CF',
+        age: 24,
+        bats: 'R',
+        throws: 'R',
+        isPitcher: false,
+        overall: 62,
+        potential: 71,
+        rosterStatus: 'MINORS_AAA',
+        isOn40Man: true,
+        optionYearsRemaining: 2,
+        serviceTimeDays: 0,
+        salary: 100000,
+        contractYearsRemaining: 1,
+        stats: {},
+      }],
+    } as any);
+
+    expect(useLeagueStore.getState().roster?.minors).toHaveLength(1);
+    expect(useLeagueStore.getState().roster?.minors[0].name).toBe('AAA Player');
+  });
+
+  it('syncs worker news without dropping local-only items', () => {
+    useLeagueStore.getState().addNewsItems([
+      { id: 'local-1', headline: 'Press Conference', body: '', type: 'league', icon: '📰', priority: 3, season: 2026, source: 'local' },
+    ]);
+
+    useLeagueStore.getState().syncWorkerNewsItems([
+      { id: 'worker-1', headline: 'Clubhouse Update', body: '', type: 'clubhouse', icon: '🤝', priority: 4, season: 2026, source: 'worker' },
+    ]);
+
+    expect(useLeagueStore.getState().newsItems.map((item) => item.id)).toEqual(['worker-1', 'local-1']);
+  });
+
+  it('stores chemistry state and clubhouse events', () => {
+    useLeagueStore.getState().setTeamChemistry({ teamId: 1, cohesion: 80, morale: 68, lastUpdatedSeason: 2026 });
+    useLeagueStore.getState().setClubhouseEvents([
+      { eventId: 1, teamId: 1, season: 2026, kind: 'leadership_emergence', description: 'Veteran leaders have rallied the clubhouse.' },
+    ]);
+
+    expect(useLeagueStore.getState().teamChemistry?.cohesion).toBe(80);
+    expect(useLeagueStore.getState().clubhouseEvents).toHaveLength(1);
+  });
+});
+
 describe('leagueStore — trade history', () => {
   beforeEach(() => {
     useLeagueStore.getState().resetAll();

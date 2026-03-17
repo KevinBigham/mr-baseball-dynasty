@@ -8,11 +8,13 @@
  * Synthesized from 10 deep research reports on sports sim UI/UX.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
-import { getEngine } from '../../engine/engineClient';
+import { getTeamLabel } from '../../data/teamOptions';
+import type { ClubhouseEvent, TeamChemistryState } from '../../types/chemistry';
+import type { StandingsRow } from '../../types/league';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,19 +41,33 @@ const PRIORITY_STYLES = {
   info: { border: 'border-gray-700', bg: 'bg-[#0F1930]', badge: 'bg-gray-700 text-gray-300', badgeText: 'FYI' },
 };
 
+function summarizeDivisionRace(rows: StandingsRow[], userTeamId: number): { rank: number; gamesBack: number } {
+  const userRow = rows.find((row) => row.teamId === userTeamId);
+  if (!userRow) return { rank: 0, gamesBack: 0 };
+
+  const divisionRows = rows
+    .filter((row) => row.league === userRow.league && row.division === userRow.division)
+    .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.teamId - b.teamId);
+
+  return {
+    rank: divisionRows.findIndex((row) => row.teamId === userTeamId) + 1,
+    gamesBack: userRow.gb ?? 0,
+  };
+}
+
 // ─── Action Queue Builder ─────────────────────────────────────────────────────
 
 function buildActionQueue(
   gamePhase: string,
-  season: number,
   record: { w: number; l: number } | null,
   injuries: number,
   rosterSpace: { fortyMan: number; twentySix: number } | null,
+  teamChemistry: TeamChemistryState | null,
+  clubhouseEvents: ClubhouseEvent[],
   newsItems: Array<{ headline: string; category: string }>,
 ): ActionItem[] {
   const items: ActionItem[] = [];
 
-  // Injuries
   if (injuries > 0) {
     items.push({
       id: 'injuries',
@@ -62,7 +78,6 @@ function buildActionQueue(
     });
   }
 
-  // 40-man roster pressure
   if (rosterSpace && rosterSpace.fortyMan >= 38) {
     items.push({
       id: 'roster-crunch',
@@ -73,7 +88,6 @@ function buildActionQueue(
     });
   }
 
-  // Offseason prompt
   if (gamePhase === 'offseason') {
     items.push({
       id: 'offseason',
@@ -84,8 +98,7 @@ function buildActionQueue(
     });
   }
 
-  // Preseason
-  if (gamePhase === 'preseason' && season === 1) {
+  if (!record || (record.w + record.l) === 0) {
     items.push({
       id: 'welcome',
       priority: 'info',
@@ -95,7 +108,6 @@ function buildActionQueue(
     });
   }
 
-  // Season record alerts
   if (record && record.w + record.l > 20) {
     const pct = record.w / (record.w + record.l);
     if (pct < 0.400) {
@@ -117,8 +129,26 @@ function buildActionQueue(
     }
   }
 
-  // Recent news highlights
-  const recentTrade = newsItems.find(n => n.category === 'trade');
+  const latestClubhouseEvent = clubhouseEvents[0] ?? null;
+  if (latestClubhouseEvent && ['clubhouse_crisis', 'clubhouse_friction', 'morale_collapse'].includes(latestClubhouseEvent.kind)) {
+    items.push({
+      id: 'clubhouse-event',
+      priority: latestClubhouseEvent.kind === 'clubhouse_crisis' ? 'critical' : 'important',
+      headline: latestClubhouseEvent.kind === 'clubhouse_crisis' ? 'CLUBHOUSE CRISIS' : 'CLUBHOUSE TENSION',
+      detail: latestClubhouseEvent.description,
+      action: { label: 'VIEW ROSTER', tab: 'team', sub: 'roster' },
+    });
+  } else if (teamChemistry && (teamChemistry.morale <= 35 || teamChemistry.cohesion <= 35)) {
+    items.push({
+      id: 'clubhouse-health',
+      priority: 'important',
+      headline: teamChemistry.cohesion <= 35 ? 'CLUBHOUSE COHESION FALLING' : 'CLUBHOUSE MORALE FALLING',
+      detail: `Morale ${teamChemistry.morale} · Cohesion ${teamChemistry.cohesion}. Consider roster moves or leadership upgrades.`,
+      action: { label: 'ROSTER', tab: 'team', sub: 'roster' },
+    });
+  }
+
+  const recentTrade = newsItems.find((item) => item.category === 'trade');
   if (recentTrade) {
     items.push({
       id: 'recent-trade',
@@ -139,68 +169,38 @@ export default function HomeCommandCenter() {
     season, userTeamId, gamePhase, isSimulating, simProgress,
   } = useGameStore();
 
-  const { newsItems } = useLeagueStore();
+  const { standings, roster, newsItems, teamChemistry, clubhouseEvents } = useLeagueStore();
   const { navigate } = useUIStore();
 
-  const [teamName, setTeamName] = useState('');
-  const [record, setRecord] = useState<{ w: number; l: number } | null>(null);
-  const [divRank, setDivRank] = useState(0);
-  const [gamesBack, setGamesBack] = useState(0);
-  const [injuries, setInjuries] = useState(0);
-  const [rosterSpace, setRosterSpace] = useState<{ fortyMan: number; twentySix: number } | null>(null);
+  const standingsRows = standings?.standings ?? [];
+  const userRow = useMemo(() => standingsRows.find((row) => row.teamId === userTeamId) ?? null, [standingsRows, userTeamId]);
+  const divisionRace = useMemo(() => summarizeDivisionRace(standingsRows, userTeamId), [standingsRows, userTeamId]);
 
-  // Fetch live data
-  useEffect(() => {
-    (async () => {
-      try {
-        const engine = getEngine();
-        const teams = await engine.getTeams();
-        const userTeam = teams.find((t: any) => t.teamId === userTeamId);
-        if (userTeam) {
-          setTeamName(`${userTeam.city} ${userTeam.name}`);
-          setRecord({
-            w: userTeam.seasonRecord?.wins ?? 0,
-            l: userTeam.seasonRecord?.losses ?? 0,
-          });
-        }
-
-        // Try to get pennant race data
-        try {
-          const race = await engine.getPennantRace();
-          if (race) {
-            setDivRank(race.userDivisionRank ?? 0);
-            setGamesBack(race.userGamesBack ?? 0);
-          }
-        } catch { /* non-fatal */ }
-
-        // Try to get roster counts
-        try {
-          const roster = await engine.getRoster(userTeamId);
-          if (roster) {
-            const active = (roster as any[]).filter((p: any) => p.rosterStatus === 'MLB_ACTIVE').length;
-            const fortyMan = (roster as any[]).filter((p: any) => p.isOn40Man).length;
-            const injured = (roster as any[]).filter((p: any) =>
-              p.rosterStatus === 'MLB_IL_10' || p.rosterStatus === 'MLB_IL_60'
-            ).length;
-            setInjuries(injured);
-            setRosterSpace({ fortyMan, twentySix: active });
-          }
-        } catch { /* non-fatal */ }
-      } catch { /* engine not ready */ }
-    })();
-  }, [userTeamId, season, gamePhase, isSimulating]);
+  const record = userRow ? { w: userRow.wins, l: userRow.losses } : null;
+  const teamName = userRow?.name ?? getTeamLabel(userTeamId);
+  const injuries = roster?.il.length ?? 0;
+  const rosterSpace = roster ? {
+    fortyMan: roster.active.length + roster.il.length + roster.minors.length + roster.dfa.length,
+    twentySix: roster.active.length,
+  } : null;
 
   const handleAction = useCallback((tab: string, sub?: string) => {
     navigate(tab as any, sub);
   }, [navigate]);
 
-  // Build action queue
   const actions = buildActionQueue(
-    gamePhase, season, record, injuries, rosterSpace,
-    (newsItems ?? []).map((n: any) => ({ headline: n.headline ?? '', category: n.category ?? '' })),
+    gamePhase,
+    record,
+    injuries,
+    rosterSpace,
+    teamChemistry,
+    clubhouseEvents,
+    (newsItems ?? []).map((item: any) => ({
+      headline: item.headline ?? '',
+      category: item.category ?? item.type ?? '',
+    })),
   );
 
-  // Health tiles
   const healthTiles: HealthTile[] = [];
 
   if (record && (record.w + record.l > 0)) {
@@ -213,12 +213,12 @@ export default function HomeCommandCenter() {
     });
   }
 
-  if (divRank > 0) {
+  if (divisionRace.rank > 0) {
     healthTiles.push({
       label: 'DIV RANK',
-      value: `${divRank}${divRank === 1 ? 'ST' : divRank === 2 ? 'ND' : divRank === 3 ? 'RD' : 'TH'}`,
-      sub: gamesBack > 0 ? `${gamesBack} GB` : 'LEADING',
-      color: divRank === 1 ? 'text-green-400' : divRank <= 3 ? 'text-orange-400' : 'text-red-400',
+      value: `${divisionRace.rank}${divisionRace.rank === 1 ? 'ST' : divisionRace.rank === 2 ? 'ND' : divisionRace.rank === 3 ? 'RD' : 'TH'}`,
+      sub: divisionRace.gamesBack > 0 ? `${divisionRace.gamesBack} GB` : 'LEADING',
+      color: divisionRace.rank === 1 ? 'text-green-400' : divisionRace.rank <= 3 ? 'text-orange-400' : 'text-red-400',
     });
   }
 
@@ -239,6 +239,15 @@ export default function HomeCommandCenter() {
     });
   }
 
+  if (teamChemistry) {
+    healthTiles.push({
+      label: 'CLUBHOUSE',
+      value: `${teamChemistry.morale}`,
+      sub: `COH ${teamChemistry.cohesion}`,
+      color: teamChemistry.morale >= 60 ? 'text-green-400' : teamChemistry.morale >= 40 ? 'text-orange-400' : 'text-red-400',
+    });
+  }
+
   healthTiles.push({
     label: 'SEASON',
     value: `S${season}`,
@@ -248,7 +257,6 @@ export default function HomeCommandCenter() {
 
   return (
     <div className="space-y-3">
-      {/* ── Team Header + Sim Status ──────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="text-orange-500 font-bold text-sm tracking-widest uppercase">
@@ -256,8 +264,8 @@ export default function HomeCommandCenter() {
           </div>
           {record && (record.w + record.l > 0) && (
             <div className="text-gray-500 text-xs mt-0.5">
-              {record.w}-{record.l} · {divRank > 0 ? `${divRank}${divRank===1?'st':divRank===2?'nd':divRank===3?'rd':'th'} in division` : `Season ${season}`}
-              {gamesBack > 0 ? ` · ${gamesBack} GB` : divRank === 1 ? ' · DIVISION LEADER' : ''}
+              {record.w}-{record.l} · {divisionRace.rank > 0 ? `${divisionRace.rank}${divisionRace.rank === 1 ? 'st' : divisionRace.rank === 2 ? 'nd' : divisionRace.rank === 3 ? 'rd' : 'th'} in division` : `Season ${season}`}
+              {divisionRace.gamesBack > 0 ? ` · ${divisionRace.gamesBack} GB` : divisionRace.rank === 1 ? ' · DIVISION LEADER' : ''}
             </div>
           )}
         </div>
@@ -271,9 +279,8 @@ export default function HomeCommandCenter() {
         )}
       </div>
 
-      {/* ── Health Tiles ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {healthTiles.map(tile => (
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+        {healthTiles.map((tile) => (
           <div key={tile.label} className="border border-[#1E2A4A] bg-[#0F1930] rounded px-3 py-2">
             <div className="text-[9px] text-gray-500 font-bold tracking-widest">{tile.label}</div>
             <div className={`text-lg font-bold tracking-wide ${tile.color}`}>{tile.value}</div>
@@ -282,11 +289,10 @@ export default function HomeCommandCenter() {
         ))}
       </div>
 
-      {/* ── Action Queue ──────────────────────────────────────────── */}
       {actions.length > 0 && (
         <div className="space-y-2">
           <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em] uppercase">ACTION QUEUE</div>
-          {actions.slice(0, 4).map(item => {
+          {actions.slice(0, 4).map((item) => {
             const style = PRIORITY_STYLES[item.priority];
             return (
               <div key={item.id} className={`border ${style.border} ${style.bg} rounded px-3 py-2.5 flex items-start justify-between gap-3`}>
@@ -311,7 +317,6 @@ export default function HomeCommandCenter() {
         </div>
       )}
 
-      {/* ── Compact News ──────────────────────────────────────────── */}
       {(newsItems ?? []).length > 0 && (
         <div className="border border-gray-800 bg-[#0F1930] rounded overflow-hidden">
           <div className="px-3 py-1.5 bg-[#0D1628] border-b border-[#1E2A4A50]">
@@ -321,7 +326,7 @@ export default function HomeCommandCenter() {
             {(newsItems ?? []).slice(0, 4).map((item: any, i: number) => (
               <div key={item.id ?? i} className="px-3 py-2 flex items-start gap-2">
                 <span className="text-[9px] text-gray-500 font-bold shrink-0 mt-0.5">
-                  {item.category === 'trade' ? '↔' : item.category === 'injury' ? '🚑' : item.category === 'award' ? '🏆' : item.category === 'record' ? '📈' : '•'}
+                  {item.category === 'trade' ? '↔' : item.category === 'injury' ? '🚑' : item.category === 'award' ? '🏆' : item.category === 'record' ? '📈' : item.category === 'clubhouse' ? '🤝' : '•'}
                 </span>
                 <div className="min-w-0">
                   <div className="text-[10px] text-gray-300 font-semibold truncate">{item.headline}</div>

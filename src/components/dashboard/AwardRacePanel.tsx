@@ -7,12 +7,7 @@
 
 import { useState } from 'react';
 import type { AwardCandidate } from '../../types/league';
-
-interface AwardRaceData {
-  mvp:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-  cyYoung: { al: AwardCandidate[]; nl: AwardCandidate[] };
-  roy:     { al: AwardCandidate[]; nl: AwardCandidate[] };
-}
+import type { AwardRaceData } from '../../types/awardRace';
 
 // ─── Single candidate row ────────────────────────────────────────────────────
 

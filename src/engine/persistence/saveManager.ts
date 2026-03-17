@@ -9,7 +9,7 @@ import type { GameResult } from '../../types/game';
 import type { TransactionLogEntry } from '../../types/roster';
 import type { OwnerProfile, OwnerEvaluation } from '../../types/owner';
 import type { TeamChemistryState, ClubhouseEvent } from '../../types/chemistry';
-import type { PlayoffBracket } from '../league/playoffs';
+import type { PlayoffBracket } from '../sim/playoffSimulator';
 import type { SeasonAwards } from '../league/awards';
 import type { NewsStory } from '../league/newsFeed';
 import type { OffseasonRecap } from '../../types/offseason';

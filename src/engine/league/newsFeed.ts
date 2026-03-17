@@ -10,7 +10,7 @@
  */
 
 import type { InjuryEvent } from '../injuries';
-import type { PlayoffSeries } from './playoffs';
+import type { PlayoffSeries } from '../sim/playoffSimulator';
 import type { AwardWinner } from './awards';
 import type { ClubhouseEvent } from '../../types/chemistry';
 
@@ -170,7 +170,10 @@ export function generatePlayoffStory(
       ? `${winnerName} Win the World Series`
       : `${winnerName} Advance in ${roundLabel}`,
     body: `${winnerName} defeated ${loserName} in the ${roundLabel}, ${wins}–${losses}.`,
-    teamIds: [series.winnerTeamId, series.loserTeamId],
+    teamIds: [
+      series.winnerId,
+      series.winnerId === series.higherSeed.teamId ? series.lowerSeed.teamId : series.higherSeed.teamId,
+    ],
     playerIds: [],
   };
 }

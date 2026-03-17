@@ -10,6 +10,7 @@
 
 import type { SeasonResult } from '../types/league';
 import type { TeamSeasonStats } from '../types/team';
+import type { NewsCategory } from './league/newsFeed';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,11 +29,33 @@ export interface NewsItem {
   id:          string;
   headline:    string;
   body:        string;
-  type:        'award' | 'division' | 'development' | 'retirement' | 'league' | 'rumor' | 'milestone';
+  type:
+    | 'award'
+    | 'division'
+    | 'development'
+    | 'retirement'
+    | 'league'
+    | 'rumor'
+    | 'milestone'
+    | 'injury'
+    | 'transaction'
+    | 'trade'
+    | 'signing'
+    | 'standings'
+    | 'playoff'
+    | 'draft'
+    | 'clubhouse'
+    | 'ownership'
+    | 'record';
   icon:        string;
   priority:    number;  // 1–5, higher = more prominent
   season:      number;
   isUserTeam?: boolean;
+  category?:   NewsCategory;
+  teamIds?:    number[];
+  playerIds?:  number[];
+  gameDay?:    number;
+  source?:     'worker' | 'local';
 }
 
 export interface BreakoutCandidate {

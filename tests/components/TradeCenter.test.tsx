@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import TradeCenter from '../../src/components/offseason/TradeCenter';
 
 // Mock stores
@@ -21,6 +21,9 @@ vi.mock('../../src/store/uiStore', () => ({
 vi.mock('../../src/engine/engineClient', () => ({
   getEngine: () => ({
     getTradeOffers: vi.fn().mockResolvedValue([]),
+    getTeams: vi.fn().mockResolvedValue([
+      { teamId: 1, name: 'Test Team', abbreviation: 'TST' },
+    ]),
     shopPlayer: vi.fn().mockResolvedValue([]),
     findTradesForNeed: vi.fn().mockResolvedValue([]),
     getStandings: vi.fn().mockResolvedValue({
@@ -65,7 +68,9 @@ describe('TradeCenter — tabs', () => {
     await waitFor(() => {
       expect(screen.getByText('SHOP PLAYER')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('SHOP PLAYER'));
+    await act(async () => {
+      fireEvent.click(screen.getByText('SHOP PLAYER'));
+    });
     expect(screen.getByText('SHOP PLAYER')).toBeInTheDocument();
   });
 });

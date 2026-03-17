@@ -66,7 +66,7 @@ Full sabermetric implementation — not approximations:
 | pure-rand | 6.1.0 | Seedable PRNG (determinism) |
 | pako | 2.1.0 | Gzip save compression |
 | recharts | 2.12.7 | Data visualization |
-| Vitest | 2.1.4 | Testing (478+ tests) |
+| Vitest | 2.1.4 | Testing (752+ tests) |
 
 **Zero backend. Everything runs client-side.** State lives in a Web Worker. Saves compress to IndexedDB.
 
@@ -101,9 +101,9 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 |--------|-------|
 | Lines of TypeScript/TSX | ~34,800 |
 | Source files | 90+ |
-| Test suites | 56 |
-| Passing tests | 478+ |
-| Lines of test code | ~7,900 |
+| Test suites | 85 |
+| Passing tests | 752+ |
+| Lines of test code | ~9,200 |
 | Teams | 30 |
 | Generated players | ~3,700 |
 | Farm levels | 7 |
@@ -142,11 +142,48 @@ Dexie (IndexedDB)              ├► sim/plateAppearance.ts
 npm install
 npm run dev          # http://localhost:5173
 npm run typecheck    # Zero-tolerance TypeScript check
-npm run test         # All 478+ tests must pass
-npm run build        # Production build
+npm run test         # All 752+ tests must pass
+npm run build        # Production build → dist/
+npm run verify       # typecheck + test in one shot (run before any push)
 ```
 
-**Golden rule before any push:** `npm run typecheck && npm run test` — both must pass with zero errors.
+**Golden rule before any push:** `npm run verify` — both typecheck and tests must pass with zero errors.
+
+---
+
+## Deployment
+
+**Live URL:** [https://kevinbigham.github.io/mr-baseball-dynasty/](https://kevinbigham.github.io/mr-baseball-dynasty/)
+
+### How it works
+
+1. Code is developed on a feature branch (e.g. `task/mbd-repo-stabilize`)
+2. Once verified (typecheck + tests + build all green), the branch is merged to `main`
+3. A push to `main` triggers `.github/workflows/deploy.yml` automatically
+4. The workflow runs: `npm ci` → `npm run typecheck` → `npm test` → `npm run build` → publishes `dist/` to GitHub Pages
+5. GitHub Pages serves the new bundle (usually live within ~2 minutes of push)
+
+### Build → Pages path
+
+```
+src/ → npm run build → dist/ → actions/upload-pages-artifact → GitHub Pages
+```
+
+- **Build output dir:** `dist/` (gitignored locally; built fresh by CI on every deploy)
+- **Vite base path:** `/mr-baseball-dynasty/` (matches the GitHub Pages repo sub-path)
+- **Pages source:** GitHub Actions artifact (configured in repo Settings → Pages → Source)
+- **Trigger:** push to `main` OR manual `workflow_dispatch` from the Actions tab
+
+### If Pages is showing a stale bundle
+
+1. Confirm the fix branch has been merged to `main` — the deploy only fires on `main` push
+2. Check the [Actions tab](https://github.com/KevinBigham/mr-baseball-dynasty/actions) to see if the deploy workflow ran and succeeded
+3. If the workflow hasn't run, trigger it manually via `workflow_dispatch` from the Actions tab
+4. If the workflow failed, check the build logs — typecheck or test failures block deploy
+
+### Manual trigger (no code change needed)
+
+Go to **Actions → Deploy to GitHub Pages → Run workflow** and select `main`. This is useful when you want to re-deploy the current `main` state without making a code change.
 
 ---
 
@@ -166,7 +203,7 @@ The humans vibe. The AIs build. The games ship.
 
 ## Status
 
-**Fully playable.** 18 rounds of development complete. TypeScript strict mode. 478+ tests passing. Active development with a deep feature backlog.
+**Fully playable.** TypeScript strict mode. 752+ tests passing. Active development with a deep feature backlog.
 
 ---
 

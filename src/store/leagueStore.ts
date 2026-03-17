@@ -5,6 +5,9 @@ import type { RivalRecord } from '../engine/rivalry';
 import type { MFSNReport } from '../engine/predictions';
 import type { StaffPoachEvent } from '../engine/staffPoaching';
 import type { SeasonMoment } from '../engine/moments';
+import type { SeasonAwards } from '../engine/league/awards';
+import type { PlayoffBracket } from '../engine/sim/playoffSimulator';
+import type { ClubhouseEvent, TeamChemistryState } from '../types/chemistry';
 import type { WeeklyStory } from '../components/dashboard/WeeklyCard';
 
 // ─── Franchise history record ─────────────────────────────────────────────────
@@ -24,6 +27,61 @@ export interface SeasonSummary {
   keyMoment:       string;         // Generated narrative summary line
 }
 
+type StandingsLike = StandingsData | StandingsData['standings'];
+type FullRosterPayload = RosterData | (Omit<RosterData, 'minors'> & {
+  aaa?: RosterData['active'];
+  aa?: RosterData['active'];
+  aPlus?: RosterData['active'];
+  aMinus?: RosterData['active'];
+  rookie?: RosterData['active'];
+  intl?: RosterData['active'];
+  fortyManCount?: number;
+  activeCount?: number;
+});
+
+function dedupeNewsItems(items: NewsItem[]): NewsItem[] {
+  const seen = new Set<string>();
+  const deduped: NewsItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    deduped.push(item);
+  }
+  return deduped.slice(0, 50);
+}
+
+function normalizeStandings(data: StandingsLike, fallbackSeason: number): StandingsData {
+  if (Array.isArray(data)) {
+    return { season: fallbackSeason, standings: data };
+  }
+  return {
+    season: data.season,
+    standings: Array.isArray(data.standings) ? data.standings : [],
+  };
+}
+
+function normalizeRoster(data: FullRosterPayload): RosterData {
+  if ('minors' in data && Array.isArray(data.minors)) {
+    return {
+      teamId: data.teamId,
+      season: data.season,
+      active: data.active ?? [],
+      il: data.il ?? [],
+      minors: data.minors,
+      dfa: data.dfa ?? [],
+    };
+  }
+
+  return {
+    teamId: data.teamId,
+    season: data.season,
+    active: data.active ?? [],
+    il: data.il ?? [],
+    minors: 'aaa' in data && Array.isArray(data.aaa) ? data.aaa : [],
+    dfa: data.dfa ?? [],
+  };
+}
+
 // ─── Store interface ──────────────────────────────────────────────────────────
 
 interface LeagueStore {
@@ -37,6 +95,10 @@ interface LeagueStore {
 
   // ── News Feed ─────────────────────────────────────────────────────────────────
   newsItems:      NewsItem[];
+  teamChemistry:  TeamChemistryState | null;
+  clubhouseEvents: ClubhouseEvent[];
+  playoffBracket: PlayoffBracket | null;
+  seasonAwards:   SeasonAwards | null;
 
   // ── Division Rivals ───────────────────────────────────────────────────────────
   rivals:         RivalRecord[];
@@ -63,14 +125,19 @@ interface LeagueStore {
   // ── Trade History ───────────────────────────────────────────────────────────
   tradeHistory:     TradeHistoryRecord[];
 
-  setStandings:           (d: StandingsData) => void;
-  setRoster:              (d: RosterData) => void;
+  setStandings:           (d: StandingsLike) => void;
+  setRoster:              (d: FullRosterPayload) => void;
   setLeaderboard:         (d: LeaderboardEntry[]) => void;
   setLeaderboardFull:     (d: LeaderboardFullEntry[]) => void;
   setLastSeasonStats:     (era: number, ba: number, rpg: number) => void;
 
   addNewsItems:           (items: NewsItem[]) => void;
+  syncWorkerNewsItems:    (items: NewsItem[]) => void;
   clearNews:              () => void;
+  setTeamChemistry:       (chemistry: TeamChemistryState | null) => void;
+  setClubhouseEvents:     (events: ClubhouseEvent[]) => void;
+  setPlayoffBracket:      (bracket: PlayoffBracket | null) => void;
+  setSeasonAwards:        (awards: SeasonAwards | null) => void;
 
   setRivals:              (rivals: RivalRecord[]) => void;
   updateRivals:           (rivals: RivalRecord[]) => void;
@@ -148,6 +215,10 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   lastSeasonBA:     0,
   lastSeasonRPG:    0,
   newsItems:        [],
+  teamChemistry:    null,
+  clubhouseEvents:  [],
+  playoffBracket:   null,
+  seasonAwards:     null,
   rivals:           [],
   franchiseHistory: [],
   presserAvailable: false,
@@ -158,16 +229,28 @@ export const useLeagueStore = create<LeagueStore>(set => ({
   weeklyStories:    [],
   tradeHistory:     [],
 
-  setStandings:       d => set({ standings: d }),
-  setRoster:          d => set({ roster: d }),
+  setStandings:       d => set(state => ({
+    standings: normalizeStandings(d, state.standings?.season ?? 2026),
+  })),
+  setRoster:          d => set({ roster: normalizeRoster(d) }),
   setLeaderboard:     d => set({ leaderboard: d }),
   setLeaderboardFull: d => set({ leaderboardFull: d }),
   setLastSeasonStats: (era, ba, rpg) => set({ lastSeasonERA: era, lastSeasonBA: ba, lastSeasonRPG: rpg }),
 
   addNewsItems: items => set(state => ({
-    newsItems: [...items, ...state.newsItems].slice(0, 50),
+    newsItems: dedupeNewsItems([...items, ...state.newsItems]),
+  })),
+  syncWorkerNewsItems: items => set(state => ({
+    newsItems: dedupeNewsItems([
+      ...items,
+      ...state.newsItems.filter((item) => item.source !== 'worker'),
+    ]),
   })),
   clearNews: () => set({ newsItems: [] }),
+  setTeamChemistry: chemistry => set({ teamChemistry: chemistry }),
+  setClubhouseEvents: events => set({ clubhouseEvents: events.slice(0, 12) }),
+  setPlayoffBracket: bracket => set({ playoffBracket: bracket }),
+  setSeasonAwards: awards => set({ seasonAwards: awards }),
 
   setRivals:    rivals => set({ rivals }),
   updateRivals: rivals => set({ rivals }),
@@ -208,6 +291,10 @@ export const useLeagueStore = create<LeagueStore>(set => ({
     lastSeasonBA: 0,
     lastSeasonRPG: 0,
     newsItems: [],
+    teamChemistry: null,
+    clubhouseEvents: [],
+    playoffBracket: null,
+    seasonAwards: null,
     rivals: [],
     franchiseHistory: [],
     presserAvailable: false,

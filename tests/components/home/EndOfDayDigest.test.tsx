@@ -12,6 +12,8 @@ let leagueStoreState = {
   standings: null as any,
   roster: null as any,
   newsItems: [] as any[],
+  teamChemistry: null as any,
+  clubhouseEvents: [] as any[],
 };
 
 vi.mock('../../../src/store/gameStore', () => ({
@@ -33,7 +35,7 @@ vi.mock('../../../src/components/home/DigestSection', () => ({
 describe('EndOfDayDigest', () => {
   beforeEach(() => {
     gameStoreState = { userTeamId: 1, ownerPatience: 70, teamMorale: 60, gamePhase: 'preseason' };
-    leagueStoreState = { standings: null, roster: null, newsItems: [] };
+    leagueStoreState = { standings: null, roster: null, newsItems: [], teamChemistry: null, clubhouseEvents: [] };
   });
 
   it('renders front office pulse even with no standings or roster', () => {
@@ -107,5 +109,18 @@ describe('EndOfDayDigest', () => {
     ];
     render(<EndOfDayDigest />);
     expect(screen.getByText('HEADLINES')).toBeTruthy();
+  });
+
+  it('renders clubhouse notes when events exist', () => {
+    leagueStoreState.teamChemistry = { teamId: 1, cohesion: 80, morale: 68, lastUpdatedSeason: 2026 };
+    leagueStoreState.clubhouseEvents = [{
+      eventId: 1,
+      teamId: 1,
+      season: 2026,
+      kind: 'leadership_emergence',
+      description: 'Veteran leaders have rallied the clubhouse. Team cohesion is rising.',
+    }];
+    render(<EndOfDayDigest />);
+    expect(screen.getByText('CLUBHOUSE NOTES')).toBeTruthy();
   });
 });

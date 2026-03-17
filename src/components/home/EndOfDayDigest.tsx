@@ -12,7 +12,7 @@ import DigestSection from './DigestSection';
 
 export default function EndOfDayDigest() {
   const { userTeamId, ownerPatience, teamMorale, gamePhase } = useGameStore();
-  const { standings, roster, newsItems } = useLeagueStore();
+  const { standings, roster, newsItems, teamChemistry, clubhouseEvents } = useLeagueStore();
 
   const blocks = useMemo(() => buildDigest({
     standings: standings?.standings ?? null,
@@ -20,9 +20,11 @@ export default function EndOfDayDigest() {
     roster,
     ownerPatience,
     teamMorale,
+    teamChemistry,
+    clubhouseEvents,
     gamePhase,
     newsItems,
-  }), [standings, userTeamId, roster, ownerPatience, teamMorale, gamePhase, newsItems]);
+  }), [standings, userTeamId, roster, ownerPatience, teamMorale, teamChemistry, clubhouseEvents, gamePhase, newsItems]);
 
   // Recommended next action copy based on game phase
   const nextAction = gamePhase === 'preseason' ? 'Review your roster and start the season when ready.'
