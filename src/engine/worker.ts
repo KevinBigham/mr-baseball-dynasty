@@ -3009,6 +3009,10 @@ const api = {
     activeDraftMode = null;
     activeStartupDraftSlot = null;
     cache.invalidate();
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Draft Completed');
+    }
     return result;
   },
   async completeAnnualDraft() {
@@ -3039,6 +3043,10 @@ const api = {
     activeDraftMode = null;
     activeStartupDraftSlot = null;
     cache.invalidate();
+    const saveState = buildPersistedState();
+    if (saveState) {
+      createAutosave(saveState, 'Annual Draft Completed');
+    }
     return result;
   },
 
@@ -4756,9 +4764,9 @@ function applyLoadedState(state: PersistedGameState): void {
   devAssignments = (state as any).devAssignments ? reconstructMap<any>((state as any).devAssignments) : new Map();
 
   // Restore active draft session (P1: persist draft mid-session)
-  activeDraftState = (state as any).activeDraftState ?? null;
-  activeDraftMode = (state as any).activeDraftMode ?? null;
-  activeStartupDraftSlot = (state as any).activeStartupDraftSlot ?? null;
+  activeDraftState = state.activeDraftState ?? null;
+  activeDraftMode = state.activeDraftMode ?? null;
+  activeStartupDraftSlot = state.activeStartupDraftSlot ?? null;
 
   featuredGameIds = selectFeaturedGames(latestGameResults);
   seasonHistory.length = 0;

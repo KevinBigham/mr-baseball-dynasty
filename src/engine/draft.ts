@@ -383,7 +383,9 @@ export function createDraftBoardState(
       if (currentIdx !== -1) {
         const targetIdx = requestedSlot - 1; // convert 1-based to 0-based
         draftOrder.splice(currentIdx, 1);
-        draftOrder.splice(targetIdx, 0, userTeamId);
+        // After removal, indices at or above currentIdx shift left by 1
+        const adjustedIdx = targetIdx > currentIdx ? targetIdx - 1 : targetIdx;
+        draftOrder.splice(adjustedIdx, 0, userTeamId);
       }
     }
   }
