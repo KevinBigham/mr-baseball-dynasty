@@ -55,6 +55,8 @@ export interface UserPickResult {
 
 export interface CreateDraftBoardOptions {
   mode?: DraftMode;
+  /** MBD-008: requested startup draft slot position (1-based). Implementation wired in MBD-008. */
+  userDraftSlot?: number | null;
 }
 
 const TEAM_ABBR_BY_ID = new Map(TEAMS.map((team) => [team.teamId, team.abbreviation]));
