@@ -4630,6 +4630,9 @@ function buildPersistedState(): PersistedGameState | null {
     enabledFeatures,
     migrationNotes,
     buildFingerprint,
+    activeDraftState,
+    activeDraftMode,
+    activeStartupDraftSlot,
   };
 }
 
@@ -4751,6 +4754,11 @@ function applyLoadedState(state: PersistedGameState): void {
   lineupOrders = (state as any).lineupOrders ? reconstructMap<number[]>((state as any).lineupOrders) : new Map();
   rotationOrders = (state as any).rotationOrders ? reconstructMap<number[]>((state as any).rotationOrders) : new Map();
   devAssignments = (state as any).devAssignments ? reconstructMap<any>((state as any).devAssignments) : new Map();
+
+  // Restore active draft session (P1: persist draft mid-session)
+  activeDraftState = (state as any).activeDraftState ?? null;
+  activeDraftMode = (state as any).activeDraftMode ?? null;
+  activeStartupDraftSlot = (state as any).activeStartupDraftSlot ?? null;
 
   featuredGameIds = selectFeaturedGames(latestGameResults);
   seasonHistory.length = 0;
