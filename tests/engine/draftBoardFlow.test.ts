@@ -140,6 +140,47 @@ describe('draft board flow', () => {
     expect(playersA.every((player) => player.rosterData.rosterStatus === 'DRAFT_ELIGIBLE')).toBe(true);
   });
 
+  it('pins the user team to the requested startup draft slot deterministically', () => {
+    const teamSeasons = [
+      makeTeamSeason(1, 81, 81),
+      makeTeamSeason(2, 82, 80),
+      makeTeamSeason(3, 83, 79),
+      makeTeamSeason(4, 84, 78),
+    ];
+    const playersA = [
+      makePlayer(1, 'SS', 420),
+      makePlayer(2, 'SP', 410),
+      makePlayer(3, 'CF', 400),
+      makePlayer(4, 'RP', 390),
+      makePlayer(5, '1B', 380),
+      makePlayer(6, 'C', 370),
+      makePlayer(7, 'LF', 360),
+      makePlayer(8, 'CL', 350),
+    ];
+    const playersB = playersA.map((player) => makePlayer(player.playerId, player.position, player.overall, player.teamId));
+
+    const [stateA] = createDraftBoardState(
+      teamSeasons,
+      playersA,
+      2026,
+      3,
+      createPRNG(17),
+      { mode: 'snake10', userDraftSlot: 2 },
+    );
+    const [stateB] = createDraftBoardState(
+      teamSeasons,
+      playersB,
+      2026,
+      3,
+      createPRNG(17),
+      { mode: 'snake10', userDraftSlot: 2 },
+    );
+
+    expect(stateA.draftOrder.indexOf(3)).toBe(1);
+    expect(stateA.draftOrder).toEqual(stateB.draftOrder);
+    expect(new Set(stateA.draftOrder)).toEqual(new Set([1, 2, 3, 4]));
+  });
+
   it('advances to the user turn and assigns the selected player', () => {
     const teamSeasons = [makeTeamSeason(1, 81, 81), makeTeamSeason(2, 81, 81)];
     const players = [

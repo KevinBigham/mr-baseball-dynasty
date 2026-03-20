@@ -6,11 +6,23 @@ import { useUIStore } from '../../store/uiStore';
 import type { DraftPick } from '../../engine/draft/draftAI';
 import type { DraftBoardEntry } from '../../engine/draft';
 import type { DraftBoardListing } from '../../engine/worker';
+import {
+  getBestValueDraftTarget,
+  getHighestPotentialDraftTarget,
+  getRecommendedDraftTarget,
+} from '../../engine/draft/recommendations';
 import AnalystReaction from './AnalystReaction';
 import DraftGradeReport from './DraftGradeReport';
 import CoachTip from '../shared/CoachTip';
 
 type PosFilter = 'ALL' | 'HITTERS' | 'PITCHERS';
+
+interface QuickTarget {
+  id: 'recommended' | 'best-value' | 'highest-potential';
+  label: string;
+  detail: string;
+  player: DraftBoardEntry;
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -206,6 +218,44 @@ export default function DraftRoom() {
 
   // User's draft picks
   const userPicks = (board?.picks ?? []).filter(p => p.teamId === userTeamId);
+  const recommendedTarget = board
+    ? getRecommendedDraftTarget(board.available, userPicks, board.currentRound)
+    : null;
+  const bestValueTarget = board
+    ? getBestValueDraftTarget(board.available, board.overallPick)
+    : null;
+  const highestPotentialTarget = board
+    ? getHighestPotentialDraftTarget(board.available)
+    : null;
+  const quickTargets: QuickTarget[] = [];
+
+  if (recommendedTarget) {
+    quickTargets.push({
+      id: 'recommended',
+      label: 'Recommended Player',
+      detail: 'Fit-adjusted pick for your current roster build.',
+      player: recommendedTarget,
+    });
+  }
+
+  if (bestValueTarget) {
+    quickTargets.push({
+      id: 'best-value',
+      label: 'Best Value',
+      detail: `Still available ${Math.max(0, (board?.overallPick ?? 0) - bestValueTarget.rank)} picks past consensus.`,
+      player: bestValueTarget,
+    });
+  }
+
+  if (highestPotentialTarget) {
+    quickTargets.push({
+      id: 'highest-potential',
+      label: 'Highest Potential',
+      detail: 'Top ceiling remaining on the board.',
+      player: highestPotentialTarget,
+    });
+  }
+  const selectedPlayer = board?.available.find((player) => player.playerId === selectedPlayerId) ?? null;
 
   if (loading) {
     return (
@@ -385,6 +435,100 @@ export default function DraftRoom() {
           className="w-72 shrink-0 flex flex-col border-l"
           style={{ borderColor: 'rgba(255,255,255,0.08)' }}
         >
+          <div
+            className="shrink-0 p-3 space-y-2"
+            style={{
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              background: '#050a0f',
+              position: 'sticky',
+              top: 0,
+              zIndex: 3,
+            }}
+          >
+            {board.isUserTurn && !draftComplete && (
+              <>
+                {selectedPlayer && (
+                  <div
+                    className="rounded px-3 py-2 text-xs"
+                    style={{ background: 'rgba(234,88,12,0.1)', border: '1px solid rgba(234,88,12,0.22)' }}
+                  >
+                    <div className="text-[11px] font-black uppercase tracking-widest text-orange-400">
+                      Selected Player
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="font-bold text-gray-200 truncate flex-1">{selectedPlayer.name}</span>
+                      <span className="text-gray-500">{selectedPlayer.position}</span>
+                      <span className="text-gray-400 tabular-nums">{selectedPlayer.scoutedOvr}/{selectedPlayer.scoutedPot}</span>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={handlePick}
+                  disabled={!selectedPlayerId || advancing}
+                  className="w-full py-3 font-black text-sm uppercase tracking-widest rounded transition-colors disabled:opacity-40"
+                  style={{ background: selectedPlayerId ? '#ea580c' : '#374151', color: '#000' }}
+                >
+                  {selectedPlayerId ? 'DRAFT PLAYER' : 'SELECT A PLAYER'}
+                </button>
+                <button
+                  onClick={handleAutoPick}
+                  disabled={advancing}
+                  className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-300 rounded transition-colors"
+                  style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                >
+                  AUTO-PICK RECOMMENDED
+                </button>
+                {quickTargets.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    {quickTargets.map((target) => (
+                      <button
+                        key={target.id}
+                        onClick={() => setSelectedPlayerId(target.player.playerId)}
+                        className="w-full rounded px-3 py-2 text-left transition-colors"
+                        style={{
+                          background: selectedPlayerId === target.player.playerId
+                            ? 'rgba(234,88,12,0.14)'
+                            : 'rgba(255,255,255,0.03)',
+                          border: selectedPlayerId === target.player.playerId
+                            ? '1px solid rgba(234,88,12,0.45)'
+                            : '1px solid rgba(255,255,255,0.08)',
+                        }}
+                      >
+                        <div className="text-[11px] font-black uppercase tracking-widest text-orange-400">
+                          {target.label}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-sm">
+                          <span className="font-bold text-gray-200 truncate flex-1">{target.player.name}</span>
+                          <span className="text-gray-500">{target.player.position}</span>
+                          <span className="text-gray-400 tabular-nums">{target.player.scoutedOvr}/{target.player.scoutedPot}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-gray-500">
+                          {target.detail}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {draftComplete && (
+              <div className="text-center space-y-3">
+                <div className="text-green-400 font-black text-sm mb-2">DRAFT COMPLETE</div>
+                <DraftGradeReport
+                  userPicks={board.picks.filter(p => p.teamId === userTeamId)}
+                  totalPicksInDraft={board.draftOrder.length * board.totalRounds}
+                />
+                <button
+                  onClick={handleComplete}
+                  className="w-full py-3 font-black text-sm uppercase tracking-widest rounded"
+                  style={{ background: '#4ade80', color: '#000' }}
+                >
+                  START DYNASTY
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="px-3 py-2 text-xs font-bold tracking-widest uppercase"
             style={{ color: '#f97316', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             YOUR SELECTIONS ({userPicks.length})
@@ -406,46 +550,6 @@ export default function DraftRoom() {
             {userPicks.length === 0 && (
               <div className="text-gray-700 text-xs text-center py-8">
                 No selections yet
-              </div>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="p-3 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-            {board.isUserTurn && !draftComplete && (
-              <>
-                <button
-                  onClick={handlePick}
-                  disabled={!selectedPlayerId || advancing}
-                  className="w-full py-3 font-black text-sm uppercase tracking-widest rounded transition-colors disabled:opacity-40"
-                  style={{ background: selectedPlayerId ? '#ea580c' : '#374151', color: '#000' }}
-                >
-                  {selectedPlayerId ? 'DRAFT PLAYER' : 'SELECT A PLAYER'}
-                </button>
-                <button
-                  onClick={handleAutoPick}
-                  disabled={advancing}
-                  className="w-full py-2 text-xs font-bold text-gray-500 hover:text-gray-300 rounded transition-colors"
-                  style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-                >
-                  AUTO-PICK (Best Available)
-                </button>
-              </>
-            )}
-            {draftComplete && (
-              <div className="text-center space-y-3">
-                <div className="text-green-400 font-black text-sm mb-2">DRAFT COMPLETE</div>
-                <DraftGradeReport
-                  userPicks={board.picks.filter(p => p.teamId === userTeamId)}
-                  totalPicksInDraft={board.draftOrder.length * board.totalRounds}
-                />
-                <button
-                  onClick={handleComplete}
-                  className="w-full py-3 font-black text-sm uppercase tracking-widest rounded"
-                  style={{ background: '#4ade80', color: '#000' }}
-                >
-                  START DYNASTY
-                </button>
               </div>
             )}
           </div>

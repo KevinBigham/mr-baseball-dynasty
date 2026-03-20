@@ -55,6 +55,7 @@ export interface UserPickResult {
 
 export interface CreateDraftBoardOptions {
   mode?: DraftMode;
+  userDraftSlot?: number | null;
 }
 
 const TEAM_ABBR_BY_ID = new Map(TEAMS.map((team) => [team.teamId, team.abbreviation]));
@@ -104,6 +105,43 @@ function shuffleTeamIds(teamIds: number[], gen: RandomGenerator): [number[], Ran
     [order[i], order[swapIdx]] = [order[swapIdx], order[i]];
   }
   return [order, gen];
+}
+
+function normalizeRequestedDraftSlot(
+  requestedSlot: number | null | undefined,
+  teamCount: number,
+): number | null {
+  if (!Number.isInteger(requestedSlot)) return null;
+  if (requestedSlot == null) return null;
+  if (requestedSlot < 1 || requestedSlot > teamCount) return null;
+  return requestedSlot;
+}
+
+function buildStartupDraftOrder(
+  teamIds: number[],
+  userTeamId: number,
+  requestedSlot: number | null | undefined,
+  gen: RandomGenerator,
+): [number[], RandomGenerator] {
+  if (!teamIds.includes(userTeamId)) {
+    return shuffleTeamIds(teamIds, gen);
+  }
+
+  const normalizedSlot = normalizeRequestedDraftSlot(requestedSlot, teamIds.length);
+  if (normalizedSlot == null) {
+    return shuffleTeamIds(teamIds, gen);
+  }
+
+  const otherTeamIds = teamIds.filter((teamId) => teamId !== userTeamId);
+  let shuffledOthers: number[];
+  [shuffledOthers, gen] = shuffleTeamIds(otherTeamIds, gen);
+
+  const slotIndex = normalizedSlot - 1;
+  return [[
+    ...shuffledOthers.slice(0, slotIndex),
+    userTeamId,
+    ...shuffledOthers.slice(slotIndex),
+  ], gen];
 }
 
 function buildAnnualDraftOrder(teamSeasons: TeamSeason[]): number[] {
@@ -373,7 +411,7 @@ export function createDraftBoardState(
 
   let draftOrder = snake ? teamIds : buildAnnualDraftOrder(teamSeasons);
   if (snake) {
-    [draftOrder, gen] = shuffleTeamIds(draftOrder, gen);
+    [draftOrder, gen] = buildStartupDraftOrder(draftOrder, userTeamId, options.userDraftSlot, gen);
   }
 
   let draftPlayers: Player[];

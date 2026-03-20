@@ -144,6 +144,7 @@ describe('gameStore — resetAll', () => {
     state.setTeamMorale(0);
     state.setSeason(2030);
     state.setGameStarted(true);
+    state.setStartupDraftSlot(12);
     state.incrementSeasonsManaged();
 
     state.resetAll();
@@ -155,6 +156,7 @@ describe('gameStore — resetAll', () => {
     expect(reset.teamMorale).toBe(65);
     expect(reset.season).toBe(2026);
     expect(reset.gameStarted).toBe(false);
+    expect(reset.startupDraftSlot).toBeNull();
     expect(reset.seasonsManaged).toBe(0);
   });
 });

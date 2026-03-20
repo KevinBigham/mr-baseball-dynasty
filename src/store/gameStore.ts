@@ -60,6 +60,7 @@ interface GameStore {
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
   startMode:     StartModeId;
+  startupDraftSlot: number | null;
   frontOffice:   FOStaffMember[];
   foBudget:      number;    // Total budget in $M
   difficulty:    'rookie' | 'normal' | 'hard';
@@ -100,6 +101,7 @@ interface GameStore {
 
   setSetupScreen:     (s: SetupScreen) => void;
   setStartMode:       (m: StartModeId) => void;
+  setStartupDraftSlot:(slot: number | null) => void;
   setFrontOffice:     (staff: FOStaffMember[]) => void;
   addFOStaff:         (member: FOStaffMember) => void;
   removeFOStaff:      (id: string) => void;
@@ -144,6 +146,7 @@ export const useGameStore = create<GameStore>(set => ({
 
   setupScreen:     'title',
   startMode:       'instant',
+  startupDraftSlot: null,
   frontOffice:     [],
   foBudget:        15,
   difficulty:      'normal',
@@ -178,6 +181,7 @@ export const useGameStore = create<GameStore>(set => ({
   // ── Setup setters ─────────────────────────────────────────────────────────────
   setSetupScreen:  s           => set({ setupScreen: s }),
   setStartMode:    m           => set({ startMode: m }),
+  setStartupDraftSlot: slot    => set({ startupDraftSlot: slot }),
   setFrontOffice:  staff       => set({ frontOffice: staff }),
   addFOStaff:      member      => set(state => ({ frontOffice: [...state.frontOffice, member] })),
   removeFOStaff:   id          => set(state => ({ frontOffice: state.frontOffice.filter(s => s.id !== id) })),
@@ -189,6 +193,7 @@ export const useGameStore = create<GameStore>(set => ({
   resetSetup: () => set({
     setupScreen: 'title',
     startMode:   'instant',
+    startupDraftSlot: null,
     frontOffice: [],
     foBudget:    15,
     difficulty:  'normal',
@@ -233,6 +238,7 @@ export const useGameStore = create<GameStore>(set => ({
     seasonPhase: 'early' as SeasonPhase,
     setupScreen: 'title' as SetupScreen,
     startMode: 'instant' as StartModeId,
+    startupDraftSlot: null,
     frontOffice: [],
     foBudget: 15,
     difficulty: 'normal' as const,
