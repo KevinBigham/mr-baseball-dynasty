@@ -52,7 +52,7 @@ REVIEWER: Claude Code
 
 ## Verification commands
 ```bash
-cd /Users/tkevinbigham/Downloads/MBD/mr-baseball-dynasty-clean
+cd /Users/tkevinbigham/Projects/MBD/ACTIVE/CODEBASE/mr-baseball-dynasty-clean
 npm test
 npx tsc --noEmit
 npm run build

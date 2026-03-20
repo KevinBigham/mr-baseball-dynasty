@@ -9,7 +9,7 @@ Mr. Baseball Dynasty
 
 ## Boot sequence
 1. **Read `00_START_HERE.md` at the workspace root FIRST** — it is the single front door
-2. Read `/Users/tkevinbigham/Downloads/MBD/.codex/MBD/` (all 8 files)
+2. Read `/Users/tkevinbigham/Projects/MBD/.codex/MBD/` (all 8 files)
 3. Read `AGENTS.md` (this repo)
 4. Read `NEXT_TASK.md` (current task beacon)
 5. **GATE CHECK:** Read `TASK_OWNER_ROLE` in NEXT_TASK.md. If your role does not match `TASK_OWNER_ROLE`, **STOP — write a proposal to `ACTIVE/CONTROL/PROPOSED_NEXT_TASK.md` and end your session.** (`TASK_OWNER_ROLE` is the ONLY activation key; `CURRENT_STAGE` and `NEXT_HANDLER_ROLE` are informational only.)
