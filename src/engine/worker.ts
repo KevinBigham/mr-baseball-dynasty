@@ -474,6 +474,43 @@ const api = {
 
     latestNewsFeed = sortNewsFeed(latestNewsFeed);
 
+    // ── Record playoff results on TeamSeason ──────────────────────────
+    // Derive each team's deepest playoff round from the bracket.
+    // Losers are tagged with the round they lost in; the champion gets 'Champion'.
+    {
+      const playoffResults = new Map<number, string>();
+
+      // All playoff teams start at 'WC' (they made the playoffs)
+      for (const t of [...bracket.alTeams, ...bracket.nlTeams]) {
+        playoffResults.set(t.teamId, 'WC');
+      }
+      // Seeds 1-2 in each league had a bye — they start at 'DS'
+      for (const t of [bracket.alTeams[0], bracket.alTeams[1], bracket.nlTeams[0], bracket.nlTeams[1]]) {
+        if (t) playoffResults.set(t.teamId, 'DS');
+      }
+      // WC winners advanced to DS
+      for (const s of bracket.wildCardRound) {
+        playoffResults.set(s.winnerId, 'DS');
+      }
+      // DS winners advanced to CS
+      for (const s of bracket.divisionSeries) {
+        playoffResults.set(s.winnerId, 'CS');
+      }
+      // CS winners advanced to WS
+      for (const s of bracket.championshipSeries) {
+        playoffResults.set(s.winnerId, 'WS');
+      }
+      // WS winner is Champion
+      if (bracket.championId) {
+        playoffResults.set(bracket.championId, 'Champion');
+      }
+
+      for (const ts of latestTeamSeasons) {
+        const result = playoffResults.get(ts.teamId);
+        if (result) ts.playoffResult = result;
+      }
+    }
+
     const saveState = buildPersistedState();
     if (saveState) {
       createAutosave(saveState, 'Postseason Complete');
@@ -2937,37 +2974,69 @@ const api = {
   async getTradeOffers(teamId: number) {
     return generateTradeOffers(teamId, players, teams);
   },
-  async proposeTrade(offer: { partnerTeamId: number; userPlayerIds: number[]; partnerPlayerIds: number[] }) {
-    const { evaluateProposedTrade, executeTrade: execTrade } = await import('./trading.ts');
-    const evaluation = evaluateProposedTrade(
-      players, offer.userPlayerIds, offer.partnerPlayerIds,
-    );
+  async proposeTrade(partnerTeamId: number, userPlayerIds: number[], partnerPlayerIds: number[]) {
+    const { evaluateProposedTrade } = await import('./trading.ts');
+    const evaluation = evaluateProposedTrade(players, userPlayerIds, partnerPlayerIds);
     if (!evaluation.fair) {
       return { ok: false, reason: 'The other team doesn\'t see this as a fair deal.' };
     }
-    const result = execTrade(players, 1, offer.partnerTeamId, offer.userPlayerIds, offer.partnerPlayerIds);
+    return api._executeTradeInternal(partnerTeamId, userPlayerIds, partnerPlayerIds);
+  },
+  async acceptTradeOffer(partnerTeamId: number, userPlayerIds: number[], partnerPlayerIds: number[]) {
+    // Incoming offers are pre-validated by AI — skip fairness check, execute directly
+    return api._executeTradeInternal(partnerTeamId, userPlayerIds, partnerPlayerIds);
+  },
+  async acceptCounterOffer(_offerId: number) {
+    return { ok: false, reason: 'Counter-offers not yet supported.' };
+  },
+  /** Shared trade execution with 40-man validation and downstream state updates */
+  async _executeTradeInternal(partnerTeamId: number, userPlayerIds: number[], partnerPlayerIds: number[]) {
+    // 40-man roster limit check: will the user exceed 40 after receiving players?
+    const currentFortyMan = countFortyMan(players, userTeamId);
+    const outgoing40 = userPlayerIds.filter(id => {
+      const p = players.find(pl => pl.playerId === id);
+      return p && p.rosterData.isOn40Man;
+    }).length;
+    const incoming = partnerPlayerIds.length;
+    const projected40 = currentFortyMan - outgoing40 + incoming;
+    if (projected40 > 40) {
+      return { ok: false, reason: `Trade would put you at ${projected40}/40 on the 40-man roster. You need to clear roster space first.` };
+    }
+
+    const { executeTrade: execTrade } = await import('./trading.ts');
+    const result = execTrade(players, userTeamId, partnerTeamId, userPlayerIds, partnerPlayerIds);
+
     if (result.ok) {
+      // Downstream state updates for incoming players
+      for (const pid of partnerPlayerIds) {
+        const p = players.find(pl => pl.playerId === pid);
+        if (!p) continue;
+        p.rosterData.isOn40Man = true;
+        // If player was in minors on the other team, set them to AAA on the new team
+        if (p.rosterData.rosterStatus.startsWith('MINORS_')) {
+          p.rosterData.rosterStatus = 'MINORS_AAA';
+        }
+      }
+      // Outgoing players: clear 40-man if they were on it (partner team handles their own)
+      for (const pid of userPlayerIds) {
+        const p = players.find(pl => pl.playerId === pid);
+        if (!p) continue;
+        // Partner team adds to 40-man (already handled by executeTrade)
+      }
+
       cache.invalidate();
-      const partnerTeam = teams.find(t => t.teamId === offer.partnerTeamId);
+      const userTeam = teams.find(t => t.teamId === userTeamId);
+      const partnerTeam = teams.find(t => t.teamId === partnerTeamId);
       latestNewsFeed.push(News.generateTradeStory(
-        currentSeason, 0, 'User Team', partnerTeam?.name ?? '',
-        offer.userPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
-        offer.partnerPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
-        [...offer.userPlayerIds, ...offer.partnerPlayerIds],
-        [1, offer.partnerTeamId],
+        currentSeason, 0, userTeam?.name ?? 'User Team', partnerTeam?.name ?? '',
+        userPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
+        partnerPlayerIds.map(id => players.find(p => p.playerId === id)?.name ?? ''),
+        [...userPlayerIds, ...partnerPlayerIds],
+        [userTeamId, partnerTeamId],
       ));
       latestNewsFeed = sortNewsFeed(latestNewsFeed);
     }
     return result;
-  },
-  async acceptTradeOffer(offerId: number) {
-    // For now, trade offers from getTradeOffers contain all info needed
-    // The UI should call proposeTrade with the offer details
-    void offerId;
-    return { ok: false, reason: 'Use proposeTrade with the offer details instead.' };
-  },
-  async acceptCounterOffer(_offerId: number) {
-    return { ok: false, reason: 'Counter-offers not yet supported.' };
   },
   async shopPlayer(playerId: number) {
     return shopPlayerEngine(playerId, players, teams);
@@ -3044,15 +3113,149 @@ const api = {
 
   // Awards/stats/leaderboards
   async getLeaderboard(_category?: string, _limit?: number) { return { batting: await api.getBattingLeaders(), pitching: await api.getPitchingLeaders() }; },
-  async getLeaderboardFull(category: string) {
-    if (category === 'batting') return api.getBattingLeaders(50);
-    if (category === 'pitching') return api.getPitchingLeaders(50);
-    // Combined: return both
-    const [batting, pitching] = await Promise.all([
-      api.getBattingLeaders(50),
-      api.getPitchingLeaders(50),
-    ]);
-    return [...batting, ...pitching];
+  async getLeaderboardFull(opts: string | { category: string; sortBy: string; minPA?: number; minIP?: number; position?: string; limit?: number }) {
+    // Accept either a string (legacy) or structured options
+    const options = typeof opts === 'string'
+      ? { category: opts, sortBy: opts === 'pitching' ? 'era' : 'hr', limit: 50 }
+      : opts;
+    const { category, sortBy, minPA = 100, minIP = 20, position, limit = 50 } = options;
+
+    const entries: Array<{
+      rank: number; playerId: number; name: string; teamAbbr: string;
+      teamId: number; position: string; age: number; isPitcher: boolean;
+      stats: Record<string, number>;
+    }> = [];
+
+    for (const [playerId, ps] of latestPlayerSeasons) {
+      const player = players.find(p => p.playerId === playerId);
+      if (!player) continue;
+
+      const isPitcher = player.isPitcher;
+      if (category === 'hitting' && isPitcher) continue;
+      if (category === 'pitching' && !isPitcher) continue;
+      if (position && String(player.position) !== position) continue;
+
+      if (isPitcher) {
+        if (ps.ip < minIP) continue;
+        const ip = ps.ip || 0.1;
+        const era = (ps.earnedRuns * 9) / ip;
+        const whip = ((ps.ip * 8.5 / 9) + (ps.ip * 3 / 9)) / ip; // approximate H+BB per IP
+        entries.push({
+          rank: 0, playerId, name: `${player.firstName} ${player.lastName}`,
+          teamAbbr: teams.find(t => t.teamId === player.teamId)?.abbreviation ?? '???',
+          teamId: player.teamId, position: String(player.position), age: player.age,
+          isPitcher: true,
+          stats: {
+            g: ps.ip > 0 ? Math.ceil(ps.ip / 5.5) : 0, gs: ps.ip > 20 ? Math.ceil(ps.ip / 6) : 0,
+            w: ps.wins, l: ps.losses, sv: ps.saves, ip: ps.ip,
+            era: Number(era.toFixed(2)),
+            whip: Number(whip.toFixed(2)),
+            k: ps.kPitching, bb: Math.round(ps.ip * 3 / 9),
+            k9: Number(((ps.kPitching * 9) / ip).toFixed(1)),
+            bb9: Number(((Math.round(ps.ip * 3 / 9) * 9) / ip).toFixed(1)),
+            h: Math.round(ps.ip * 8.5 / 9), hra: Math.round(ps.ip * 1.1 / 9),
+          },
+        });
+      } else {
+        if (ps.ab < minPA) continue;
+        const avg = ps.hits / (ps.ab || 1);
+        const bb = Math.round(ps.ab * 0.08);
+        const hbp = Math.round(ps.ab * 0.01);
+        const obp = (ps.hits + bb + hbp) / (ps.ab + bb + hbp || 1);
+        const singles = Math.max(0, ps.hits - ps.hr);
+        const doubles = Math.round(singles * 0.30);
+        const triples = Math.round(singles * 0.04);
+        const tb = (singles - doubles - triples) + 2 * doubles + 3 * triples + 4 * ps.hr;
+        const slg = tb / (ps.ab || 1);
+        entries.push({
+          rank: 0, playerId, name: `${player.firstName} ${player.lastName}`,
+          teamAbbr: teams.find(t => t.teamId === player.teamId)?.abbreviation ?? '???',
+          teamId: player.teamId, position: String(player.position), age: player.age,
+          isPitcher: false,
+          stats: {
+            g: Math.ceil(ps.ab / 3.5), pa: ps.ab + bb + hbp,
+            avg: Number(avg.toFixed(3)), obp: Number(obp.toFixed(3)),
+            slg: Number(slg.toFixed(3)), ops: Number((obp + slg).toFixed(3)),
+            hr: ps.hr, rbi: ps.rbi, r: ps.runs, h: ps.hits,
+            doubles, triples, bb, k: Math.round(ps.ab * 0.22),
+            sb: 0, hbp,
+          },
+        });
+      }
+    }
+
+    // Sort by requested stat
+    const isAsc = ['era', 'whip', 'bb9', 'fip', 'xFIP', 'bb', 'l', 'k', 'hra', 'h', 'hr9', 'babip'].includes(sortBy);
+    entries.sort((a, b) => {
+      const va = a.stats[sortBy] ?? 0;
+      const vb = b.stats[sortBy] ?? 0;
+      return isAsc ? va - vb : vb - va;
+    });
+
+    return entries.slice(0, limit).map((e, i) => ({ ...e, rank: i + 1 }));
+  },
+  async getLeaderboardAdvanced(category: 'hitting' | 'pitching', sortBy: string, limit = 50) {
+    // Build PlayerSeasonStats-compatible objects from the simplified PlayerSeason data
+    const allStats = Array.from(latestPlayerSeasons.values())
+      .map(s => ({
+        playerId: s.playerId, teamId: s.teamId, season: s.season,
+        g: 0, pa: s.ab + Math.round(s.ab * 0.09), ab: s.ab, h: s.hits,
+        doubles: Math.round(Math.max(0, s.hits - s.hr) * 0.30),
+        triples: Math.round(Math.max(0, s.hits - s.hr) * 0.04),
+        hr: s.hr, rbi: s.rbi, r: s.runs,
+        bb: Math.round(s.ab * 0.08), hbp: Math.round(s.ab * 0.01),
+        k: Math.round(s.ab * 0.22), sb: 0, cs: 0,
+        // Pitching
+        w: s.wins, l: s.losses, sv: s.saves, hld: 0, bs: 0, gp: 0, gs: 0,
+        outs: Math.round(s.ip * 3), ha: Math.round(s.ip * 8.5 / 9),
+        ra: s.earnedRuns, er: s.earnedRuns,
+        bba: Math.round(s.ip * 3 / 9), ka: s.kPitching, hra: Math.round(s.ip * 1.1 / 9),
+        pitchCount: 0,
+      }));
+
+    const league = computeLeagueAverages(allStats as any);
+
+    const entries: Array<{
+      rank: number; playerId: number; name: string; teamAbbr: string;
+      position: string; age: number; stats: Record<string, number>;
+    }> = [];
+
+    for (const pStats of allStats) {
+      const player = players.find(p => p.playerId === pStats.playerId);
+      if (!player) continue;
+
+      if (category === 'hitting') {
+        if (player.isPitcher || pStats.pa < 100) continue;
+        const adv = computeAdvancedHitting(pStats as any, league);
+        entries.push({
+          rank: 0, playerId: pStats.playerId,
+          name: `${player.firstName} ${player.lastName}`,
+          teamAbbr: teams.find(t => t.teamId === player.teamId)?.abbreviation ?? '???',
+          position: String(player.position), age: player.age,
+          stats: adv as unknown as Record<string, number>,
+        });
+      } else {
+        if (!player.isPitcher || pStats.outs < 30) continue;
+        const adv = computeAdvancedPitching(pStats as any, league);
+        entries.push({
+          rank: 0, playerId: pStats.playerId,
+          name: `${player.firstName} ${player.lastName}`,
+          teamAbbr: teams.find(t => t.teamId === player.teamId)?.abbreviation ?? '???',
+          position: String(player.position), age: player.age,
+          stats: adv as unknown as Record<string, number>,
+        });
+      }
+    }
+
+    // Sort by requested stat
+    const isAsc = ['era', 'fip', 'xFIP', 'whip', 'bb9', 'hr9', 'babip'].includes(sortBy);
+    entries.sort((a, b) => {
+      const va = a.stats[sortBy] ?? 0;
+      const vb = b.stats[sortBy] ?? 0;
+      return isAsc ? va - vb : vb - va;
+    });
+
+    return entries.slice(0, limit).map((e, i) => ({ ...e, rank: i + 1 }));
   },
   async getAwardRace() {
     // `latestSeasonAwards` contains final winners, not race leaderboards.
@@ -3140,7 +3343,44 @@ const api = {
     entries.sort((a, b) => b.value - a.value);
     return entries.slice(0, 50);
   },
-  async getPlayoffMVP() { return null; },
+  async getPlayoffMVP() {
+    if (!latestPlayoffBracket?.championId) return null;
+    const champId = latestPlayoffBracket.championId;
+    const champTeam = teams.find(t => t.teamId === champId);
+    if (!champTeam) return null;
+
+    // Pick best position player or pitcher from the champion's roster by season performance.
+    // Weight: overall rating + season production proxy (HR, RBI, wins, saves).
+    let bestId = 0;
+    let bestScore = -1;
+    for (const p of players) {
+      if (p.teamId !== champId) continue;
+      const ps = latestPlayerSeasons.get(p.playerId);
+      if (!ps) continue;
+      const hitting = (ps.hr * 3) + ps.rbi + ps.runs + ps.hits * 0.5;
+      const pitching = (ps.wins * 5) + (ps.saves * 3) + ps.kPitching * 0.5;
+      const score = p.overall + Math.max(hitting, pitching);
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = p.playerId;
+      }
+    }
+
+    if (bestId === 0) return null;
+    const mvp = players.find(p => p.playerId === bestId)!;
+    const ps = latestPlayerSeasons.get(bestId);
+    const statLine = mvp.isPitcher
+      ? `${ps?.wins ?? 0}W-${ps?.losses ?? 0}L, ${(ps?.ip ?? 0).toFixed(1)} IP, ${ps?.kPitching ?? 0} K`
+      : `.${String(Math.round((ps?.hits ?? 0) / Math.max(ps?.ab ?? 1, 1) * 1000)).padStart(3, '0')} / ${ps?.hr ?? 0} HR / ${ps?.rbi ?? 0} RBI`;
+
+    return {
+      playerId: mvp.playerId,
+      name: mvp.name,
+      teamAbbr: champTeam.abbreviation,
+      position: mvp.position,
+      statLine,
+    };
+  },
   async getHOFCandidates() {
     return hofCandidates;
   },

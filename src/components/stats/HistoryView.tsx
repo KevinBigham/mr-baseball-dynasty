@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from 'react';
 import { useLeagueStore, type SeasonSummary } from '../../store/leagueStore';
 import { useGameStore } from '../../store/gameStore';
 import LoadingFallback from '../layout/LoadingFallback';
+import MomentsPanel from '../dashboard/MomentsPanel';
 
 const HallOfFameGallery = lazy(() => import('./HallOfFameGallery'));
 const FranchiseRecordsView = lazy(() => import('./FranchiseRecordsView'));
@@ -26,10 +27,11 @@ function rowBg(s: SeasonSummary): string {
   return 'border-l-2 border-l-gray-800 opacity-70';
 }
 
-type HistoryTab = 'franchise' | 'timeline' | 'transactions' | 'records' | 'hallOfFame';
+type HistoryTab = 'franchise' | 'moments' | 'timeline' | 'transactions' | 'records' | 'hallOfFame';
 
 const TABS: Array<{ id: HistoryTab; label: string }> = [
   { id: 'franchise', label: 'FRANCHISE' },
+  { id: 'moments', label: 'MOMENTS' },
   { id: 'timeline', label: 'TIMELINE' },
   { id: 'transactions', label: 'MOVES' },
   { id: 'records', label: 'RECORDS' },
@@ -186,6 +188,10 @@ export default function HistoryView() {
             </>
           )}
         </>
+      )}
+
+      {activeTab === 'moments' && (
+        <MomentsPanel moments={useLeagueStore.getState().moments} />
       )}
 
       {activeTab === 'records' && (

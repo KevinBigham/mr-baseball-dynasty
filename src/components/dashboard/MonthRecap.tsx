@@ -14,9 +14,10 @@ interface Props {
   userTeamId: number;
   chunkRecord: { wins: number; losses: number }; // user record THIS chunk
   divisionStandings: StandingsRow[] | null;
+  prevDivisionRank?: number;    // Division rank before this chunk (for movement indicator)
 }
 
-export default function MonthRecap({ segment, partialResult, userTeamId, chunkRecord, divisionStandings }: Props) {
+export default function MonthRecap({ segment, partialResult, userTeamId, chunkRecord, divisionStandings, prevDivisionRank }: Props) {
   const userTeam = partialResult.teamSeasons.find(t => t.teamId === userTeamId);
   const totalWins = userTeam?.record?.wins ?? 0;
   const totalLosses = userTeam?.record?.losses ?? 0;
@@ -34,6 +35,25 @@ export default function MonthRecap({ segment, partialResult, userTeamId, chunkRe
   const divTeams = divisionStandings
     ?.filter(s => s.division === userDivision && s.league === userLeague)
     .sort((a, b) => b.wins - a.wins) ?? [];
+
+  // Current division rank (1-indexed)
+  const currentRank = divTeams.findIndex(t => t.teamId === userTeamId) + 1;
+  const rankMovement = prevDivisionRank && currentRank > 0 ? prevDivisionRank - currentRank : 0;
+
+  // ── Needs attention callouts ──
+  const alerts: { icon: string; text: string; color: string }[] = [];
+  const monthWinPct = (chunkRecord.wins + chunkRecord.losses) > 0
+    ? chunkRecord.wins / (chunkRecord.wins + chunkRecord.losses) : 0.5;
+  if (monthWinPct < 0.350) {
+    alerts.push({ icon: '📉', text: 'Rough month — consider lineup or rotation changes.', color: 'text-red-400' });
+  } else if (monthWinPct >= 0.700) {
+    alerts.push({ icon: '🔥', text: 'Dominant stretch! Keep riding the hot hand.', color: 'text-green-400' });
+  }
+  if (rankMovement > 0) {
+    alerts.push({ icon: '📈', text: `Moved UP ${rankMovement} spot${rankMovement > 1 ? 's' : ''} in the division.`, color: 'text-green-400' });
+  } else if (rankMovement < 0) {
+    alerts.push({ icon: '📉', text: `Dropped ${Math.abs(rankMovement)} spot${Math.abs(rankMovement) > 1 ? 's' : ''} in the division.`, color: 'text-yellow-400' });
+  }
 
   // Top hitters (by avg, min PA threshold)
   const minPA = Math.max(10, partialResult.gamesCompleted / 30 * 3);
@@ -61,6 +81,18 @@ export default function MonthRecap({ segment, partialResult, userTeamId, chunkRe
       </div>
 
       <div className="p-4 space-y-3">
+        {/* Needs attention callouts */}
+        {alerts.length > 0 && (
+          <div className="space-y-1">
+            {alerts.map((a, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span>{a.icon}</span>
+                <span className={a.color}>{a.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Overall record */}
         <div className="grid grid-cols-3 gap-3">
           <div className="text-center">

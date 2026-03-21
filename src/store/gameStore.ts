@@ -5,6 +5,7 @@ import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
 export type GamePhase = 'preseason' | 'in_season' | 'simulating' | 'postseason' | 'offseason' | 'fired';
 export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
+export type SimPace = 'monthly' | 'weekly' | 'fast';
 
 // ─── Delegation System (Progressive Disclosure) ──────────────────────────────
 // Each key = a management domain. true = player controls it, false = AI handles it.
@@ -60,6 +61,7 @@ interface GameStore {
   // ── Setup / onboarding ───────────────────────────────────────────────────────
   setupScreen:   SetupScreen;
   startMode:     StartModeId;
+  startupDraftSlot: number | null;
   frontOffice:   FOStaffMember[];
   foBudget:      number;    // Total budget in $M
   difficulty:    'rookie' | 'normal' | 'hard';
@@ -84,6 +86,7 @@ interface GameStore {
   currentSeasonDate: string | null;    // ISO date of next unplayed game (e.g., "2026-04-15")
   gamesCompleted:    number;           // total schedule entries completed
   totalGames:        number;           // total schedule entries in season
+  simPace:           SimPace;          // 'monthly' | 'weekly' | 'fast'
 
   // ── Tutorial ───────────────────────────────────────────────────────────────────
   tutorialActive:  boolean;
@@ -100,6 +103,7 @@ interface GameStore {
 
   setSetupScreen:     (s: SetupScreen) => void;
   setStartMode:       (m: StartModeId) => void;
+  setStartupDraftSlot:(slot: number | null) => void;
   setFrontOffice:     (staff: FOStaffMember[]) => void;
   addFOStaff:         (member: FOStaffMember) => void;
   removeFOStaff:      (id: string) => void;
@@ -124,6 +128,7 @@ interface GameStore {
   setCurrentSeasonDate: (d: string | null) => void;
   setGamesCompleted:    (n: number) => void;
   setTotalGames:        (n: number) => void;
+  setSimPace:           (p: SimPace) => void;
 
   setTutorialActive:  (v: boolean) => void;
 
@@ -144,6 +149,7 @@ export const useGameStore = create<GameStore>(set => ({
 
   setupScreen:     'title',
   startMode:       'instant',
+  startupDraftSlot: null,
   frontOffice:     [],
   foBudget:        15,
   difficulty:      'normal',
@@ -162,6 +168,7 @@ export const useGameStore = create<GameStore>(set => ({
   currentSeasonDate: null,
   gamesCompleted:    0,
   totalGames:        0,
+  simPace:           'monthly',
 
   tutorialActive:  false,
 
@@ -178,6 +185,7 @@ export const useGameStore = create<GameStore>(set => ({
   // ── Setup setters ─────────────────────────────────────────────────────────────
   setSetupScreen:  s           => set({ setupScreen: s }),
   setStartMode:    m           => set({ startMode: m }),
+  setStartupDraftSlot: slot    => set({ startupDraftSlot: slot }),
   setFrontOffice:  staff       => set({ frontOffice: staff }),
   addFOStaff:      member      => set(state => ({ frontOffice: [...state.frontOffice, member] })),
   removeFOStaff:   id          => set(state => ({ frontOffice: state.frontOffice.filter(s => s.id !== id) })),
@@ -189,6 +197,7 @@ export const useGameStore = create<GameStore>(set => ({
   resetSetup: () => set({
     setupScreen: 'title',
     startMode:   'instant',
+    startupDraftSlot: null,
     frontOffice: [],
     foBudget:    15,
     difficulty:  'normal',
@@ -217,6 +226,7 @@ export const useGameStore = create<GameStore>(set => ({
   setCurrentSeasonDate: d => set({ currentSeasonDate: d }),
   setGamesCompleted:    n => set({ gamesCompleted: n }),
   setTotalGames:        n => set({ totalGames: n }),
+  setSimPace:           p => set({ simPace: p }),
 
   // ── Tutorial ────────────────────────────────────────────────────────────────────
   setTutorialActive: v => set({ tutorialActive: v }),
@@ -233,6 +243,7 @@ export const useGameStore = create<GameStore>(set => ({
     seasonPhase: 'early' as SeasonPhase,
     setupScreen: 'title' as SetupScreen,
     startMode: 'instant' as StartModeId,
+    startupDraftSlot: null,
     frontOffice: [],
     foBudget: 15,
     difficulty: 'normal' as const,
@@ -245,6 +256,7 @@ export const useGameStore = create<GameStore>(set => ({
     inSeasonPaused: false,
     segmentUserRecord: null,
     currentSeasonDate: null,
+    simPace: 'monthly' as SimPace,
     gamesCompleted: 0,
     totalGames: 0,
     tutorialActive: false,

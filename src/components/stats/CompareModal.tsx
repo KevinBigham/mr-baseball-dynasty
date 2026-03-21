@@ -130,14 +130,12 @@ function PlayerSearch({
       setSearching(true);
       try {
         const engine = getEngine();
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const entries = await engine.getLeaderboardFull({
           category: 'hitting',
           sortBy: 'hr',
           limit: 50,
           minPA: 1,
         });
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         const pitchers = await engine.getLeaderboardFull({
           category: 'pitching',
           sortBy: 'era',

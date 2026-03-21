@@ -5,7 +5,7 @@ import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
 import { FO_ROLES, FO_TRAITS, START_MODES, FO_BUDGET, FO_CANDIDATES_PER_ROLE, generateFOCandidates } from '../../data/frontOffice';
 import { createPRNG } from '../../engine/math/prng';
-import type { FOStaffMember, FORoleId } from '../../types/frontOffice';
+import type { FOStaffMember, FORoleId, StartModeId } from '../../types/frontOffice';
 import type { StandingsRow } from '../../types/league';
 import type { OwnerArchetype } from '../../engine/narrative';
 import { DelegationSetupSection } from './DelegationPanel';
@@ -23,6 +23,15 @@ const TEAMS = INITIAL_TEAMS.map(t => ({
 }));
 
 const DIV_ORDER = ['AL East', 'AL Central', 'AL West', 'NL East', 'NL Central', 'NL West'];
+const STARTUP_DRAFT_SLOT_OPTIONS = Array.from({ length: TEAMS.length }, (_, idx) => idx + 1);
+
+function isStartupDraftMode(mode: StartModeId): mode is 'snake10' | 'snake25' | 'snake26' {
+  return mode === 'snake10' || mode === 'snake25' || mode === 'snake26';
+}
+
+function startupDraftTurnaroundPick(slot: number): number {
+  return (TEAMS.length * 2) - slot + 1;
+}
 
 function buildFOCandidateSeed(userTeamId: number, difficulty: string, roleId: FORoleId): number {
   let seed = (userTeamId * 1009) >>> 0;
@@ -196,7 +205,8 @@ function TeamSelectScreen() {
 // ─── Screen: Start Mode ────────────────────────────────────────────────────────
 
 function StartModeScreen() {
-  const { startMode, setStartMode, setSetupScreen } = useGameStore();
+  const { startMode, startupDraftSlot, setStartMode, setStartupDraftSlot, setSetupScreen } = useGameStore();
+  const draftSlotValue = startupDraftSlot == null ? 'random' : String(startupDraftSlot);
 
   return (
     <div className="min-h-screen p-6 overflow-auto"
@@ -263,6 +273,60 @@ function StartModeScreen() {
             );
           })}
         </div>
+
+        {isStartupDraftMode(startMode) && (
+          <div
+            className="rounded-lg p-4 space-y-3"
+            style={{ background: 'rgba(234,88,12,0.08)', border: '1px solid rgba(234,88,12,0.25)' }}
+          >
+            <div className="space-y-1">
+              <div className="text-gray-500 text-xs tracking-widest uppercase">Inaugural Draft Slot</div>
+              <div className="text-orange-400 font-black text-sm tracking-wide">CHOOSE YOUR ROUND 1 POSITION</div>
+              <div className="text-gray-500 text-xs">
+                Lock your opening-round slot or leave it randomized. The snake reverses every round.
+              </div>
+            </div>
+
+            <label className="block space-y-2">
+              <span className="text-gray-400 text-xs font-bold uppercase tracking-widest">Draft Slot</span>
+              <select
+                aria-label="Startup draft slot"
+                value={draftSlotValue}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setStartupDraftSlot(nextValue === 'random' ? null : Number(nextValue));
+                }}
+                className="w-full px-3 py-3 text-sm font-bold rounded outline-none"
+                style={{
+                  background: 'rgba(0,0,0,0.45)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(234,88,12,0.35)',
+                }}
+              >
+                <option value="random">Randomized order</option>
+                {STARTUP_DRAFT_SLOT_OPTIONS.map((slot) => (
+                  <option key={slot} value={slot}>
+                    Pick {slot} of {TEAMS.length}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {startupDraftSlot != null && (
+              <div
+                className="grid grid-cols-2 gap-3 text-xs"
+                style={{ color: '#cbd5e1' }}
+              >
+                <div className="rounded px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  Round 1: Pick #{startupDraftSlot}
+                </div>
+                <div className="rounded px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                  Round 2: Pick #{startupDraftTurnaroundPick(startupDraftSlot)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3">
           <button onClick={() => setSetupScreen('teamSelect')}
@@ -690,13 +754,22 @@ function FrontOfficeScreen({ onStartGame, startError }: { onStartGame: () => voi
 // ─── Main SetupFlow ────────────────────────────────────────────────────────────
 
 export default function SetupFlow() {
-  const { setupScreen, userTeamId, startMode, setGameStarted, setSeason, setUserTeamId, setSetupScreen } = useGameStore();
+  const {
+    setupScreen,
+    userTeamId,
+    startMode,
+    startupDraftSlot,
+    setGameStarted,
+    setSeason,
+    setUserTeamId,
+    setSetupScreen,
+  } = useGameStore();
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  const isDraftMode = startMode === 'snake10' || startMode === 'snake25' || startMode === 'snake26';
+  const isDraftMode = isStartupDraftMode(startMode);
 
   const handleStartGame = useCallback(async () => {
     setError(null);
@@ -710,7 +783,7 @@ export default function SetupFlow() {
 
       if (isDraftMode) {
         // Start the draft and transition to draft screen
-        await engine.startDraft(startMode);
+        await engine.startDraft(startMode, startupDraftSlot);
         setUserTeamId(userTeamId);
         setSelectedTeam(userTeamId);
         setSeason(2026);
@@ -732,7 +805,7 @@ export default function SetupFlow() {
     } finally {
       setLoading(false);
     }
-  }, [userTeamId, startMode, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
+  }, [userTeamId, startMode, startupDraftSlot, isDraftMode, setUserTeamId, setSelectedTeam, setSeason, setGameStarted, setStandings, setSetupScreen]);
 
   if (loading) {
     return (

@@ -232,12 +232,10 @@ export default function Leaderboards() {
         .then((data) => setCareerData(data as any))
         .finally(() => setLoading(false));
     } else if (isAdvanced) {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getLeaderboardAdvanced(advSubCat, sortBy, 50)
         .then(setAdvData)
         .finally(() => setLoading(false));
     } else {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       getEngine().getLeaderboardFull({
         category: leaderboardCategory,
         sortBy,

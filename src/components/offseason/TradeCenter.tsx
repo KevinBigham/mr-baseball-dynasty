@@ -313,7 +313,6 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
       const engine = getEngine();
       const result = await engine.proposeTrade(
         targetTeamId,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         [...selectedMine],
         [...selectedTheirs],
       );
@@ -329,8 +328,7 @@ function ProposeTrade({ teams }: { teams: Array<{ teamId: number; name: string; 
         setMyPlayers((mine as unknown[]).map(rawPlayerToTradeInfo));
         setTheirPlayers((theirs as unknown[]).map(rawPlayerToTradeInfo));
       } else {
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
-        useUIStore.getState().addToast(result.error ?? 'Trade rejected.', 'error');
+        useUIStore.getState().addToast((result as any).reason ?? 'Trade rejected.', 'error');
       }
     } catch {
       useUIStore.getState().addToast('Trade failed.', 'error');
@@ -821,7 +819,6 @@ export default function TradeCenter({ onTransaction, onDone }: {
     const engine = getEngine();
     const result = await engine.acceptTradeOffer(
       offer.partnerTeamId,
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
       offer.requested.map(p => p.playerId),
       offer.offered.map(p => p.playerId),
     );
@@ -840,8 +837,7 @@ export default function TradeCenter({ onTransaction, onDone }: {
       });
       setOffers(prev => prev.filter(o => o.tradeId !== offer.tradeId));
     } else {
-      // @ts-expect-error Sprint 04 stub — contract alignment pending
-      useUIStore.getState().addToast(result.error ?? 'Trade failed.', 'error');
+      useUIStore.getState().addToast((result as any).reason ?? 'Trade failed.', 'error');
     }
   }, [onTransaction, addTradeRecord, season]);
 

@@ -6,6 +6,7 @@ import Dashboard from '../dashboard/Dashboard';
 import { getEngine } from '../../engine/engineClient';
 import { saveGame } from '../../db/schema';
 import SaveManager from './SaveManager';
+import SettingsPanel from './SettingsPanel';
 import CompareModal from '../stats/CompareModal';
 import ErrorBoundary from './ErrorBoundary';
 import OfflineIndicator from './OfflineIndicator';
@@ -13,7 +14,12 @@ import FiredScreen from '../dashboard/FiredScreen';
 import MobileNav from './MobileNav';
 import LoadingFallback from './LoadingFallback';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useRouterSync } from '../../hooks/useRouterSync';
+import { useSound } from '../../hooks/useSound';
+import { useAmbient } from '../../hooks/useAmbient';
 import GameIcon from '../shared/GameIcon';
+import TransactionTicker from '../dashboard/TransactionTicker';
+import { generateTransactionTicker } from '../../engine/warRoom';
 import type { IconName } from '../../constants/icons';
 
 // Lazy-load tab-level route components for bundle optimization
@@ -72,6 +78,14 @@ export default function Shell() {
   const [saveFlash, setSaveFlash] = useState(false);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showSaveManager, setShowSaveManager] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Audio hooks
+  const { play } = useSound();
+  useAmbient();
+
+  // Bidirectional URL ↔ Zustand sync
+  useRouterSync();
 
   // Map legacy tab values
   const effectiveTab = activeTab === 'dashboard' ? 'home'
@@ -86,9 +100,10 @@ export default function Shell() {
 
   // ESC to close topmost modal
   useEscapeKey(useCallback(() => {
-    if (showSaveManager) setShowSaveManager(false);
+    if (showSettings) setShowSettings(false);
+    else if (showSaveManager) setShowSaveManager(false);
     else if (showNewGameConfirm) setShowNewGameConfirm(false);
-  }, [showSaveManager, showNewGameConfirm]));
+  }, [showSettings, showSaveManager, showNewGameConfirm]));
 
   const handleSave = useCallback(async () => {
     try {
@@ -96,13 +111,15 @@ export default function Shell() {
       const state = await engine.getFullState();
       if (state) {
         await saveGame(state, `Manual Save — S${season}`, `Team ${userTeamId}`);
+        void play('playSave');
         setSaveFlash(true);
         setTimeout(() => setSaveFlash(false), 2000);
       }
     } catch {
+      void play('playBuzz');
       useUIStore.getState().addToast('Save failed', 'error');
     }
-  }, [season, userTeamId]);
+  }, [season, userTeamId, play]);
 
   const handleNewGame = useCallback(() => {
     resetGame();
@@ -240,6 +257,13 @@ export default function Shell() {
           >
             NEW GAME
           </button>
+          <button
+            onClick={() => { void play('playClick'); setShowSettings(true); }}
+            className="border border-gray-700 hover:border-gray-400 text-gray-500 hover:text-gray-300 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            aria-label="Settings"
+          >
+            ⚙
+          </button>
         </div>
       </header>
 
@@ -273,7 +297,7 @@ export default function Shell() {
           {NAV_PILLARS.map(pillar => (
             <button
               key={pillar.id}
-              onClick={() => navigate(pillar.id, pillar.subTabs[0]?.id ?? '')}
+              onClick={() => { void play('playNav'); navigate(pillar.id, pillar.subTabs[0]?.id ?? ''); }}
               className={[
                 'px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition-colors flex items-center gap-1.5',
                 effectiveTab === pillar.id
@@ -321,6 +345,14 @@ export default function Shell() {
 
       {/* ── Player Comparison Modal ──────────────────────────────── */}
       <CompareModal />
+
+      {/* ── Transaction Ticker (desktop) ─────────────────────── */}
+      <div className="hidden sm:block shrink-0">
+        <TransactionTicker ticks={generateTransactionTicker(season, 0, gamePhase === 'offseason' ? 'offseason' : 'season')} />
+      </div>
+
+      {/* ── Settings Panel ─────────────────────────────────────── */}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
 
       {/* ── Fired Screen ──────────────────────────────────────────── */}
       {gamePhase === 'fired' && <FiredScreen />}

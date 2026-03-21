@@ -23,6 +23,17 @@
     <meta name="twitter:image" content="/icon-512.svg" />
   </head>
   <body class="text-gray-300 font-mono" style="background-color: #0B1020">
+    <!-- GitHub Pages SPA redirect: restores path from 404.html query param -->
+    <script>
+      (function(l) {
+        if (l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      }(window.location));
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

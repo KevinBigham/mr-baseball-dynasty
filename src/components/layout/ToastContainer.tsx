@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useUIStore, type ToastItem } from '../../store/uiStore';
+import { usePreferencesStore } from '../../store/preferencesStore';
+import { ensureAudioResumed, setMasterVolume, getAudioContext, getMasterGain } from '../../audio/audioEngine';
 
 const ACCENT_MAP: Record<string, string> = {
   success: '#4ade80',
@@ -47,9 +49,43 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }
   );
 }
 
+/** Play a toast-type-specific notification sound. */
+function playToastSound(type: ToastItem['type']): void {
+  const prefs = usePreferencesStore.getState();
+  if (!prefs.soundEnabled) return;
+
+  void ensureAudioResumed().then(() => {
+    setMasterVolume(prefs.masterVolume);
+    const ctx = getAudioContext();
+    const master = getMasterGain();
+    if (!ctx || !master) return;
+
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(type === 'error' ? 220 : type === 'success' ? 660 : 440, ctx.currentTime);
+    g.gain.setValueAtTime(0.04, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    osc.connect(g);
+    g.connect(master);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.12);
+  });
+}
+
 export default function ToastContainer() {
   const toasts = useUIStore(s => s.toasts);
   const removeToast = useUIStore(s => s.removeToast);
+  const prevCountRef = useRef(toasts.length);
+
+  // Play sound when a new toast appears
+  useEffect(() => {
+    if (toasts.length > prevCountRef.current) {
+      const newest = toasts[toasts.length - 1];
+      if (newest) playToastSound(newest.type);
+    }
+    prevCountRef.current = toasts.length;
+  }, [toasts]);
 
   if (toasts.length === 0) return null;
 
