@@ -3,7 +3,7 @@
  * Accessible: uses aria-describedby pattern.
  */
 
-import { useState, useRef, type ReactNode } from 'react';
+import { useState, useId, type ReactNode } from 'react';
 
 interface Props {
   text: string;
@@ -13,7 +13,8 @@ interface Props {
 
 export default function Tooltip({ text, children, position = 'top' }: Props) {
   const [visible, setVisible] = useState(false);
-  const id = useRef(`tooltip-${Math.random().toString(36).slice(2, 8)}`);
+  const reactId = useId();
+  const id = `tooltip-${reactId}`;
 
   return (
     <span
@@ -22,12 +23,12 @@ export default function Tooltip({ text, children, position = 'top' }: Props) {
       onMouseLeave={() => setVisible(false)}
       onFocus={() => setVisible(true)}
       onBlur={() => setVisible(false)}
-      aria-describedby={visible ? id.current : undefined}
+      aria-describedby={visible ? id : undefined}
     >
       {children}
       {visible && (
         <span
-          id={id.current}
+          id={id}
           role="tooltip"
           className={`absolute z-50 px-2 py-1 text-[10px] text-gray-200 bg-gray-800 border border-gray-700 rounded shadow-lg whitespace-nowrap pointer-events-none ${
             position === 'top' ? 'bottom-full mb-1 left-1/2 -translate-x-1/2' : 'top-full mt-1 left-1/2 -translate-x-1/2'

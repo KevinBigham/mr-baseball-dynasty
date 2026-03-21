@@ -54,6 +54,7 @@ export const STABILIZATION_POINTS = {
   isopower: 160,
   pitcherK: 70,
   pitcherBB: 170,
+  pitcherHR: 400,     // HR/9 stabilizes much later than K rate (~400 BF)
   pitcherBABIP: 2000, // Never adjust pitcher on short BABIP stretch
 } as const;
 

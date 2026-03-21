@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { getEngine } from '../../engine/engineClient';
 import type { PlayerSeasonStats } from '../../types/player';
 import { formatSeasonLabel } from '../../utils/format';
 import { isEliteStat } from '../../utils/statHighlight';
+import { DataTable } from '../ui/data-table';
+import { cn } from '../../lib/utils';
+import type { ColumnDef } from '@tanstack/react-table';
 
 interface Props {
   seasons: PlayerSeasonStats[];
@@ -36,52 +39,60 @@ export function whip(ha: number, bba: number, outs: number): string {
   return innings > 0 ? ((ha + bba) / innings).toFixed(2) : '0.00';
 }
 
-const HITTING_COLS = [
-  { key: 'season', label: 'YR', width: 'w-10', stat: '' },
-  { key: 'team', label: 'TM', width: 'w-10', stat: '' },
-  { key: 'g', label: 'G', width: 'w-8', stat: '' },
-  { key: 'pa', label: 'PA', width: 'w-8', stat: '' },
-  { key: 'avg', label: 'AVG', width: 'w-12', stat: 'avg' },
-  { key: 'obp', label: 'OBP', width: 'w-12', stat: 'obp' },
-  { key: 'hr', label: 'HR', width: 'w-8', stat: 'hr' },
-  { key: 'rbi', label: 'RBI', width: 'w-8', stat: 'rbi' },
-  { key: 'sb', label: 'SB', width: 'w-8', stat: 'sb' },
-  { key: 'bb', label: 'BB', width: 'w-8', stat: '' },
-  { key: 'k', label: 'K', width: 'w-8', stat: '' },
-  { key: 'h', label: 'H', width: 'w-8', stat: 'h' },
-  { key: 'r', label: 'R', width: 'w-8', stat: 'r' },
+// ─── Row data types ──────────────────────────────────────────────────────────
+
+interface CareerRow {
+  season: string;
+  team: string;
+  values: Record<string, string>;
+  isTotals?: boolean;
+}
+
+interface ColSpec {
+  key: string;
+  label: string;
+  stat: string; // empty = no elite check
+}
+
+const HITTING_COLS: ColSpec[] = [
+  { key: 'season', label: 'YR', stat: '' },
+  { key: 'team', label: 'TM', stat: '' },
+  { key: 'g', label: 'G', stat: '' },
+  { key: 'pa', label: 'PA', stat: '' },
+  { key: 'avg', label: 'AVG', stat: 'avg' },
+  { key: 'obp', label: 'OBP', stat: 'obp' },
+  { key: 'hr', label: 'HR', stat: 'hr' },
+  { key: 'rbi', label: 'RBI', stat: 'rbi' },
+  { key: 'sb', label: 'SB', stat: 'sb' },
+  { key: 'bb', label: 'BB', stat: '' },
+  { key: 'k', label: 'K', stat: '' },
+  { key: 'h', label: 'H', stat: 'h' },
+  { key: 'r', label: 'R', stat: 'r' },
 ];
 
-const PITCHING_COLS = [
-  { key: 'season', label: 'YR', width: 'w-10', stat: '' },
-  { key: 'team', label: 'TM', width: 'w-10', stat: '' },
-  { key: 'g', label: 'G', width: 'w-8', stat: '' },
-  { key: 'gs', label: 'GS', width: 'w-8', stat: '' },
-  { key: 'w', label: 'W', width: 'w-8', stat: 'w' },
-  { key: 'l', label: 'L', width: 'w-8', stat: '' },
-  { key: 'sv', label: 'SV', width: 'w-8', stat: 'sv' },
-  { key: 'era', label: 'ERA', width: 'w-12', stat: 'era' },
-  { key: 'ip', label: 'IP', width: 'w-12', stat: 'ip' },
-  { key: 'whip', label: 'WHIP', width: 'w-12', stat: 'whip' },
-  { key: 'ka', label: 'K', width: 'w-8', stat: '' },
-  { key: 'bba', label: 'BB', width: 'w-8', stat: '' },
+const PITCHING_COLS: ColSpec[] = [
+  { key: 'season', label: 'YR', stat: '' },
+  { key: 'team', label: 'TM', stat: '' },
+  { key: 'g', label: 'G', stat: '' },
+  { key: 'gs', label: 'GS', stat: '' },
+  { key: 'w', label: 'W', stat: 'w' },
+  { key: 'l', label: 'L', stat: '' },
+  { key: 'sv', label: 'SV', stat: 'sv' },
+  { key: 'era', label: 'ERA', stat: 'era' },
+  { key: 'ip', label: 'IP', stat: 'ip' },
+  { key: 'whip', label: 'WHIP', stat: 'whip' },
+  { key: 'ka', label: 'K', stat: '' },
+  { key: 'bba', label: 'BB', stat: '' },
 ];
 
 export function hittingRow(s: PlayerSeasonStats, teamMap?: Map<number, string>): Record<string, string> {
   return {
     season: formatSeasonLabel(s.season),
     team: teamMap?.get(s.teamId) ?? '—',
-    g: fmt(s.g),
-    pa: fmt(s.pa),
-    avg: avg(s.h, s.ab),
-    obp: obp(s.h, s.bb, s.hbp, s.pa),
-    hr: fmt(s.hr),
-    rbi: fmt(s.rbi),
-    sb: fmt(s.sb),
-    bb: fmt(s.bb),
-    k: fmt(s.k),
-    h: fmt(s.h),
-    r: fmt(s.r),
+    g: fmt(s.g), pa: fmt(s.pa),
+    avg: avg(s.h, s.ab), obp: obp(s.h, s.bb, s.hbp, s.pa),
+    hr: fmt(s.hr), rbi: fmt(s.rbi), sb: fmt(s.sb),
+    bb: fmt(s.bb), k: fmt(s.k), h: fmt(s.h), r: fmt(s.r),
   };
 }
 
@@ -89,69 +100,45 @@ export function pitchingRow(s: PlayerSeasonStats, teamMap?: Map<number, string>)
   return {
     season: formatSeasonLabel(s.season),
     team: teamMap?.get(s.teamId) ?? '—',
-    g: fmt(s.gp),
-    gs: fmt(s.gs),
-    w: fmt(s.w),
-    l: fmt(s.l),
-    sv: fmt(s.sv),
-    era: era(s.er, s.outs),
-    ip: ip(s.outs),
+    g: fmt(s.gp), gs: fmt(s.gs),
+    w: fmt(s.w), l: fmt(s.l), sv: fmt(s.sv),
+    era: era(s.er, s.outs), ip: ip(s.outs),
     whip: whip(s.ha, s.bba, s.outs),
-    ka: fmt(s.ka),
-    bba: fmt(s.bba),
+    ka: fmt(s.ka), bba: fmt(s.bba),
   };
 }
 
 export function totalsHitting(seasons: PlayerSeasonStats[]): Record<string, string> {
-  const t = {
-    g: 0, pa: 0, ab: 0, h: 0, bb: 0, hbp: 0, hr: 0, rbi: 0, sb: 0, k: 0, r: 0,
-  };
+  const t = { g: 0, pa: 0, ab: 0, h: 0, bb: 0, hbp: 0, hr: 0, rbi: 0, sb: 0, k: 0, r: 0 };
   for (const s of seasons) {
     t.g += s.g; t.pa += s.pa; t.ab += s.ab; t.h += s.h; t.bb += s.bb;
     t.hbp += s.hbp; t.hr += s.hr; t.rbi += s.rbi; t.sb += s.sb; t.k += s.k; t.r += s.r;
   }
   return {
-    season: `${seasons.length}yr`,
-    team: '',
-    g: fmt(t.g),
-    pa: fmt(t.pa),
-    avg: avg(t.h, t.ab),
-    obp: obp(t.h, t.bb, t.hbp, t.pa),
-    hr: fmt(t.hr),
-    rbi: fmt(t.rbi),
-    sb: fmt(t.sb),
-    bb: fmt(t.bb),
-    k: fmt(t.k),
-    h: fmt(t.h),
-    r: fmt(t.r),
+    season: `${seasons.length}yr`, team: '',
+    g: fmt(t.g), pa: fmt(t.pa),
+    avg: avg(t.h, t.ab), obp: obp(t.h, t.bb, t.hbp, t.pa),
+    hr: fmt(t.hr), rbi: fmt(t.rbi), sb: fmt(t.sb),
+    bb: fmt(t.bb), k: fmt(t.k), h: fmt(t.h), r: fmt(t.r),
   };
 }
 
 export function totalsPitching(seasons: PlayerSeasonStats[]): Record<string, string> {
-  const t = {
-    gp: 0, gs: 0, w: 0, l: 0, sv: 0, er: 0, outs: 0, ha: 0, bba: 0, ka: 0,
-  };
+  const t = { gp: 0, gs: 0, w: 0, l: 0, sv: 0, er: 0, outs: 0, ha: 0, bba: 0, ka: 0 };
   for (const s of seasons) {
     t.gp += s.gp; t.gs += s.gs; t.w += s.w; t.l += s.l; t.sv += s.sv;
     t.er += s.er; t.outs += s.outs; t.ha += s.ha; t.bba += s.bba; t.ka += s.ka;
   }
   return {
-    season: `${seasons.length}yr`,
-    team: '',
-    g: fmt(t.gp),
-    gs: fmt(t.gs),
-    w: fmt(t.w),
-    l: fmt(t.l),
-    sv: fmt(t.sv),
-    era: era(t.er, t.outs),
-    ip: ip(t.outs),
+    season: `${seasons.length}yr`, team: '',
+    g: fmt(t.gp), gs: fmt(t.gs),
+    w: fmt(t.w), l: fmt(t.l), sv: fmt(t.sv),
+    era: era(t.er, t.outs), ip: ip(t.outs),
     whip: whip(t.ha, t.bba, t.outs),
-    ka: fmt(t.ka),
-    bba: fmt(t.bba),
+    ka: fmt(t.ka), bba: fmt(t.bba),
   };
 }
 
-/** Parse a numeric stat value from a formatted string for elite checking */
 function parseStatNum(val: string): number {
   const n = parseFloat(val);
   return isNaN(n) ? 0 : n;
@@ -160,7 +147,6 @@ function parseStatNum(val: string): number {
 export default function CareerStatsTable({ seasons, isPitcher }: Props) {
   const [teamMap, setTeamMap] = useState<Map<number, string>>(new Map());
 
-  // Load team abbreviations once
   useEffect(() => {
     (async () => {
       try {
@@ -175,6 +161,56 @@ export default function CareerStatsTable({ seasons, isPitcher }: Props) {
     })();
   }, []);
 
+  const colSpecs = isPitcher ? PITCHING_COLS : HITTING_COLS;
+
+  // Build data rows + totals
+  const { rows, totals } = useMemo(() => {
+    const rowData = seasons.map(s => ({
+      season: '',
+      team: '',
+      values: isPitcher ? pitchingRow(s, teamMap) : hittingRow(s, teamMap),
+    }));
+    // Fill season/team from values for convenience
+    for (const r of rowData) {
+      r.season = r.values.season;
+      r.team = r.values.team;
+    }
+    const totalsData: CareerRow = {
+      season: `${seasons.length}yr`,
+      team: '',
+      values: isPitcher ? totalsPitching(seasons) : totalsHitting(seasons),
+      isTotals: true,
+    };
+    return { rows: rowData, totals: totalsData };
+  }, [seasons, isPitcher, teamMap]);
+
+  // Build TanStack columns
+  const columns: ColumnDef<CareerRow, any>[] = useMemo(() => {
+    return colSpecs.map(c => ({
+      id: c.key,
+      header: c.label,
+      accessorFn: (row: CareerRow) => row.values[c.key] ?? '',
+      enableSorting: false,
+      meta: { align: 'right' as const },
+      cell: ({ row, getValue }: { row: any; getValue: () => any }) => {
+        const val = getValue() as string;
+        const isTotals = row.original.isTotals;
+        const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
+        return (
+          <span className={cn(
+            c.key === 'season' ? (isTotals ? 'text-orange-500 font-bold' : 'text-orange-400 font-bold') :
+            c.key === 'team' ? 'text-gray-500' :
+            elite ? 'text-orange-400 font-bold' :
+            isTotals ? 'text-orange-300 font-bold' :
+            'text-gray-300',
+          )}>
+            {val}
+          </span>
+        );
+      },
+    }));
+  }, [colSpecs]);
+
   if (seasons.length === 0) {
     return (
       <div className="bloomberg-border">
@@ -186,81 +222,43 @@ export default function CareerStatsTable({ seasons, isPitcher }: Props) {
     );
   }
 
-  const cols = isPitcher ? PITCHING_COLS : HITTING_COLS;
-  const rows = seasons.map(s => isPitcher ? pitchingRow(s, teamMap) : hittingRow(s, teamMap));
-  const totals = isPitcher ? totalsPitching(seasons) : totalsHitting(seasons);
+  // Totals footer row
+  const footerRow = (
+    <tr style={{ borderTop: '2px solid #9a3412' }} className="bg-gray-900/40">
+      {colSpecs.map(c => {
+        const val = totals.values[c.key];
+        const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
+        return (
+          <td
+            key={c.key}
+            className={cn(
+              'px-1.5 py-1.5 text-right tabular-nums font-bold',
+              c.key === 'season' ? 'text-orange-500' :
+              elite ? 'text-orange-400' :
+              'text-orange-300',
+            )}
+          >
+            {val}
+          </td>
+        );
+      })}
+    </tr>
+  );
 
   return (
     <div className="bloomberg-border">
       <div className="bloomberg-header">
         CAREER STATISTICS — {seasons.length} SEASON{seasons.length !== 1 ? 'S' : ''}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full" style={{ fontSize: '11px' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #1E2A4A' }}>
-              {cols.map(c => (
-                <th
-                  key={c.key}
-                  className={`px-1.5 py-1 text-right text-gray-500 font-bold ${c.width}`}
-                >
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr
-                key={i}
-                className="hover:bg-gray-800/40 transition-colors"
-                style={{
-                  backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',
-                  borderBottom: '1px solid rgba(30,42,74,0.3)',
-                }}
-              >
-                {cols.map(c => {
-                  const val = row[c.key];
-                  // Check elite highlight
-                  const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
-                  return (
-                    <td
-                      key={c.key}
-                      className={`px-1.5 py-0.5 text-right tabular-nums ${
-                        c.key === 'season' ? 'text-orange-400 font-bold' :
-                        c.key === 'team' ? 'text-gray-500' :
-                        elite ? 'text-orange-400 font-bold' :
-                        'text-gray-300'
-                      }`}
-                    >
-                      {val}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {/* Career totals row */}
-            <tr style={{ borderTop: '2px solid #9a3412' }} className="bg-gray-900/40">
-              {cols.map(c => {
-                const val = totals[c.key];
-                const elite = c.stat && val && isEliteStat(c.stat, parseStatNum(val));
-                return (
-                  <td
-                    key={c.key}
-                    className={`px-1.5 py-1.5 text-right tabular-nums font-bold ${
-                      c.key === 'season' ? 'text-orange-500' :
-                      elite ? 'text-orange-400' :
-                      'text-orange-300'
-                    }`}
-                  >
-                    {val}
-                  </td>
-                );
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <DataTable<CareerRow>
+        columns={columns}
+        data={rows}
+        compact
+        striped
+        footer={footerRow}
+        caption={`Career ${isPitcher ? 'pitching' : 'hitting'} statistics`}
+        emptyMessage="No career history yet."
+      />
     </div>
   );
 }

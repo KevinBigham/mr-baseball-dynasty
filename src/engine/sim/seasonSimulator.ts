@@ -431,29 +431,9 @@ export async function simulateSeason(
     });
   }
 
-  // Build simplified game results
-  const gameResults: GameResult[] = schedule.map((entry) => ({
-    gameId: entry.gameId,
-    homeTeamId: entry.homeTeamId,
-    awayTeamId: entry.awayTeamId,
-    homeScore: 0,
-    awayScore: 0,
-    innings: 9,
-    boxScore: {
-      gameId: entry.gameId,
-      season: _season,
-      date: entry.date,
-      homeTeamId: entry.homeTeamId,
-      awayTeamId: entry.awayTeamId,
-      homeScore: 0,
-      awayScore: 0,
-      innings: 9,
-      homeBatting: [],
-      awayBatting: [],
-      homePitching: [],
-      awayPitching: [],
-    },
-  }));
+  // Game results are not individually stored at the season level (too large for memory).
+  // Team-level W/L/RS/RA and player-level stats are already accumulated above.
+  const gameResults: GameResult[] = [];
 
   return {
     teamSeasons,

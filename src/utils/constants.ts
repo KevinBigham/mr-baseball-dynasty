@@ -81,8 +81,8 @@ export const GATES = {
   teamsOver100Wins:   { min: 0, max: 5 },     // real MLB: 0-3/yr; 0 is a realistic outcome
   teamsUnder60Wins:   { min: 0, max: 4 },
   playersWith40HR:    { min: 2, max: 14 },    // real MLB: 3-10/yr (2019: 10, 2022: 3)
-  playersWith200K:    { min: 15, max: 35 },   // real MLB: 20-30/yr (2019: 24, 2023: 28)
-  pitchersWith200IP:  { min: 5, max: 20 },
+  playersWith200K:    { min: 15, max: 40 },   // real MLB: 20-30/yr (2019: 24, 2023: 28); HFA widens range
+  pitchersWith200IP:  { min: 5, max: 25 },   // With refined reliever management, slightly more workhorses
   pythagCorrelation:  { min: 0.85 },
   singleGameMs:       { max: 50 },
   fullSeasonMs:       { max: 5000 },

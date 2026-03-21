@@ -15,6 +15,7 @@ import {
 import AnalystReaction from './AnalystReaction';
 import DraftGradeReport from './DraftGradeReport';
 import CoachTip from '../shared/CoachTip';
+import { ScalePop } from '../ui/animated';
 
 type PosFilter = 'ALL' | 'HITTERS' | 'PITCHERS';
 
@@ -315,14 +316,16 @@ export default function DraftRoom() {
 
       {/* ON THE CLOCK banner */}
       {board.isUserTurn && !draftComplete && (
-        <div
-          className="text-center py-2 animate-pulse"
-          style={{ background: 'rgba(234,88,12,0.15)', borderBottom: '2px solid #ea580c' }}
-        >
-          <span className="text-orange-400 font-black text-sm tracking-widest">
-            YOU ARE ON THE CLOCK — PICK #{board.overallPick}
-          </span>
-        </div>
+        <ScalePop>
+          <div
+            className="text-center py-2 animate-pulse"
+            style={{ background: 'rgba(234,88,12,0.15)', borderBottom: '2px solid #ea580c' }}
+          >
+            <span className="text-orange-400 font-black text-sm tracking-widest">
+              YOU ARE ON THE CLOCK — PICK #{board.overallPick}
+            </span>
+          </div>
+        </ScalePop>
       )}
 
       {/* Advancing indicator */}

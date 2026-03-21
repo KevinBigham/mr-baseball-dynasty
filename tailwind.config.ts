@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import tailwindcssAnimate from 'tailwindcss-animate';
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -66,6 +67,7 @@ export default {
     },
   },
   plugins: [
+    tailwindcssAnimate,
     function({ addBase }: { addBase: (styles: Record<string, Record<string, string>>) => void }) {
       addBase({
         'button:focus-visible, a:focus-visible, select:focus-visible, [role="button"]:focus-visible': {

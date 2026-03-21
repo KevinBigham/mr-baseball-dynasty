@@ -1,17 +1,16 @@
 /**
- * AnimatedNumber — displays a number that ticks up/down when it changes.
+ * AnimatedNumber — displays a number that ticks up/down with Motion springs.
  * Respects prefers-reduced-motion and the reduceMotion preference.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
+import { useMotionValue, useSpring, useTransform, motion, useReducedMotion } from 'motion/react';
 import { usePreferencesStore } from '../../store/preferencesStore';
 
 interface Props {
   value: number;
   /** Number of decimal places (default 0) */
   decimals?: number;
-  /** Animation duration in ms (default 250) */
-  duration?: number;
   /** Additional className */
   className?: string;
   /** Prefix (e.g. "$") */
@@ -20,49 +19,31 @@ interface Props {
   suffix?: string;
 }
 
-export default function AnimatedNumber({ value, decimals = 0, duration = 250, className = '', prefix = '', suffix = '' }: Props) {
+export default function AnimatedNumber({ value, decimals = 0, className = '', prefix = '', suffix = '' }: Props) {
   const reduceMotion = usePreferencesStore(s => s.reduceMotion);
-  const [display, setDisplay] = useState(value);
-  const prevRef = useRef(value);
-  const frameRef = useRef<number>(0);
+  const systemReduceMotion = useReducedMotion();
+  const shouldAnimate = !reduceMotion && !systemReduceMotion;
+
+  const motionValue = useMotionValue(value);
+  const spring = useSpring(motionValue, {
+    stiffness: 100,
+    damping: 20,
+    mass: 0.5,
+  });
+  const display = useTransform(spring, (v) => `${prefix}${v.toFixed(decimals)}${suffix}`);
 
   useEffect(() => {
-    // Check system preference too
-    const systemReduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion || systemReduceMotion || prevRef.current === value) {
-      setDisplay(value);
-      prevRef.current = value;
-      return;
+    if (shouldAnimate) {
+      motionValue.set(value);
+    } else {
+      // Jump instantly
+      motionValue.jump(value);
     }
-
-    const from = prevRef.current;
-    const to = value;
-    const startTime = performance.now();
-
-    function animate(now: number) {
-      const elapsed = now - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      // Ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const current = from + (to - from) * eased;
-      setDisplay(current);
-
-      if (progress < 1) {
-        frameRef.current = requestAnimationFrame(animate);
-      } else {
-        setDisplay(to);
-      }
-    }
-
-    frameRef.current = requestAnimationFrame(animate);
-    prevRef.current = value;
-
-    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); };
-  }, [value, duration, reduceMotion]);
+  }, [value, motionValue, shouldAnimate]);
 
   return (
-    <span className={`tabular-nums ${className}`}>
-      {prefix}{display.toFixed(decimals)}{suffix}
-    </span>
+    <motion.span className={`tabular-nums ${className}`}>
+      {display}
+    </motion.span>
   );
 }

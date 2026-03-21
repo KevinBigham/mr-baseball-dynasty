@@ -8,11 +8,13 @@
  * - Click-two-to-swap editing with orange glow pulse
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { RosterPlayer } from '../../types/league';
 import { getEngine } from '../../engine/engineClient';
 import { OVRBadge } from './RosterCards';
 import AgingBadge from '../shared/AgingBadge';
+import { SortableList, SortableItem } from '../ui/sortable';
+import { arrayMove } from '@dnd-kit/sortable';
 
 // ─── Grade color helper ──────────────────────────────────────────────────────
 
@@ -298,7 +300,13 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
   const byPos = (pos: string) =>
     players.filter(p => p.position === pos && p.rosterStatus === 'MLB_ACTIVE').sort((a, b) => b.overall - a.overall);
 
-  // Swap handler for lineup
+  // Drag-to-reorder handler for lineup
+  const handleLineupReorder = useCallback((oldIndex: number, newIndex: number) => {
+    const currentIds = lineupIds.length === 9 ? lineupIds : effectiveLineup.map(p => p.playerId);
+    setLineupIds(arrayMove(currentIds, oldIndex, newIndex));
+  }, [lineupIds, effectiveLineup]);
+
+  // Click-swap handler for lineup (fallback when not dragging)
   const handleLineupClick = (idx: number) => {
     if (!editing) return;
     if (selectedLineupIdx === null) {
@@ -313,7 +321,13 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
     }
   };
 
-  // Swap handler for rotation
+  // Drag-to-reorder handler for rotation
+  const handleRotationReorder = useCallback((oldIndex: number, newIndex: number) => {
+    const currentIds = rotationIds.length > 0 ? rotationIds : effectiveRotation.map(p => p.playerId);
+    setRotationIds(arrayMove(currentIds, oldIndex, newIndex));
+  }, [rotationIds, effectiveRotation]);
+
+  // Click-swap handler for rotation (fallback)
   const handleRotationClick = (idx: number) => {
     if (!editing) return;
     if (selectedRotationIdx === null) {
@@ -327,6 +341,10 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
       setSelectedRotationIdx(null);
     }
   };
+
+  // String IDs for dnd-kit
+  const lineupSortIds = effectiveLineup.map(p => String(p.playerId));
+  const rotationSortIds = effectiveRotation.map(p => String(p.playerId));
 
   const handleSave = async () => {
     const finalLineup = lineupIds.length === 9 ? lineupIds : effectiveLineup.map(p => p.playerId);
@@ -366,7 +384,7 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
               </button>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wider"
                 style={{ backgroundColor: 'rgba(249,115,22,0.1)', color: '#f97316', border: '1px solid rgba(249,115,22,0.3)' }}>
-                TAP TWO PLAYERS TO SWAP
+                DRAG TO REORDER · TAP TWO TO SWAP
               </span>
             </>
           ) : (
@@ -452,17 +470,18 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
               style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
             BATTING ORDER
           </h3>
-          <div className="space-y-1">
+          <SortableList items={lineupSortIds} onReorder={handleLineupReorder} disabled={!editing} className="space-y-1">
             {effectiveLineup.map((p, i) => (
-              <LineupCard
-                key={p.playerId}
-                player={p}
-                slot={i + 1}
-                selected={editing && selectedLineupIdx === i}
-                onSelect={() => editing ? handleLineupClick(i) : onClickPlayer?.(p.playerId)}
-              />
+              <SortableItem key={p.playerId} id={String(p.playerId)} disabled={!editing} showHandle={editing}>
+                <LineupCard
+                  player={p}
+                  slot={i + 1}
+                  selected={editing && selectedLineupIdx === i}
+                  onSelect={() => editing ? handleLineupClick(i) : onClickPlayer?.(p.playerId)}
+                />
+              </SortableItem>
             ))}
-          </div>
+          </SortableList>
         </section>
       )}
 
@@ -474,20 +493,21 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
         </h3>
 
         {/* Rotation */}
-        <div className="space-y-1.5">
+        <SortableList items={rotationSortIds} onReorder={handleRotationReorder} disabled={!editing} className="space-y-1.5">
           {effectiveRotation.length === 0 ? (
             <div className="text-gray-500 text-xs text-center py-4">No starting pitchers</div>
           ) : effectiveRotation.map((p, i) => (
-            <PitchingCard
-              key={p.playerId}
-              player={p}
-              role={i === 0 ? 'ACE' : `SP${i + 1}`}
-              onClickPlayer={editing ? undefined : onClickPlayer}
-              selected={editing && selectedRotationIdx === i}
-              onSelect={editing ? () => handleRotationClick(i) : undefined}
-            />
+            <SortableItem key={p.playerId} id={String(p.playerId)} disabled={!editing} showHandle={editing}>
+              <PitchingCard
+                player={p}
+                role={i === 0 ? 'ACE' : `SP${i + 1}`}
+                onClickPlayer={editing ? undefined : onClickPlayer}
+                selected={editing && selectedRotationIdx === i}
+                onSelect={editing ? () => handleRotationClick(i) : undefined}
+              />
+            </SortableItem>
           ))}
-        </div>
+        </SortableList>
 
         {/* Divider */}
         {(closer || bullpen.length > 0) && (

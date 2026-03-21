@@ -69,10 +69,10 @@ export function evaluatePlayer(player: Player): number {
   const salary = player.rosterData.salary;
   if (salary < 1_000_000 && yearsLeft >= 3) {
     value *= 1.2; // Pre-arb bargain
+  } else if (salary > 25_000_000) {
+    value *= 0.7; // Max-contract albatross
   } else if (salary > 15_000_000) {
     value *= 0.85; // Expensive
-  } else if (salary > 25_000_000) {
-    value *= 0.7;
   }
 
   // MLB-ready bonus
@@ -150,7 +150,7 @@ export function generateTradeOffers(
 
   const otherTeams = teams.filter(t => t.teamId !== userTeamId);
   const proposals: TradeProposal[] = [];
-  let tradeIdCounter = Date.now();
+  let tradeIdCounter = 1;
 
   // Compute profiles for all AI teams
   const profiles = new Map<number, TeamProfile>();
@@ -215,7 +215,7 @@ export function generateTradeOffers(
     let offeredValue = 0;
 
     // Contenders overpay for needs; rebuilders try to extract maximum value
-    const overpayFactor = profile.mode === 'contender' ? 1.0 : 0.9;
+    const overpayFactor = profile.mode === 'contender' ? 1.15 : 0.9;
 
     for (const p of offerPool) {
       if (offeredValue >= targetValue * overpayFactor) break;
@@ -273,7 +273,7 @@ export function shopPlayer(
 
   const otherTeams = teams.filter(t => t.teamId !== userTeamId);
   const offers: TradeProposal[] = [];
-  let tradeIdCounter = Date.now();
+  let tradeIdCounter = 1;
 
   for (const team of otherTeams) {
     const profile = computeTeamProfile(team, players, standings);
@@ -344,7 +344,7 @@ export function findTradesForNeed(
   const otherTeams = teams.filter(t => t.teamId !== userTeamId);
   const userPlayers = getTradeEligible(players, userTeamId);
   const offers: TradeProposal[] = [];
-  let tradeIdCounter = Date.now();
+  let tradeIdCounter = 1;
 
   for (const team of otherTeams) {
     const profile = computeTeamProfile(team, players, standings);
@@ -414,26 +414,52 @@ export function executeTrade(
   partnerTeamId: number,
   userPlayerIds: number[],
   partnerPlayerIds: number[],
+  teams?: Team[],
 ): TradeResult {
   // Validate all players exist and belong to correct teams
+  const userPlayersToTrade: Player[] = [];
+  const partnerPlayersToTrade: Player[] = [];
+
   for (const pid of userPlayerIds) {
     const p = players.find(pl => pl.playerId === pid);
     if (!p) return { ok: false, error: `Player ${pid} not found.` };
     if (p.teamId !== userTeamId) return { ok: false, error: `${p.name} is not on your team.` };
+    userPlayersToTrade.push(p);
   }
   for (const pid of partnerPlayerIds) {
     const p = players.find(pl => pl.playerId === pid);
     if (!p) return { ok: false, error: `Player ${pid} not found.` };
     if (p.teamId !== partnerTeamId) return { ok: false, error: `${p.name} is not on the partner team.` };
+    partnerPlayersToTrade.push(p);
   }
 
-  // Swap team assignments (players keep their current roster status)
-  for (const pid of userPlayerIds) {
-    const p = players.find(pl => pl.playerId === pid)!;
+  // Payroll validation: ensure both sides can absorb incoming salary
+  if (teams) {
+    const userTeam = teams.find(t => t.teamId === userTeamId);
+    const partnerTeam = teams.find(t => t.teamId === partnerTeamId);
+
+    if (userTeam && partnerTeam) {
+      const outgoingSalaryUser = userPlayersToTrade.reduce((s, p) => s + p.rosterData.salary, 0);
+      const outgoingSalaryPartner = partnerPlayersToTrade.reduce((s, p) => s + p.rosterData.salary, 0);
+
+      // Net salary change for each team
+      const partnerNetSalary = outgoingSalaryUser - outgoingSalaryPartner;
+      if (partnerNetSalary > 0) {
+        const partnerPayroll = players
+          .filter(p => p.teamId === partnerTeamId && p.rosterData.salary > 0)
+          .reduce((s, p) => s + p.rosterData.salary, 0);
+        if ((partnerPayroll + partnerNetSalary) > partnerTeam.budget * 1.1) {
+          return { ok: false, error: `${partnerTeam.name} cannot afford the incoming salary.` };
+        }
+      }
+    }
+  }
+
+  // Swap team assignments atomically (validate both sides first, then mutate)
+  for (const p of userPlayersToTrade) {
     p.teamId = partnerTeamId;
   }
-  for (const pid of partnerPlayerIds) {
-    const p = players.find(pl => pl.playerId === pid)!;
+  for (const p of partnerPlayersToTrade) {
     p.teamId = userTeamId;
     p.rosterData.isOn40Man = true;
   }

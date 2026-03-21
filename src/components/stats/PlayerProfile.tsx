@@ -10,6 +10,9 @@ import MilestoneCard from '../shared/MilestoneCard';
 import { SkeletonProfile } from '../layout/Skeleton';
 import { STAT_GLOSSARY } from '../../utils/statGlossary';
 import { gradeHeatBg, gradeLabel } from '../../utils/gradeColor';
+import PlayerCardHero from '../ui/player-card';
+import GradeBar from '../ui/grade-bar';
+import { FadeIn } from '../ui/animated';
 
 type ScoutingInfo = { confidence: number; scouted: boolean };
 type MaybeScoutedProfile = PlayerProfileData & { scoutingInfo?: ScoutingInfo };
@@ -592,8 +595,22 @@ export default function PlayerProfile() {
         </button>
       </div>
 
-      {/* ── Identity header ──────────────────────────────────────────────── */}
-      <div className="bloomberg-border">
+      {/* ── Identity header (PlayerCardHero) ───────────────────────────── */}
+      <FadeIn>
+        <PlayerCardHero
+          name={player.name}
+          position={player.position}
+          teamAbbr={player.teamAbbr}
+          age={player.age}
+          bats={player.bats}
+          throws={player.throws}
+          overall={player.overall}
+          potential={player.potential}
+        />
+      </FadeIn>
+
+      {/* ── Legacy identity header (kept for OVR/stats below) ──────────── */}
+      <div className="bloomberg-border" style={{ display: 'none' }}>
         <div className="bloomberg-header flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span>{player.name}</span>
@@ -759,6 +776,14 @@ export default function PlayerProfile() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Grade bars (visual gauge alternative) */}
+          <div className="space-y-1.5 pt-2 border-t border-gray-800">
+            <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">TOOL GRADES</div>
+            {Object.entries(player.grades).map(([label, val]) => (
+              <GradeBar key={label} label={label} grade={val} compact />
+            ))}
           </div>
 
           {/* Grade legend */}

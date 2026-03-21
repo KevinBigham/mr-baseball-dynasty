@@ -1,53 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { Toaster, toast as sonnerToast } from 'sonner';
 import { useUIStore, type ToastItem } from '../../store/uiStore';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import { ensureAudioResumed, setMasterVolume, getAudioContext, getMasterGain } from '../../audio/audioEngine';
-
-const ACCENT_MAP: Record<string, string> = {
-  success: '#4ade80',
-  error:   '#ef4444',
-  info:    '#60a5fa',
-};
-
-function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: () => void }) {
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-  const accent = toast.accent ?? ACCENT_MAP[toast.type] ?? '#60a5fa';
-  const duration = toast.duration ?? 3000;
-
-  useEffect(() => {
-    timerRef.current = setTimeout(onDismiss, duration);
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [duration, onDismiss]);
-
-  const bgClass =
-    toast.type === 'error'   ? 'bg-red-900/90 border-red-800' :
-    toast.type === 'success' ? 'bg-green-900/90 border-green-800' :
-                               'bg-gray-800/90 border-gray-700';
-
-  return (
-    <div
-      role="alert"
-      className={`pointer-events-auto flex items-start gap-2 px-4 py-2.5 rounded-lg text-xs font-mono border shadow-lg animate-slide-in-right ${bgClass}`}
-      style={{ borderLeft: `4px solid ${accent}` }}
-    >
-      {toast.icon && <span className="text-sm shrink-0">{toast.icon}</span>}
-      <span className={`flex-1 ${
-        toast.type === 'error' ? 'text-red-200' :
-        toast.type === 'success' ? 'text-green-200' :
-        'text-gray-200'
-      }`}>
-        {toast.message}
-      </span>
-      <button
-        onClick={onDismiss}
-        className="shrink-0 text-gray-500 hover:text-white transition-colors ml-1"
-        aria-label="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
 
 /** Play a toast-type-specific notification sound. */
 function playToastSound(type: ToastItem['type']): void {
@@ -73,39 +28,72 @@ function playToastSound(type: ToastItem['type']): void {
   });
 }
 
-export default function ToastContainer() {
+/** Bridge: watches Zustand toast store and forwards new toasts to Sonner. */
+function SonnerBridge() {
   const toasts = useUIStore(s => s.toasts);
   const removeToast = useUIStore(s => s.removeToast);
-  const prevCountRef = useRef(toasts.length);
+  const shownIdsRef = useRef<Set<number>>(new Set());
 
-  // Play sound when a new toast appears
   useEffect(() => {
-    if (toasts.length > prevCountRef.current) {
-      const newest = toasts[toasts.length - 1];
-      if (newest) playToastSound(newest.type);
+    for (const t of toasts) {
+      if (shownIdsRef.current.has(t.id)) continue;
+      shownIdsRef.current.add(t.id);
+
+      // Play audio notification
+      playToastSound(t.type);
+
+      // Map to Sonner
+      const opts = {
+        duration: t.duration ?? 3000,
+        description: undefined as string | undefined,
+        onDismiss: () => removeToast(t.id),
+        onAutoClose: () => removeToast(t.id),
+      };
+
+      const message = `${t.icon ? t.icon + ' ' : ''}${t.message}`;
+
+      if (t.type === 'success') {
+        sonnerToast.success(message, opts);
+      } else if (t.type === 'error') {
+        sonnerToast.error(message, opts);
+      } else {
+        sonnerToast(message, opts);
+      }
     }
-    prevCountRef.current = toasts.length;
-  }, [toasts]);
 
-  if (toasts.length === 0) return null;
+    // Cleanup shown IDs for removed toasts
+    const currentIds = new Set(toasts.map(t => t.id));
+    for (const id of shownIdsRef.current) {
+      if (!currentIds.has(id)) {
+        shownIdsRef.current.delete(id);
+      }
+    }
+  }, [toasts, removeToast]);
 
+  return null;
+}
+
+export default function ToastContainer() {
   return (
     <>
-      {/* Inject keyframes once */}
-      <style>{`
-        @keyframes slideInRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .animate-slide-in-right {
-          animation: slideInRight 0.25s ease-out forwards;
-        }
-      `}</style>
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm">
-        {toasts.slice(-5).map(t => (
-          <Toast key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />
-        ))}
-      </div>
+      <SonnerBridge />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: '#0F1930',
+            border: '1px solid #1E2A4A',
+            color: '#E2E8F0',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontSize: '12px',
+          },
+          className: 'mbd-toast',
+        }}
+        theme="dark"
+        richColors
+        closeButton
+        visibleToasts={5}
+      />
     </>
   );
 }

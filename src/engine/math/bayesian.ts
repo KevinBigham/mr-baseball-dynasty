@@ -100,7 +100,7 @@ export function stabilizePitcherRates(
       observed.hrRate ?? LEAGUE_RATES.pitcherHRRate,
       LEAGUE_RATES.pitcherHRRate,
       observed.bf,
-      STABILIZATION_POINTS.pitcherK, // Use K stabilization for HR too
+      STABILIZATION_POINTS.pitcherHR, // HR stabilizes much later (~400 BF) than K rate
     ),
     // NEVER adjust pitcher on short BABIP stretch
     babip: bayesianRate(

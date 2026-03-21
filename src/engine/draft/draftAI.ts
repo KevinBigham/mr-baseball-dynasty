@@ -118,8 +118,12 @@ export function aiSelectPlayer(
   for (let i = 0; i < limit; i++) {
     const p = available[i];
     const baseScore = (1 / (p.rank + 3)) * 100;
+    // Factor in potential: dynasty drafts should value ceiling, not just current floor.
+    // potentialBonus ranges from 0 (ovr == pot) to ~0.5 (large gap).
+    const potGap = (p.scoutedPot ?? p.scoutedOvr) - p.scoutedOvr;
+    const potentialBonus = Math.max(0, potGap / 80) * 0.5; // up to +50% for high-ceiling prospects
     const needMult = getNeedMult(p.position);
-    const score = baseScore * (bpaWeight + needWeight * needMult);
+    const score = baseScore * (1 + potentialBonus) * (bpaWeight + needWeight * needMult);
 
     if (score > bestScore) {
       bestScore = score;

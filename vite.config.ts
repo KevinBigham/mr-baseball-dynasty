@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
   base: '/mr-baseball-dynasty/',
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   plugins: [
     react(),
     VitePWA({
@@ -32,7 +35,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-charts': ['recharts'],
+          // nivo charts are tree-shaken per-component, no manual chunk needed
           'vendor-state': ['zustand'],
           'vendor-db': ['dexie', 'pako'],
           'game-engine': ['comlink'],

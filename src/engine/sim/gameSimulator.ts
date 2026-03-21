@@ -215,9 +215,19 @@ function simulateHalfInning(
     const runnersBefore = [baseRunners[0], baseRunners[1], baseRunners[2]];
     const markovBefore = markov.runners;
 
+    // Look up lead runner speed (highest occupied base)
+    let leadRunnerSpeed = 350; // default league-average
+    for (let b = 2; b >= 0; b--) {
+      if (baseRunners[b] != null) {
+        const runner = lineup.find(p => p.playerId === baseRunners[b]);
+        if (runner) leadRunnerSpeed = runner.hitterAttributes?.speed ?? 350;
+        break;
+      }
+    }
+
     // Update Markov state
     const runsBefore2 = markov.runsScored;
-    [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, 350);
+    [markov, gen] = applyOutcome(gen, markov, outcome, batter.hitterAttributes?.speed ?? 350, leadRunnerSpeed);
     const runsThisPA = markov.runsScored - runsBefore2;
 
     // Credit runs scored to specific batters using runner tracking
@@ -232,32 +242,32 @@ function simulateHalfInning(
         }
         markRunScored(batterStats, batter.playerId);
       } else {
-        // For other outcomes: runners who were on base but are no longer score
-        let credited = 0;
+        // For other outcomes: runners who were on base and are no longer on any base scored.
+        // Use a Set to track which runners we've already credited.
+        const creditedRunners = new Set<number>();
+        // First pass: runners cleared from their base who aren't on a higher base scored
         for (let b = 2; b >= 0; b--) {
-          if (credited >= runsThisPA) break;
-          if ((markovBefore & (1 << b)) && !(markov.runners & (1 << b)) && runnersBefore[b] != null) {
-            // This runner was on base and no longer is — check if they advanced past home
-            // Runners cleared from bases who aren't on a higher base scored
-            const runnerId = runnersBefore[b]!;
-            const stillOnBase = (b < 2 && baseRunners[b + 1] === runnerId) ||
-                                (markov.runners & (1 << b));
-            if (!stillOnBase) {
-              markRunScored(batterStats, runnerId);
-              credited++;
-            }
+          if (creditedRunners.size >= runsThisPA) break;
+          if (!(markovBefore & (1 << b)) || runnersBefore[b] == null) continue;
+          const runnerId = runnersBefore[b]!;
+          // Check if they disappeared from the Markov bitmask
+          const wasOnBase = (markovBefore & (1 << b)) !== 0;
+          const goneFromOrigBase = !(markov.runners & (1 << b));
+          // A runner who was cleared from their base and isn't on a higher base scored
+          const movedUp = b < 2 && (markov.runners & (1 << (b + 1)));
+          if (wasOnBase && goneFromOrigBase && !movedUp && !creditedRunners.has(runnerId)) {
+            markRunScored(batterStats, runnerId);
+            creditedRunners.add(runnerId);
           }
         }
-        // If we haven't credited all runs, credit remaining to highest base runners
-        for (let b = 2; b >= 0 && credited < runsThisPA; b--) {
-          if ((markovBefore & (1 << b)) && runnersBefore[b] != null) {
-            const runnerId = runnersBefore[b]!;
-            // Check we haven't already credited this runner
-            const alreadyCredited = credited > 0; // simplified check
-            if (!alreadyCredited) {
-              markRunScored(batterStats, runnerId);
-              credited++;
-            }
+        // Fallback: if Markov says more runs scored than we've credited, credit remaining
+        // to the highest-base runners we haven't yet credited
+        for (let b = 2; b >= 0 && creditedRunners.size < runsThisPA; b--) {
+          if (!(markovBefore & (1 << b)) || runnersBefore[b] == null) continue;
+          const runnerId = runnersBefore[b]!;
+          if (!creditedRunners.has(runnerId)) {
+            markRunScored(batterStats, runnerId);
+            creditedRunners.add(runnerId);
           }
         }
       }
@@ -465,6 +475,8 @@ export function simulateGame(input: SimulateGameInput): GameResult {
     // ── TOP of inning (away bats) ──────────────────────────────────────────
     const topManned = shouldUseMannedRunner({ ...ctx, inning, isTop: true });
     // Chemistry: away team bats, home team pitches
+    // Home-field advantage: home pitchers get a small boost (~54% home win rate in MLB)
+    const HFA_BONUS = 0.008; // ~+0.8% K rate boost for home pitcher, slight BABIP suppression
     const topIsClose = Math.abs(ctx.homeScore - ctx.awayScore) <= 2;
     const topChem = buildHalfInningChemBonuses(input.awayChemistry, input.homeChemistry, topIsClose);
     let awayRuns: number;
@@ -482,7 +494,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       homeDefRating,
       topManned,
       topChem.batterChemBonus,
-      topChem.pitcherChemBonus,
+      (topChem.pitcherChemBonus ?? 0) + HFA_BONUS, // Home pitcher advantage
     );
     ctx = { ...ctx, awayScore: ctx.awayScore + awayRuns, inning, outs: 0, runners: 0 };
 
@@ -526,7 +538,7 @@ export function simulateGame(input: SimulateGameInput): GameResult {
       parkFactor,
       awayDefRating,
       bottomManned,
-      bottomChem.batterChemBonus,
+      (bottomChem.batterChemBonus ?? 0) + HFA_BONUS, // Home batter advantage
       bottomChem.pitcherChemBonus,
     );
     ctx = { ...ctx, homeScore: ctx.homeScore + homeRuns, outs: 0, runners: 0 };
@@ -612,10 +624,12 @@ function managePitcher(
   // stamina=450→87, stamina=500→91, stamina=550→94
   const pitchLimit = Math.round(55 + staminaAttr / 14);
 
+  // For relievers, check their personal pitch count, not the game inning.
+  // A reliever entering in the 8th who threw 3 pitches shouldn't be pulled in the 9th.
   const shouldPull =
     pc > pitchLimit ||
     (currentPitcher.position === 'SP' && inning >= maxSPInnings) ||
-    (currentPitcher.position !== 'SP' && inning >= 8); // Hard cap for relievers at 7
+    (currentPitcher.position !== 'SP' && pc > 30); // Relievers: ~30 pitches (~2 innings)
 
   if (!shouldPull) return currentPitcher;
 
@@ -643,31 +657,58 @@ function assignPitcherDecisions(
   homeScore: number,
   awayScore: number,
 ): void {
+  if (homeScore === awayScore) return; // Tied games (extremely rare) get no decisions
+
   const winnerStats = homeScore > awayScore ? homePitcherStats : awayPitcherStats;
   const loserStats  = homeScore > awayScore ? awayPitcherStats : homePitcherStats;
   const margin = Math.abs(homeScore - awayScore);
 
-  // Starter gets the W (first pitcher in the winning team's map)
+  // Win decision: pitcher of record when the winning team took the lead for good.
+  // Simplified heuristic: if starter pitched 5+ innings and team never trailed while
+  // he was in, give him the W. Otherwise, give it to the reliever with the most outs
+  // who isn't the starter (approximation of "pitcher when lead was taken").
   const winnerArr = Array.from(winnerStats.values());
   if (winnerArr.length > 0) {
-    winnerArr[0]!.decision = 'W';
+    const starter = winnerArr[0]!;
+    if (winnerArr.length === 1 || starter.outs >= 15) {
+      // Starter pitched 5+ innings (or was the only pitcher) — give him the W
+      starter.decision = 'W';
+    } else {
+      // Starter didn't go 5 — give W to the reliever with the most outs recorded
+      let bestReliever = winnerArr[1]!;
+      for (let i = 2; i < winnerArr.length; i++) {
+        if (winnerArr[i].outs > bestReliever.outs) bestReliever = winnerArr[i];
+      }
+      bestReliever.decision = 'W';
+    }
 
-    // Save: last reliever of winning team gets a save if:
-    //   - SP didn't finish the game (there are relievers)
-    //   - Final margin ≤ 3 runs OR reliever pitched 3+ innings
+    // Save: last reliever of winning team if margin ≤ 3 or 3+ IP
     if (winnerArr.length > 1) {
       const closer = winnerArr[winnerArr.length - 1]!;
-      const closerIP = closer.outs / 3;
-      if (margin <= 3 || closerIP >= 3) {
-        closer.decision = 'S';
+      if (!closer.decision) { // Don't give save to the same pitcher who got the W
+        const closerIP = closer.outs / 3;
+        if (margin <= 3 || closerIP >= 3) {
+          closer.decision = 'S';
+        }
       }
     }
   }
 
-  // Loss goes to starter of losing team
+  // Loss: starter if he pitched 5+ innings, otherwise the reliever who allowed the
+  // most earned runs (approximation of "pitcher when opposing team took the lead")
   const loserArr = Array.from(loserStats.values());
   if (loserArr.length > 0) {
-    loserArr[0]!.decision = 'L';
+    const starter = loserArr[0]!;
+    if (loserArr.length === 1 || starter.outs >= 15) {
+      starter.decision = 'L';
+    } else {
+      // Give L to pitcher who allowed the most earned runs
+      let worstPitcher = loserArr[0]!;
+      for (const p of loserArr) {
+        if (p.er > worstPitcher.er) worstPitcher = p;
+      }
+      worstPitcher.decision = 'L';
+    }
   }
 }
 
