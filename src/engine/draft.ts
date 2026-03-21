@@ -55,6 +55,7 @@ export interface UserPickResult {
 
 export interface CreateDraftBoardOptions {
   mode?: DraftMode;
+  /** MBD-008: requested startup draft slot position (1-based). Implementation wired in MBD-008. */
   userDraftSlot?: number | null;
 }
 
@@ -105,43 +106,6 @@ function shuffleTeamIds(teamIds: number[], gen: RandomGenerator): [number[], Ran
     [order[i], order[swapIdx]] = [order[swapIdx], order[i]];
   }
   return [order, gen];
-}
-
-function normalizeRequestedDraftSlot(
-  requestedSlot: number | null | undefined,
-  teamCount: number,
-): number | null {
-  if (!Number.isInteger(requestedSlot)) return null;
-  if (requestedSlot == null) return null;
-  if (requestedSlot < 1 || requestedSlot > teamCount) return null;
-  return requestedSlot;
-}
-
-function buildStartupDraftOrder(
-  teamIds: number[],
-  userTeamId: number,
-  requestedSlot: number | null | undefined,
-  gen: RandomGenerator,
-): [number[], RandomGenerator] {
-  if (!teamIds.includes(userTeamId)) {
-    return shuffleTeamIds(teamIds, gen);
-  }
-
-  const normalizedSlot = normalizeRequestedDraftSlot(requestedSlot, teamIds.length);
-  if (normalizedSlot == null) {
-    return shuffleTeamIds(teamIds, gen);
-  }
-
-  const otherTeamIds = teamIds.filter((teamId) => teamId !== userTeamId);
-  let shuffledOthers: number[];
-  [shuffledOthers, gen] = shuffleTeamIds(otherTeamIds, gen);
-
-  const slotIndex = normalizedSlot - 1;
-  return [[
-    ...shuffledOthers.slice(0, slotIndex),
-    userTeamId,
-    ...shuffledOthers.slice(slotIndex),
-  ], gen];
 }
 
 function buildAnnualDraftOrder(teamSeasons: TeamSeason[]): number[] {
@@ -411,7 +375,17 @@ export function createDraftBoardState(
 
   let draftOrder = snake ? teamIds : buildAnnualDraftOrder(teamSeasons);
   if (snake) {
-    [draftOrder, gen] = buildStartupDraftOrder(draftOrder, userTeamId, options.userDraftSlot, gen);
+    [draftOrder, gen] = shuffleTeamIds(draftOrder, gen);
+    // P2: Honor requested startup draft slot for the user's team
+    const requestedSlot = options.userDraftSlot;
+    if (requestedSlot != null && requestedSlot >= 1 && requestedSlot <= draftOrder.length) {
+      const currentIdx = draftOrder.indexOf(userTeamId);
+      if (currentIdx !== -1) {
+        const targetIdx = requestedSlot - 1; // convert 1-based to 0-based
+        draftOrder.splice(currentIdx, 1);
+        draftOrder.splice(targetIdx, 0, userTeamId);
+      }
+    }
   }
 
   let draftPlayers: Player[];

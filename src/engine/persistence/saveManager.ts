@@ -15,6 +15,7 @@ import type { NewsStory } from '../league/newsFeed';
 import type { OffseasonRecap } from '../../types/offseason';
 import type { RandomGenerator } from '../math/prng';
 import type { FeatureId } from '../../features/catalog';
+import type { DraftBoardState, DraftMode } from '../draft';
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -55,6 +56,9 @@ export interface GameState {
   enabledFeatures: FeatureId[];
   migrationNotes: string[];
   buildFingerprint: string;
+  activeDraftState?: DraftBoardState | null;
+  activeDraftMode?: DraftMode | null;
+  activeStartupDraftSlot?: number | null;
 }
 
 export interface SaveManifest {
