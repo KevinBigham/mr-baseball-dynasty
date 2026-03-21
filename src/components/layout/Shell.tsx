@@ -17,8 +17,10 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useRouterSync } from '../../hooks/useRouterSync';
 import { useSound } from '../../hooks/useSound';
 import { useAmbient } from '../../hooks/useAmbient';
-import GameIcon from '../shared/GameIcon';
+import MbdIcon from '../ui/mbd-icon';
 import TransactionTicker from '../dashboard/TransactionTicker';
+import CommandPalette from '../ui/command-palette';
+import { PageTransition } from '../ui/animated';
 import { generateTransactionTicker } from '../../engine/warRoom';
 import type { IconName } from '../../constants/icons';
 
@@ -185,6 +187,9 @@ export default function Shell() {
         Skip to content
       </a>
 
+      {/* ── Cmd+K Command Palette ───────────────────────────────────── */}
+      <CommandPalette />
+
       {/* ── New Game Confirmation Modal ────────────────────────────── */}
       {showNewGameConfirm && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="new-game-title">
@@ -313,7 +318,7 @@ export default function Shell() {
                 onMouseOut={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#64748B'; }}
                 aria-current={active ? 'page' : undefined}
               >
-                <GameIcon name={pillar.icon} size="md" />
+                <MbdIcon name={pillar.icon} size="md" />
                 {pillar.label}
                 {active && <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full" style={{ backgroundColor: '#f97316', boxShadow: '0 0 6px rgba(249,115,22,0.4)' }} />}
               </button>
@@ -349,7 +354,9 @@ export default function Shell() {
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       <main id="main-content" className="flex-1 overflow-auto pb-16 sm:pb-0" role="main">
-        {renderContent()}
+        <PageTransition transitionKey={`${effectiveTab}-${subTab}`}>
+          {renderContent()}
+        </PageTransition>
       </main>
 
       {/* ── Save/Load Manager Modal ────────────────────────────────── */}

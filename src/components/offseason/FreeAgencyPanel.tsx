@@ -7,6 +7,7 @@ import { formatSalary } from '../../utils/format';
 import ConfirmModal from '../layout/ConfirmModal';
 import { useSort, compareSortValues } from '../../hooks/useSort';
 import { SortHeader } from '../shared/SortHeader';
+import { motion } from 'motion/react';
 
 interface FAPlayer extends RosterPlayer {
   projectedSalary: number;
@@ -157,11 +158,13 @@ function OfferModal({
               </span>
             </div>
             <div className="w-full h-2 bg-gray-800 rounded overflow-hidden">
-              <div
-                className={`h-full transition-all ${
+              <motion.div
+                className={`h-full ${
                   acceptance >= 70 ? 'bg-green-500' : acceptance >= 45 ? 'bg-yellow-500' : 'bg-red-500'
                 }`}
-                style={{ width: `${acceptance}%` }}
+                initial={false}
+                animate={{ width: `${acceptance}%` }}
+                transition={{ type: 'spring', stiffness: 120, damping: 20 }}
               />
             </div>
             <div className="text-gray-500 text-xs mt-1">

@@ -4,6 +4,7 @@
  */
 
 import { useLeagueStore } from '../../store/leagueStore';
+import { StaggerList, StaggerItem } from '../ui/animated';
 
 export default function AwardsView() {
   const { franchiseHistory } = useLeagueStore();
@@ -26,9 +27,9 @@ export default function AwardsView() {
     <div className="p-4 space-y-4">
       <div className="bloomberg-border" style={{ backgroundColor: '#0F1930' }}>
         <div className="bloomberg-header">LEAGUE AWARDS — SEASON HISTORY</div>
-        <div className="divide-y" style={{ borderColor: '#1E2A4A' }}>
+        <StaggerList staggerDelay={0.05} className="divide-y divide-[#1E2A4A]">
           {[...franchiseHistory].reverse().map(s => (
-            <div key={s.season} className="px-4 py-3">
+            <StaggerItem key={s.season}><div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold" style={{ color: '#f97316' }}>SEASON {s.season}</span>
                 <span className="text-[10px]" style={{ color: '#A7B3C7' }}>{s.wins}-{s.losses} ({s.pct.toFixed(3)})</span>
@@ -51,9 +52,9 @@ export default function AwardsView() {
                   </span>
                 )}
               </div>
-            </div>
+            </div></StaggerItem>
           ))}
-        </div>
+        </StaggerList>
       </div>
     </div>
   );

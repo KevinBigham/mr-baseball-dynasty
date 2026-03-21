@@ -47,7 +47,6 @@ export default function LegacyScoreCard() {
             className="text-3xl font-black"
             prefix=""
             suffix=""
-            duration={500}
           />
           <span className="text-gray-500 text-xs mb-1">LEGACY POINTS</span>
         </div>

@@ -6,6 +6,7 @@ import type { RosterPlayer } from '../../types/league';
 import type { PayrollReport } from '../../engine/finances';
 import FinancialAdvisor from './FinancialAdvisor';
 import CoachTip from '../shared/CoachTip';
+import MbdBarChart from '../ui/charts/MbdBarChart';
 
 // MLB luxury tax threshold (2026 projection)
 const LUXURY_TAX = 237_000_000;
@@ -95,7 +96,7 @@ function ContractYearsBar({ years, max = 7 }: { years: number; max?: number }) {
   );
 }
 
-// ─── SVG Payroll Projection Chart ─────────────────────────────────────────────
+// ─── Nivo Payroll Projection Chart ────────────────────────────────────────────
 
 function PayrollProjectionChart({
   projPayroll, currentPayroll, season, budget,
@@ -105,93 +106,43 @@ function PayrollProjectionChart({
   season: number;
   budget: number;
 }) {
-  const W = 400;
-  const H = 200;
-  const PAD_L = 50;
-  const PAD_R = 16;
-  const PAD_T = 28;
-  const PAD_B = 36;
-  const chartW = W - PAD_L - PAD_R;
-  const chartH = H - PAD_T - PAD_B;
   const YEARS = 5;
-  const barW = chartW / YEARS * 0.6;
-  const gap = chartW / YEARS;
-
-  const payrolls = Array.from({ length: YEARS }, (_, i) =>
-    i === 0 ? currentPayroll : projPayroll(i - 1),
-  );
-  const maxVal = Math.max(budget, LUXURY_TAX, ...payrolls) * 1.15;
-
-  const y = (val: number) => PAD_T + chartH - (val / maxVal) * chartH;
-
-  const luxY = y(LUXURY_TAX);
-  const budY = y(budget);
+  const data = Array.from({ length: YEARS }, (_, i) => ({
+    season: String(season + i),
+    payroll: i === 0 ? currentPayroll : projPayroll(i - 1),
+  }));
 
   return (
     <div className="p-4">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-lg mx-auto" role="img" aria-label="Payroll projection chart">
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75, 1.0].map(frac => {
-          const val = maxVal * frac;
-          const yPos = y(val);
-          return (
-            <g key={frac}>
-              <line x1={PAD_L} x2={W - PAD_R} y1={yPos} y2={yPos} stroke="#374151" strokeWidth={0.5} />
-              <text x={PAD_L - 4} y={yPos + 3} fill="#6B7280" fontSize={8} textAnchor="end" fontFamily="monospace">
-                {fmt$M(val)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* CBT line */}
-        <line x1={PAD_L} x2={W - PAD_R} y1={luxY} y2={luxY} stroke="#EAB308" strokeWidth={1} strokeDasharray="4 3" />
-        <text x={W - PAD_R} y={luxY - 4} fill="#EAB308" fontSize={7} textAnchor="end" fontFamily="monospace">
-          CBT {fmt$M(LUXURY_TAX)}
-        </text>
-
-        {/* Budget line */}
-        <line x1={PAD_L} x2={W - PAD_R} y1={budY} y2={budY} stroke="#6B7280" strokeWidth={1} strokeDasharray="4 3" />
-        <text x={PAD_L + 2} y={budY - 4} fill="#6B7280" fontSize={7} fontFamily="monospace">
-          Budget {fmt$M(budget)}
-        </text>
-
-        {/* Bars */}
-        {payrolls.map((val, i) => {
-          const barX = PAD_L + i * gap + (gap - barW) / 2;
-          const barH = Math.max(2, (val / maxVal) * chartH);
-          const barY = PAD_T + chartH - barH;
-          const overTax = val > LUXURY_TAX;
-          return (
-            <g key={i}>
-              <rect
-                x={barX} y={barY} width={barW} height={barH}
-                rx={2}
-                fill={overTax ? '#DC2626' : '#C2410C'}
-                opacity={0.9}
-              />
-              {val > 0 && (
-                <text
-                  x={barX + barW / 2} y={barY - 4}
-                  fill={overTax ? '#FCA5A5' : '#D1D5DB'} fontSize={8}
-                  textAnchor="middle" fontFamily="monospace" fontWeight="bold"
-                >
-                  {fmt$M(val)}
-                </text>
-              )}
-              <text
-                x={barX + barW / 2} y={H - PAD_B + 14}
-                fill="#9CA3AF" fontSize={9} textAnchor="middle" fontFamily="monospace"
-              >
-                {season + i}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* X axis */}
-        <line x1={PAD_L} x2={W - PAD_R} y1={PAD_T + chartH} y2={PAD_T + chartH} stroke="#4B5563" strokeWidth={0.5} />
-      </svg>
+      <MbdBarChart
+        data={data}
+        keys={['payroll']}
+        indexBy="season"
+        height={220}
+        colors={(d) => (d.data.payroll as number) > LUXURY_TAX ? '#DC2626' : '#C2410C'}
+        enableLabel
+        labelFormat={(v) => fmt$M(v as number)}
+        axisLeftFormat={(v) => fmt$M(v as number)}
+        markers={[
+          {
+            axis: 'y',
+            value: LUXURY_TAX,
+            lineStyle: { stroke: '#EAB308', strokeWidth: 1.5, strokeDasharray: '6 4' },
+            legend: `CBT ${fmt$M(LUXURY_TAX)}`,
+            legendPosition: 'top-right',
+            textStyle: { fill: '#EAB308', fontSize: 9, fontFamily: 'JetBrains Mono, monospace' },
+          },
+          {
+            axis: 'y',
+            value: budget,
+            lineStyle: { stroke: '#6B7280', strokeWidth: 1, strokeDasharray: '4 3' },
+            legend: `Budget ${fmt$M(budget)}`,
+            legendPosition: 'top-left',
+            textStyle: { fill: '#6B7280', fontSize: 9, fontFamily: 'JetBrains Mono, monospace' },
+          },
+        ]}
+        ariaLabel="Payroll projection chart"
+      />
 
       {/* Legend */}
       <div className="flex justify-center gap-6 mt-2 text-[10px] text-gray-400 font-mono">

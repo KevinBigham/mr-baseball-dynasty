@@ -15,6 +15,7 @@ import { useUIStore } from '../../store/uiStore';
 import { getTeamLabel } from '../../data/teamOptions';
 import type { ClubhouseEvent, TeamChemistryState } from '../../types/chemistry';
 import type { StandingsRow } from '../../types/league';
+import { SlideUp } from '../ui/animated';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -290,6 +291,7 @@ export default function HomeCommandCenter() {
       </div>
 
       {actions.length > 0 && (
+        <SlideUp>
         <div className="space-y-2">
           <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em] uppercase">ACTION QUEUE</div>
           {actions.slice(0, 4).map((item) => {
@@ -315,6 +317,7 @@ export default function HomeCommandCenter() {
             );
           })}
         </div>
+        </SlideUp>
       )}
 
       {(newsItems ?? []).length > 0 && (

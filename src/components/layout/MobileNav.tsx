@@ -1,5 +1,5 @@
 import { useUIStore, type NavTab } from '../../store/uiStore';
-import GameIcon from '../shared/GameIcon';
+import MbdIcon from '../ui/mbd-icon';
 import type { IconName } from '../../constants/icons';
 
 const MOBILE_TABS: Array<{ id: NavTab; label: string; icon: IconName }> = [
@@ -45,7 +45,7 @@ export default function MobileNav({ onNewGame: _onNewGame }: MobileNavProps) {
           ].join(' ')}
           aria-current={effectiveTab === tab.id ? 'page' : undefined}
         >
-          <GameIcon name={tab.icon} size="lg" />
+          <MbdIcon name={tab.icon} size="lg" />
           <span className="text-[9px] font-bold tracking-wider uppercase mt-0.5">{tab.label}</span>
         </button>
       ))}

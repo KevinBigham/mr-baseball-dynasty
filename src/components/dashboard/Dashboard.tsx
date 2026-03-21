@@ -49,6 +49,8 @@ import LegacyScoreCard from './LegacyScoreCard';
 import AchievementsPanel from './AchievementsPanel';
 import ChampionshipCelebration from './ChampionshipCelebration';
 import MilestoneBanner, { type MilestoneBannerData } from './MilestoneBanner';
+import { FadeIn, StaggerList, StaggerItem } from '../ui/animated';
+import { CollapsibleSection } from '../ui/collapsible';
 
 const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
 const PostseasonReport   = lazy(() => import('./PostseasonReport'));
@@ -397,13 +399,17 @@ export default function Dashboard() {
       )}
 
       {/* ── Owner Patience + Team Morale ──────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-        <OwnerPatiencePanel />
-        <MoralePanel />
-      </div>
+      <FadeIn delay={0.05}>
+        <div className="grid grid-cols-2 gap-3">
+          <OwnerPatiencePanel />
+          <MoralePanel />
+        </div>
+      </FadeIn>
 
       {/* ── Team Leaders Widget ─────────────────────────────────── */}
-      <TeamLeadersWidget />
+      <FadeIn delay={0.1}>
+        <TeamLeadersWidget />
+      </FadeIn>
 
       {/* ── In-Season Dashboard (interactive pacing) ─────────────── */}
       {gamePhase === 'in_season' && (
@@ -491,25 +497,25 @@ export default function Dashboard() {
       <EndOfDayDigest />
 
       {/* ── Management Scope (delegation controls) ─────────────────── */}
-      <details className="bloomberg-border">
-        <summary className="bloomberg-header cursor-pointer select-none flex items-center justify-between">
-          <span>MANAGEMENT SCOPE</span>
-          <span className="text-gray-500 font-normal text-[10px]">⚙ CUSTOMIZE</span>
-        </summary>
-        <div className="p-3">
-          <DelegationPanel />
-        </div>
-      </details>
+      <div className="bloomberg-border">
+        <CollapsibleSection title="MANAGEMENT SCOPE" defaultOpen={false} badge={<span className="text-gray-500 font-normal text-[10px]">⚙ CUSTOMIZE</span>}>
+          <div className="p-3">
+            <DelegationPanel />
+          </div>
+        </CollapsibleSection>
+      </div>
 
       {/* ── Always-visible panels ────────────────────────────────── */}
-      <RivalryPanel />
-      <ReputationCard />
-      <LegacyTimeline />
-      <LegacyScoreCard />
-      <AchievementsPanel />
-      <MomentsPanel moments={moments} />
-      <DynastyMilestonesPanel />
-      <NewsFeedPanel />
+      <StaggerList staggerDelay={0.04} className="space-y-4">
+        <StaggerItem><RivalryPanel /></StaggerItem>
+        <StaggerItem><ReputationCard /></StaggerItem>
+        <StaggerItem><LegacyTimeline /></StaggerItem>
+        <StaggerItem><LegacyScoreCard /></StaggerItem>
+        <StaggerItem><AchievementsPanel /></StaggerItem>
+        <StaggerItem><MomentsPanel moments={moments} /></StaggerItem>
+        <StaggerItem><DynastyMilestonesPanel /></StaggerItem>
+        <StaggerItem><NewsFeedPanel /></StaggerItem>
+      </StaggerList>
 
       {/* ── Championship Celebration Overlay ───────────────────────── */}
       {showChampionship && sim.postSimArcChamp && sim.playoffBracket && (

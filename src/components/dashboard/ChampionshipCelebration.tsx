@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSound } from '../../hooks/useSound';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import Confetti from './Confetti';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface ChampionshipProps {
   season: number;
@@ -81,13 +82,18 @@ export default function ChampionshipCelebration({
       {/* Content */}
       <div className="relative z-10 text-center max-w-lg mx-auto px-6">
         {/* Banner */}
+        <AnimatePresence>
         {step !== 'darken' && (
-          <div className={`${reduceMotion ? '' : 'mbd-scale-pop'}`}>
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 200, damping: 15 }}
+          >
             <div className="text-yellow-400 text-[10px] font-bold tracking-[0.3em] mb-2">
               {season} WORLD SERIES
             </div>
             <div className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-tight"
-              style={{ fontFamily: 'Inter, system-ui, sans-serif', textShadow: '0 0 40px rgba(251, 191, 36, 0.3)' }}
+              style={{ fontFamily: 'Bebas Neue, Inter, system-ui, sans-serif', textShadow: '0 0 40px rgba(251, 191, 36, 0.3)', letterSpacing: '0.05em' }}
             >
               CHAMPIONS
             </div>
@@ -97,12 +103,19 @@ export default function ChampionshipCelebration({
             <div className="text-gray-400 text-sm tabular-nums mt-1">
               {wins}–{losses}
             </div>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* MVP */}
+        <AnimatePresence>
         {(step === 'mvp' || step === 'summary') && mvpName && (
-          <div className={`mt-8 ${reduceMotion ? '' : 'mbd-slide-up'}`}>
+          <motion.div
+            className="mt-8"
+            initial={reduceMotion ? false : { opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.2, duration: 0.4, ease: 'easeOut' }}
+          >
             <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em] mb-1">
               WORLD SERIES MVP
             </div>
@@ -113,12 +126,18 @@ export default function ChampionshipCelebration({
                 <div className="text-gray-400 text-xs tabular-nums mt-1">{mvpStatLine}</div>
               )}
             </div>
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* Summary + dismiss */}
         {step === 'summary' && (
-          <div className={`mt-8 space-y-4 ${reduceMotion ? '' : 'mbd-fade-in'}`}>
+          <motion.div
+            className="mt-8 space-y-4"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={reduceMotion ? { duration: 0 } : { delay: 0.3, duration: 0.3 }}
+          >
             <div className="text-gray-500 text-xs">
               {playoffPath}
             </div>
@@ -128,7 +147,7 @@ export default function ChampionshipCelebration({
             >
               ADD TO TROPHY CASE
             </button>
-          </div>
+          </motion.div>
         )}
       </div>
     </div>
