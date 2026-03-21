@@ -11,44 +11,39 @@ When this task is complete, the Architect or Ops agent replaces it with the next
 
 ---
 
-TASK_ID: MBD-010
-TITLE: Fix Postseason TypeError Bug
-TASK_OWNER_ROLE: Ops
-CURRENT_STAGE: Ops
-NEXT_HANDLER_ROLE: Architect
-STATUS: Review approved — Ops must stage MBD-007 + MBD-010 files explicitly (NOT git add -A), commit, push. See .codex/MBD/handoff.md for exact file list and scope caveat.
+TASK_ID: MBD-008
+TITLE: Coaching Staff Active Effects
+TASK_OWNER_ROLE: Architect
+CURRENT_STAGE: Awaiting Spec
+NEXT_HANDLER_ROLE: Builder (Codex)
+STATUS: Ready for Architect to write spec. All prior work (MBD-010, MBD-031, Terminal Ascension, deep code review) is committed, merged to main, and deployed. 888/888 tests pass.
 OWNER: Codex (Builder)
 REVIEWER: Claude Code
 
 ## What to build
-- Reproduce the postseason sim crash that throws a TypeError and causes the bottom UI panels to disappear after sim.
-- Identify the exact bad state/undefined access in the postseason sim → derived UI state → bottom-panel render pipeline; fix the root cause, not just the symptom.
-- Make the affected bottom panels render safely after postseason sim even when postseason-specific data is temporarily absent or not yet derived, without masking legitimate state corruption.
-- Keep the fix narrow: preserve current gameplay behavior, postseason outcomes, save compatibility, and deterministic seed behavior.
-- Add focused regression coverage for the reproduced crash path and at least one defensive empty/partial-state render path.
+- Wire `FOTraitId` values to actual gameplay bonuses in the simulation engine
+- Coaching staff is already selectable in the UI but effects are currently zero
+- Expected bonuses: player development boost, scouting fog reduction, injury recovery improvement
+- Architect needs to write the full spec before Builder begins
 
 ## Files expected to change
-- Existing postseason simulation/result-generation module(s)
-- Existing season/postseason state selector(s), adapter(s), or view-model file(s) that feed the main screen after sim
-- Existing React component(s) that render the affected bottom panels / postseason summary area
-- Existing or new focused regression test file(s) covering postseason sim + render state
-- `.codex/MBD/handoff.md`
+- `src/engine/` — coaching effect application during sim
+- `src/ai/` — AI coaching evaluation logic
+- Existing roster/staff UI components (if display of effects needed)
+- Test files for coaching bonuses
 
 ## Files NOT to change
-- Save schema/versioning files — no save-format change is expected for this bug fix
-- Chemistry gameplay effect files from MBD-007 — completed work; avoid unrelated regressions
-- Coaching staff / trade AI systems — separate backlog items (MBD-008, MBD-009)
-- GitHub Pages / deployment workflow / dist artifacts — deployment is handled by MBD-031
-- Protocol/control docs other than normal handoff notes — this task is a product bug fix, not a process refactor
+- Save schema/versioning files — no save-format change expected
+- Chemistry gameplay effect files (MBD-007) — completed, avoid regressions
+- Deployment workflow — MBD-031 is done
 
 ## Success criteria
-- [ ] The postseason TypeError is reproducible before the fix or captured by a failing regression test, and no longer occurs after the fix
-- [ ] Simulating into or through the postseason no longer hides the bottom panels
-- [ ] The affected panels render valid content when postseason data is present and degrade gracefully when data is incomplete
-- [ ] No save-schema changes are introduced
-- [ ] Determinism is preserved: same seed + same inputs still produce identical gameplay/postseason outcomes
-- [ ] Focused regression tests are added/updated for the crash path
+- [ ] Each `FOTraitId` maps to a concrete, measurable gameplay effect
+- [ ] Effects are bounded and balanced (no runaway bonuses)
+- [ ] Determinism is preserved: same seed + same inputs = identical outcomes
+- [ ] No save-schema changes
 - [ ] Full verification is green (`test`, `tsc`, `build`)
+- [ ] Focused tests cover coaching effect application
 
 ## Verification commands
 ```bash

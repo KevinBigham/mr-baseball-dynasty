@@ -7,16 +7,7 @@ Only the Architect or Ops agent should reorder this list.
 
 ## HIGH PRIORITY — Engine Work
 
-### MBD-010: Fix Postseason TypeError Bug ⬅️ NEXT
-- `Cannot read properties of undefined (reading 'map')` after sim
-- Crashes render tree, hides bottom-of-page panels
-- Owner: Codex | Reviewer: Claude Code
-
-### MBD-031: Deploy Fresh Bundle
-- Live GitHub Pages bundle doesn't match latest verified build
-- Need fresh push to `KevinBigham/mr-baseball-dynasty` main
-
-### MBD-008: Coaching Staff Active Effects
+### MBD-008: Coaching Staff Active Effects ⬅️ NEXT
 - Wire `FOTraitId` to actual bonuses (dev boost, scouting fog, injury reduction)
 - Staff is selectable but effects are zero right now
 - Owner: Codex
@@ -25,16 +16,6 @@ Only the Architect or Ops agent should reorder this list.
 - Position-need targeting, surplus identification, prospect valuation, package deals
 - Current AI generates somewhat random offers
 - Owner: Codex
-
-### MBD-006: Player Personality & Chemistry v1 — Slice 1B ✅ DONE
-- Player bridge, roster aggregation, snapshot skeleton
-- Owner: Codex | Reviewer: Claude Code
-- Status: complete
-
-### MBD-007: Player Personality & Chemistry v1 — Slice 1C (UI + Effects) ✅ DONE
-- Bounded chemistry gameplay effects (cohesion + morale modifiers)
-- Built by: Claude Code Sonnet 4.6 (2026-03-16)
-- Status: code complete, 745 tests pass, awaiting commit/push
 
 ---
 
@@ -89,8 +70,26 @@ Only the Architect or Ops agent should reorder this list.
 
 ---
 
+## COMPLETED
+
+### MBD-010: Fix Postseason TypeError Bug ✅ DONE (2026-03-21)
+- Fixed by deep code review: 10 simulation engine fixes
+- Committed, merged to main, deployed
+
+### MBD-031: Deploy Fresh Bundle ✅ DONE (2026-03-21)
+- Merged to main, GitHub Pages deploy pipeline ran successfully
+
+### MBD-007: Player Personality & Chemistry v1 — Slice 1C (UI + Effects) ✅ DONE (2026-03-16)
+- Bounded chemistry gameplay effects (cohesion + morale modifiers)
+- Built by: Claude Code Sonnet 4.6, committed and merged
+
+### MBD-006: Player Personality & Chemistry v1 — Slice 1B ✅ DONE
+- Player bridge, roster aggregation, snapshot skeleton
+
+---
+
 ## EXPLICITLY NOT IN NEXT SPRINT
 - New persistence / save schema changes
 - New politics subsystem
-- New worker endpoints (until chemistry Slice 1C)
+- New worker endpoints (until coaching staff wired)
 - Route or panel expansion
