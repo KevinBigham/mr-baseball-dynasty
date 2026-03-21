@@ -4,13 +4,19 @@
  * Includes granular sim controls: sim 1 day, 1 week, 1 month.
  */
 
-import { useState } from 'react';
-import { useGameStore } from '../../store/gameStore';
+import { useState, useMemo, useEffect } from 'react';
+import { useGameStore, type SimPace } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
+import { getEngine } from '../../engine/engineClient';
 import SeasonProgressBar from './SeasonProgressBar';
 import MonthRecap from './MonthRecap';
 import PennantRace from './PennantRace';
 import MidSeasonFAPanel from './MidSeasonFAPanel';
+import DecisionSpotlight from './DecisionSpotlight';
+import { generateSpotlightDecisions } from '../../engine/decisionEngine';
+import { useSound } from '../../hooks/useSound';
+import FarmReport from './FarmReport';
+import { generateFarmReport } from '../../engine/farmReport';
 import type { InSeasonFlowState } from '../../hooks/useInSeasonFlow';
 
 const NEXT_SEGMENT_LABELS = ['SIM JUNE', 'SIM JULY', 'SIM AUGUST', 'SIM SEPTEMBER', 'FINALIZE'];
@@ -28,10 +34,19 @@ interface Props {
   flow: InSeasonFlowState;
 }
 
+const PACE_OPTIONS: { value: SimPace; label: string; desc: string }[] = [
+  { value: 'monthly', label: 'MONTHLY', desc: '~6 advances/season' },
+  { value: 'weekly',  label: 'WEEKLY',  desc: '~26 advances/season' },
+  { value: 'fast',    label: 'FAST FWD', desc: 'Auto to next event' },
+];
+
 export default function InSeasonDashboard({ flow }: Props) {
-  const { userTeamId, isSimulating, simProgress, season, gamesCompleted, totalGames } = useGameStore();
+  const { userTeamId, isSimulating, simProgress, season, gamesCompleted, totalGames, simPace, setSimPace } = useGameStore();
   const { setActiveTab } = useUIStore();
   const [showFAPanel, setShowFAPanel] = useState(false);
+  const [spotlightDismissed, setSpotlightDismissed] = useState(false);
+  const [farmAlerts, setFarmAlerts] = useState<ReturnType<typeof generateFarmReport>>([]);
+  const { play } = useSound();
 
   const {
     currentSegment, chunkResult, partialResult, pendingEvent,
@@ -42,6 +57,48 @@ export default function InSeasonDashboard({ flow }: Props) {
   } = flow;
 
   const overallRecord = getUserOverallRecord();
+
+  // Reset spotlight dismissed state when new sim results arrive
+  useEffect(() => { setSpotlightDismissed(false); }, [chunkResult, lastRangeRecord]);
+
+  // Generate decisions based on current state
+  const spotlightDecisions = useMemo(() => {
+    if (isSimulating || spotlightDismissed) return [];
+    // Count injuries from interrupts (proxy — real IL count would come from engine)
+    const injuryInterrupts = interrupts.filter(i => i.type === 'injury').length;
+    return generateSpotlightDecisions({
+      userTeamId,
+      injuries: injuryInterrupts,
+      rosterSpace40Man: 35, // TODO: read from engine when available
+      winsAboveFive: overallRecord.wins - overallRecord.losses,
+      pendingEvent,
+      currentSegment,
+      interrupts,
+    });
+  }, [isSimulating, spotlightDismissed, userTeamId, overallRecord, pendingEvent, currentSegment, interrupts]);
+  // Generate farm report when new sim results arrive
+  useEffect(() => {
+    if (isSimulating || !partialResult) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const engine = getEngine();
+        const roster = await engine.getFullRoster(userTeamId);
+        if (cancelled) return;
+        const minors = [
+          ...(roster.aaa ?? []),
+          ...(roster.aa ?? []),
+          ...(roster.aPlus ?? []),
+          ...(roster.aMinus ?? []),
+          ...(roster.rookie ?? []),
+          ...(roster.intl ?? []),
+        ] as any[];
+        setFarmAlerts(generateFarmReport(minors, currentSegment, season));
+      } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isSimulating, partialResult, currentSegment, season, userTeamId]);
+
   const nextSegmentLabel = currentSegment >= 0 && currentSegment < 4
     ? NEXT_SEGMENT_LABELS[currentSegment]
     : currentSegment >= 4
@@ -87,6 +144,7 @@ export default function InSeasonDashboard({ flow }: Props) {
 
       {/* Monthly Recap (after at least one chunk or range sim is done) */}
       {!isSimulating && partialResult && (chunkResult || lastRangeRecord) && (
+        <div className="mbd-slide-up">
         <MonthRecap
           segment={currentSegment}
           partialResult={partialResult}
@@ -94,13 +152,27 @@ export default function InSeasonDashboard({ flow }: Props) {
           chunkRecord={chunkResult?.userRecord ?? lastRangeRecord ?? { wins: 0, losses: 0 }}
           divisionStandings={flow.divisionStandings}
         />
+        </div>
+      )}
+
+      {/* ── Decision Spotlight (after advances) ────────────────────── */}
+      {!isSimulating && spotlightDecisions.length > 0 && (
+        <DecisionSpotlight
+          decisions={spotlightDecisions}
+          onDismiss={() => setSpotlightDismissed(true)}
+        />
+      )}
+
+      {/* ── Farm Report (after advances) ───────────────────────────── */}
+      {!isSimulating && farmAlerts.length > 0 && (
+        <FarmReport alerts={farmAlerts} />
       )}
 
       {/* ── Interrupts (auto-pause alerts) ────────────────────────── */}
       {!isSimulating && interrupts.length > 0 && (
         <div className="space-y-2">
           {interrupts.map((int, i) => (
-            <div key={i} className={`bloomberg-border px-4 py-3 ${
+            <div key={i} className={`bloomberg-border px-4 py-3 mbd-scale-pop ${
               int.type === 'milestone' ? 'bg-yellow-950/20 border-yellow-700/50' :
               int.type === 'hot_streak' ? 'bg-green-950/20 border-green-700/50' :
               int.type === 'cold_streak' ? 'bg-red-950/20 border-red-700/50' :
@@ -127,7 +199,7 @@ export default function InSeasonDashboard({ flow }: Props) {
 
       {/* ── Sim Results Card (after range sim) ────────────────────── */}
       {!isSimulating && lastRangeRecord && !pendingEvent && currentDate && (
-        <div className="bloomberg-border bg-gray-900/80 px-4 py-3">
+        <div className="bloomberg-border bg-gray-900/80 px-4 py-3 mbd-slide-up">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[9px] text-gray-500 font-bold tracking-[0.2em]">LAST SIM RESULTS</div>
@@ -294,7 +366,7 @@ export default function InSeasonDashboard({ flow }: Props) {
         </div>
       )}
 
-      {/* Granular Sim Controls + Segment Buttons (shown when not simulating, no pending event) */}
+      {/* Sim Controls + Pacing Toggle (shown when not simulating, no pending event) */}
       {!isSimulating && !pendingEvent && (
         <div className="bloomberg-border bg-gray-900">
           <div className="bloomberg-header px-4 flex items-center justify-between">
@@ -314,20 +386,43 @@ export default function InSeasonDashboard({ flow }: Props) {
               </div>
             )}
 
-            {/* ★ HERO BUTTON: SIM TO NEXT EVENT ★ */}
+            {/* ── Pacing Toggle ── */}
+            <div className="flex justify-center gap-1">
+              {PACE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSimPace(opt.value)}
+                  className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all rounded ${
+                    simPace === opt.value
+                      ? 'bg-orange-600 text-black'
+                      : 'border border-gray-700 text-gray-500 hover:border-orange-500 hover:text-orange-400'
+                  }`}
+                  title={opt.desc}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-center text-[8px] text-gray-500 tracking-wider">
+              {PACE_OPTIONS.find(o => o.value === simPace)?.desc ?? ''}
+            </div>
+
+            {/* ★ HERO BUTTON: ADVANCE ★ */}
             <div className="text-center">
               <button
-                onClick={simToNextEvent}
+                onClick={() => { void play('playAdvance'); (simPace === 'monthly' ? simNextChunk : simPace === 'weekly' ? simWeek : simToNextEvent)(); }}
                 className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-black font-bold text-sm px-8 py-3.5 sm:py-3 uppercase tracking-[0.2em] transition-all hover:shadow-lg hover:shadow-orange-600/20 rounded touch-target"
               >
-                SIM TO NEXT EVENT
+                {simPace === 'monthly' ? (nextSegmentLabel === 'SEASON COMPLETE' ? 'SEASON COMPLETE' : `ADVANCE — ${nextSegmentLabel.replace('SIM ', '')}`)
+                  : simPace === 'weekly' ? 'ADVANCE 1 WEEK'
+                  : 'SIM TO NEXT EVENT'}
               </button>
               <div className="text-[8px] sm:text-[9px] text-gray-500 mt-1.5 tracking-wider">
-                AUTO-PAUSE ON INJURIES · MILESTONES · STREAKS · DEADLINES
+                {simPace === 'fast' ? 'AUTO-PAUSE ON INJURIES · MILESTONES · STREAKS · DEADLINES' : 'PAUSE AT EACH CHECKPOINT FOR ROSTER DECISIONS'}
               </div>
             </div>
 
-            {/* Granular controls */}
+            {/* Granular controls (secondary) */}
             <div className="grid grid-cols-3 sm:flex sm:justify-center gap-1.5 sm:gap-2 pt-2 border-t border-[#1E2A4A50]">
               <button
                 onClick={simDay}

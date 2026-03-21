@@ -45,6 +45,10 @@ import FirstWeekCoach from '../setup/FirstWeekCoach';
 import { shouldAutoStartTutorial } from '../../engine/tutorial';
 import TeamLeadersWidget from './TeamLeadersWidget';
 import DynastyMilestonesPanel from './DynastyMilestonesPanel';
+import LegacyScoreCard from './LegacyScoreCard';
+import AchievementsPanel from './AchievementsPanel';
+import ChampionshipCelebration from './ChampionshipCelebration';
+import MilestoneBanner, { type MilestoneBannerData } from './MilestoneBanner';
 
 const PreseasonDashboard = lazy(() => import('./PreseasonDashboard'));
 const PostseasonReport   = lazy(() => import('./PostseasonReport'));
@@ -115,6 +119,12 @@ export default function Dashboard() {
   const sim = useSeasonSimulation();
   const offseason = useOffseasonFlow(sim.clearSimState);
   const inSeason = useInSeasonFlow();
+
+  // Championship celebration state
+  const [showChampionship, setShowChampionship] = useState(false);
+  const [championshipDismissed, setChampionshipDismissed] = useState(false);
+  // Milestone banner queue
+  const [milestoneBanners, setMilestoneBanners] = useState<MilestoneBannerData[]>([]);
 
   // Fetch player name map for AllStarBreak display
   const [playerNames, setPlayerNames] = useState<Record<number, string>>({});
@@ -191,6 +201,40 @@ export default function Dashboard() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [season, userTeamId]);
+
+  // Trigger championship celebration when user wins World Series
+  useEffect(() => {
+    if (sim.postSimArcChamp && !championshipDismissed) {
+      setShowChampionship(true);
+    }
+  }, [sim.postSimArcChamp, championshipDismissed]);
+
+  // Generate milestone banners from season results
+  useEffect(() => {
+    if (!sim.lastResult || !sim.postSimArcPO) return;
+    const banners: MilestoneBannerData[] = [];
+    if (sim.postSimArcPO && !sim.postSimArcChamp) {
+      banners.push({
+        id: `clinch-playoff-${season}`,
+        icon: '⚾',
+        headline: 'PLAYOFF BERTH CLINCHED',
+        subtext: `Your team has earned a spot in the ${season} postseason.`,
+        accentColor: '#3b82f6',
+        category: 'clinch',
+      });
+    }
+    if ((sim.postSimArcWins ?? 0) >= 100) {
+      banners.push({
+        id: `100-wins-${season}`,
+        icon: '🔥',
+        headline: `${sim.postSimArcWins}-WIN SEASON`,
+        subtext: 'A historic regular season for the franchise.',
+        accentColor: '#f97316',
+        category: 'team',
+      });
+    }
+    setMilestoneBanners(banners);
+  }, [sim.lastResult, sim.postSimArcPO, sim.postSimArcChamp, sim.postSimArcWins, season]);
 
   const showPresser = presserAvailable && !presserDone && sim.pressCtx !== null;
 
@@ -461,9 +505,34 @@ export default function Dashboard() {
       <RivalryPanel />
       <ReputationCard />
       <LegacyTimeline />
+      <LegacyScoreCard />
+      <AchievementsPanel />
       <MomentsPanel moments={moments} />
       <DynastyMilestonesPanel />
       <NewsFeedPanel />
+
+      {/* ── Championship Celebration Overlay ───────────────────────── */}
+      {showChampionship && sim.postSimArcChamp && sim.playoffBracket && (
+        <ChampionshipCelebration
+          season={season - 1}
+          teamName={getTeamLabel(userTeamId)}
+          wins={sim.postSimArcWins ?? 0}
+          losses={162 - (sim.postSimArcWins ?? 0)}
+          mvpName={sim.playoffBracket.championName ?? null}
+          mvpPosition={null}
+          mvpStatLine={null}
+          playoffPath="Wild Card → Division Series → Championship Series → World Series"
+          onDismiss={() => { setShowChampionship(false); setChampionshipDismissed(true); }}
+        />
+      )}
+
+      {/* ── Milestone Banners ─────────────────────────────────────── */}
+      {milestoneBanners.length > 0 && !showChampionship && (
+        <MilestoneBanner
+          banner={milestoneBanners[0]}
+          onDismiss={() => setMilestoneBanners(prev => prev.slice(1))}
+        />
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ This is not a casual clicker. This is a franchise simulator for people who care 
 - **3,700+ Players** — Procedurally generated across 7 farm levels (MLB through International)
 - **10-Round Amateur Draft** — Fog-of-war scouting grades, AI auto-picks, draft strategy
 - **Free Agency Market** — Salary projections, AI bidding, competitive market dynamics
-- **Trade System** — AI-generated offers, user proposals, shop-a-player mechanics
+- **Trade System** — AI-generated offers, counter-offers, deadline war room mode
 - **Roster Management** — 26-man/40-man enforcement, options tracking, DFA/waivers, IL stints, promote/demote across all levels
 - **Arbitration** — Salary arbitration for 3+ service year players with realistic escalation
 - **Contract Extensions** — Offer/counter-offer negotiation mechanics
@@ -38,17 +38,53 @@ Full sabermetric implementation — not approximations:
 - **League leaderboards** with minimum PA/IP qualification filters
 - **Award races:** MVP, Cy Young, Rookie of the Year, Gold Glove, Silver Slugger
 
+### Audio & Game Feel
+
+- **Procedural Soundscapes** — Context-sensitive ambient audio (crowd murmur during season, tension during draft, louder in playoffs). All synthesized via Web Audio API — zero audio files
+- **UI Sound Effects** — Mechanical clicks, draft pick gavel, trade stamp, milestone chimes, save confirmation. Bloomberg terminal feel
+- **Micro-Animations** — Stat tickers count up/down, progress bars animate, cards slide in, milestone moments pop with scale animation
+- **The Decisive Click** — Major decisions (trades, draft picks, signings) get a 100ms pause + sound + visual confirmation flash
+- **Settings Panel** — Volume slider, mute toggle, ambient toggle, reduce-motion accessibility toggle
+
+### Celebration & Reward Systems
+
+- **World Series Championship Sequence** — Multi-step cinematic: screen darkens, "CHAMPIONS" banner drops, CSS confetti (60 particles, 7 colors), MVP announcement, trophy case button
+- **Milestone Banners** — Full-screen overlay for franchise milestones (playoff clinch, 100-win season, career records)
+- **Season Moments Gallery** — Scrollable card gallery of top franchise moments, filterable by category (dynasty, breakout, heartbreak, record, upset, milestone)
+- **Streak Indicators** — Win/loss streaks with intensity flames (W5 fire, W10 triple fire), player hot/cold badges
+
+### Prospect Development
+
+- **Prospect Dev Cards** — XP-style progress bars showing current vs ceiling for each tool (contact, power, eye, speed, fielding). Color-coded growth stages
+- **Vision System** — 2-3 conflicting staff opinions on each prospect. Better staff = more accurate projections. Creates genuine uncertainty
+- **Monthly Farm Reports** — Risers, fallers, promotion alerts, development stall warnings during the in-season monthly pulse
+- **Development Programs** — 11 assignable programs (Power Focus, Contact Focus, Defensive Drills, etc.) that shape prospect growth trajectory
+- **Player Traits** — 14 prospect badges (Late Bloomer, Toolsy, Glass Cannon, Ace Mentality, etc.) assigned by developmental profile
+
+### Legacy & Long-Term Progression
+
+- **Legacy Score** — Composite dynasty achievement metric (championships weighted most, sustained excellence counts). 6 tiers from UNPROVEN to LEGENDARY
+- **GM Skill Tree** — 15 RPG-style skills across 5 categories (Scouting, Development, Negotiation, Analytics, Leadership). Unlocked by actions, not grinding
+- **25 Achievements** — From "Ring Bearer" (first WS) to "Dynasty" (3 in 5 years) to "Moneyball" (90+ wins, bottom payroll). Progress tracking for in-progress achievements
+- **Franchise History** — Season-by-season archive with career totals, award cabinet, playoff badges, key moments
+
 ### Narrative & Immersion
 
-- **Owner Patience System** — Perform poorly and you get fired. Build a contender and earn runway.
-- **Team Morale** — Affects performance. Winning streaks build momentum; losing streaks erode chemistry.
+- **16 Narrative Event Templates** — Off-field drama: trade demands, clubhouse conflicts, mentor relationships, fan favorites nearing retirement, prospect hype, comeback stories. Each with 2-3 options with real tradeoffs
+- **Owner Patience System** — Perform poorly and you get fired. Build a contender and earn runway
+- **Team Morale & Chemistry** — Affects performance. Bounded chemistry system with cohesion and morale modifiers
 - **Dynamic News Feed** — Contextual stories about trades, injuries, free agent signings, milestones
+- **Transaction Ticker** — Bloomberg-style scrolling feed of league-wide transactions
 - **Press Conferences** — Interactive Q&A with reporters after key moments
 - **Rivalry System** — Track your biggest rivals with rivalry-specific events
 - **Season Storyboard** — Narrative arcs that capture your season's journey
-- **MFSN Pre-Season Predictions** — Expert predictions for your team before opening day
-- **Pennant Race Tracker** — Magic numbers, elimination numbers, wild card positioning
-- **Hall of Fame** — Voting simulation for retired players. Build a franchise worth remembering.
+- **Seed Sharing** — Same seed = same universe. Challenge friends to beat your record with zero infrastructure
+
+### Decision Spotlight
+
+- **Monthly Pulse** — After each advance, 1-3 contextual decisions surface: injuries, 40-man crunch, trade deadline buyer/seller, September callups, cold streaks
+- **Pacing Controls** — Monthly (~6 advances/season), Weekly (~26), or Fast Forward (auto to next event). All deterministic
+- **Action Queue** — Priority-colored (red/yellow/blue) with attention pulse on critical items
 
 ---
 
@@ -60,13 +96,15 @@ Full sabermetric implementation — not approximations:
 | TypeScript | 5.6.3 | Type safety (strict mode, zero errors) |
 | Vite | 5.4.10 | Build system + HMR |
 | Tailwind CSS | 3.4.14 | Utility-first styling |
-| Zustand | 5.0.1 | State management (3 stores) |
+| Zustand | 5.0.1 | State management (4 stores) |
 | Comlink | 4.4.1 | Web Worker RPC |
 | Dexie | 3.2.7 | IndexedDB persistence |
 | pure-rand | 6.1.0 | Seedable PRNG (determinism) |
 | pako | 2.1.0 | Gzip save compression |
 | recharts | 2.12.7 | Data visualization |
-| Vitest | 2.1.4 | Testing (752+ tests) |
+| react-router-dom | 7.13.1 | Client-side routing |
+| Vitest | 2.1.4 | Testing (889 tests) |
+| Web Audio API | native | Procedural audio (zero files) |
 
 **Zero backend. Everything runs client-side.** State lives in a Web Worker. Saves compress to IndexedDB.
 
@@ -99,17 +137,24 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 
 | Metric | Value |
 |--------|-------|
-| Lines of TypeScript/TSX | ~34,800 |
-| Source files | 90+ |
-| Test suites | 85 |
-| Passing tests | 752+ |
-| Lines of test code | ~9,200 |
+| Lines of TypeScript/TSX | ~37,000+ |
+| Source files | 130+ |
+| Test suites | 95 |
+| Passing tests | 889 |
+| Lines of test code | ~11,500 |
 | Teams | 30 |
 | Generated players | ~3,700 |
 | Farm levels | 7 |
 | Games per season | 162 |
 | Draft rounds | 10 |
-| Development rounds completed | 18 |
+| Achievements | 25 |
+| GM Skills | 15 |
+| Narrative event templates | 16 |
+| Dev programs | 11 |
+| Prospect traits | 14 |
+| Sound effects | 9 |
+| Ambient modes | 5 |
+| CSS animations | 6 |
 
 ---
 
@@ -119,10 +164,11 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 BROWSER MAIN THREAD              WEB WORKER THREAD
 ───────────────────              ─────────────────
 React Components          ──►   engine/worker.ts (Comlink API)
-Zustand Stores (3)        ◄──┐
+Zustand Stores (4)        ◄──┐
 Dexie (IndexedDB)              ├► sim/plateAppearance.ts
-                               ├► sim/gameSimulator.ts
-                               ├► sim/seasonSimulator.ts
+Web Audio API                  ├► sim/gameSimulator.ts
+react-router-dom               ├► sim/seasonSimulator.ts
+                               ├► sim/playoffSimulator.ts
                                ├► sim/markov.ts
                                ├► player/generation.ts
                                ├► player/development.ts
@@ -132,7 +178,7 @@ Dexie (IndexedDB)              ├► sim/plateAppearance.ts
 
 **Key invariant:** The UI never directly mutates game state. All mutations flow through the engine worker via Comlink RPC. The UI re-fetches what it needs after each action.
 
-**Design aesthetic:** Bloomberg Terminal — dark backgrounds (#0a0a0f), orange accents (#f97316), monospace everything, ALL CAPS headers.
+**Design aesthetic:** Bloomberg Terminal — dark backgrounds (#0B1020), orange accents (#f97316), monospace everything, ALL CAPS headers.
 
 ---
 
@@ -142,7 +188,7 @@ Dexie (IndexedDB)              ├► sim/plateAppearance.ts
 npm install
 npm run dev          # http://localhost:5173
 npm run typecheck    # Zero-tolerance TypeScript check
-npm run test         # All 752+ tests must pass
+npm run test         # All 889 tests must pass
 npm run build        # Production build → dist/
 npm run verify       # typecheck + test in one shot (run before any push)
 ```
@@ -187,15 +233,36 @@ Go to **Actions → Deploy to GitHub Pages → Run workflow** and select `main`.
 
 ---
 
+## The GOAT Game Development Plan
+
+This codebase was built through a structured 10-round development plan:
+
+| Round | Name | Theme | Key Features |
+|-------|------|-------|-------------|
+| 1 | Foundation Lock | Stability | wOBA/FIP/WAR, trade execution, URL routing |
+| 2 | October Glory | Playoffs | Full postseason bracket, WS MVP, franchise history |
+| 3 | The Pulse | Game Loop | Monthly pacing, Decision Spotlight, action queue |
+| 4 | Sound & Fury | Audio | Procedural Web Audio, ambient soundscapes, micro-animations |
+| 5 | Big Moments | Celebration | Championship sequence, confetti, milestone banners, streaks |
+| 6 | The Farm | Prospects | XP dev cards, Vision System, farm reports, dev programs |
+| 7 | War Room | Transactions | Deadline engine, transaction ticker, league trades |
+| 8 | Legacy Engine | Progression | Legacy Score, GM Skill Tree, 25 achievements |
+| 9 | The Wire | Narrative | 16 event templates, seed sharing, narrative drama |
+| 10 | GOAT Polish | Launch | Tooltips, empty states, accessibility polish |
+
+137 new tests added across all 10 rounds. Zero regressions. Zero determinism violations.
+
+---
+
 ## How This Was Built
 
 This project is an experiment in **AI-collaborative game development**. The workflow:
 
 - **ChatGPT 5.4** serves as the project architect — designing systems, planning features, and coordinating the build
-- **Claude Code** owns UI/dashboard, narrative systems, offseason flows, roster management, and stats display
+- **Claude Code Opus 4.6** owns UI/dashboard, narrative systems, offseason flows, roster management, stats display, and executed all 10 GOAT rounds
 - **OpenAI Codex** owns the simulation engine, player systems, math layer, data files, and test coverage
 
-Each AI has a dedicated ownership map to prevent merge conflicts. Handoff documentation ensures any collaborator (human or AI) can pick up where the last one left off. 18 rounds of iterative development and counting.
+Each AI has a dedicated ownership map to prevent merge conflicts. Handoff documentation ensures any collaborator (human or AI) can pick up where the last one left off.
 
 The humans vibe. The AIs build. The games ship.
 
@@ -203,7 +270,7 @@ The humans vibe. The AIs build. The games ship.
 
 ## Status
 
-**Fully playable.** TypeScript strict mode. 752+ tests passing. Active development with a deep feature backlog.
+**Fully playable. Feature-complete through the 10-round GOAT Game Development Plan.** TypeScript strict mode. 889 tests passing. 126KB gzipped bundle. Active development continues.
 
 ---
 

@@ -129,6 +129,25 @@ export function useSeasonSimulation() {
       const isPlayoff  = allPlayoffIds.has(userTeamId);
       const isChampion = bracket?.championId === userTeamId;
 
+      // Derive the user's deepest playoff round from the bracket
+      let userPlayoffResult: string | null = null;
+      if (bracket && isPlayoff) {
+        userPlayoffResult = 'WC';
+        // Seeds 1-2 had a bye → start at DS
+        const userSeed = [...(bracket.alTeams ?? []), ...(bracket.nlTeams ?? [])].find(t => t.teamId === userTeamId);
+        if (userSeed && userSeed.seed <= 2) userPlayoffResult = 'DS';
+        for (const s of bracket.wildCardRound ?? []) {
+          if (s.winnerId === userTeamId) userPlayoffResult = 'DS';
+        }
+        for (const s of bracket.divisionSeries ?? []) {
+          if (s.winnerId === userTeamId) userPlayoffResult = 'CS';
+        }
+        for (const s of bracket.championshipSeries ?? []) {
+          if (s.winnerId === userTeamId) userPlayoffResult = 'WS';
+        }
+        if (isChampion) userPlayoffResult = 'Champion';
+      }
+
       // @ts-expect-error Sprint 04 stub — contract alignment pending
       const breakoutsLeague = (result.developmentEvents ?? []).filter(e => e.type === 'breakout').length;
       // @ts-expect-error Sprint 04 stub — contract alignment pending
@@ -184,7 +203,7 @@ export function useSeasonSimulation() {
         wins:             userWins,
         losses:           userLosses,
         pct:              (userWins + userLosses) > 0 ? userWins / (userWins + userLosses) : 0,
-        playoffResult:    userTeamSeason?.playoffRound ?? null,
+        playoffResult:    userPlayoffResult,
         // @ts-expect-error Sprint 04 stub — contract alignment pending
         awardsWon:        extractUserAwards(result, userTeamId),
         breakoutHits,

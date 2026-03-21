@@ -3,6 +3,7 @@ import { getEngine } from '../../engine/engineClient';
 import { useGameStore } from '../../store/gameStore';
 import { useLeagueStore } from '../../store/leagueStore';
 import { useUIStore } from '../../store/uiStore';
+import { useSound } from '../../hooks/useSound';
 import type { DraftPick } from '../../engine/draft/draftAI';
 import type { DraftBoardEntry } from '../../engine/draft';
 import type { DraftBoardListing } from '../../engine/worker';
@@ -97,6 +98,7 @@ export default function DraftRoom() {
   const { setStandings } = useLeagueStore();
   const { setSelectedTeam } = useUIStore();
 
+  const { play } = useSound();
   const [board, setBoard] = useState<DraftBoardListing | null>(null);
   const [posFilter, setPosFilter] = useState<PosFilter>('ALL');
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
@@ -152,6 +154,7 @@ export default function DraftRoom() {
       setBoard(updated);
       setSelectedPlayerId(null);
 
+      void play('playDraftPick');
       useUIStore.getState().addToast(`📋 Drafted ${pickedName}!`, 'success', {
         accent: '#f97316', icon: '📋', duration: 3000,
       });
@@ -166,7 +169,7 @@ export default function DraftRoom() {
     } finally {
       setAdvancing(false);
     }
-  }, [selectedPlayerId, board]);
+  }, [selectedPlayerId, board, play]);
 
   // Auto-pick for user (best available)
   const handleAutoPick = useCallback(async () => {

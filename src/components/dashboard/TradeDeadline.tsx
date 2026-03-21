@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getEngine } from '../../engine/engineClient';
+import { useSound } from '../../hooks/useSound';
 
 interface Props {
   userTeamId: number;
@@ -27,6 +28,7 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
   const [offers, setOffers] = useState<DeadlineOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+  const { play } = useSound();
 
   const isBuyer = userWins > userLosses;
 
@@ -62,12 +64,14 @@ export default function TradeDeadline({ userTeamId, season, userWins, userLosses
       const engine = getEngine();
       await engine.acceptTradeOffer(
         offer.partnerTeamId,
-        // @ts-expect-error Sprint 04 stub — contract alignment pending
         [offer.requestedId],
         [offer.offeredId],
       );
+      void play('playStamp');
       setAccepted(prev => new Set(prev).add(index));
-    } catch { /* silent */ }
+    } catch {
+      void play('playBuzz');
+    }
   };
 
   const toScale = (ovr: number) => Math.round(20 + (ovr / 550) * 60);

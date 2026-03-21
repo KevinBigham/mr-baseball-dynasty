@@ -5,6 +5,7 @@ import type { OwnerArchetype, BreakoutCandidate } from '../engine/narrative';
 export type SetupScreen = 'title' | 'teamSelect' | 'startMode' | 'difficulty' | 'frontOffice' | 'draft';
 export type GamePhase = 'preseason' | 'in_season' | 'simulating' | 'postseason' | 'offseason' | 'fired';
 export type SeasonPhase = 'early' | 'allstar' | 'deadline' | 'stretch' | 'complete';
+export type SimPace = 'monthly' | 'weekly' | 'fast';
 
 // ─── Delegation System (Progressive Disclosure) ──────────────────────────────
 // Each key = a management domain. true = player controls it, false = AI handles it.
@@ -85,6 +86,7 @@ interface GameStore {
   currentSeasonDate: string | null;    // ISO date of next unplayed game (e.g., "2026-04-15")
   gamesCompleted:    number;           // total schedule entries completed
   totalGames:        number;           // total schedule entries in season
+  simPace:           SimPace;          // 'monthly' | 'weekly' | 'fast'
 
   // ── Tutorial ───────────────────────────────────────────────────────────────────
   tutorialActive:  boolean;
@@ -126,6 +128,7 @@ interface GameStore {
   setCurrentSeasonDate: (d: string | null) => void;
   setGamesCompleted:    (n: number) => void;
   setTotalGames:        (n: number) => void;
+  setSimPace:           (p: SimPace) => void;
 
   setTutorialActive:  (v: boolean) => void;
 
@@ -165,6 +168,7 @@ export const useGameStore = create<GameStore>(set => ({
   currentSeasonDate: null,
   gamesCompleted:    0,
   totalGames:        0,
+  simPace:           'monthly',
 
   tutorialActive:  false,
 
@@ -222,6 +226,7 @@ export const useGameStore = create<GameStore>(set => ({
   setCurrentSeasonDate: d => set({ currentSeasonDate: d }),
   setGamesCompleted:    n => set({ gamesCompleted: n }),
   setTotalGames:        n => set({ totalGames: n }),
+  setSimPace:           p => set({ simPace: p }),
 
   // ── Tutorial ────────────────────────────────────────────────────────────────────
   setTutorialActive: v => set({ tutorialActive: v }),
@@ -251,6 +256,7 @@ export const useGameStore = create<GameStore>(set => ({
     inSeasonPaused: false,
     segmentUserRecord: null,
     currentSeasonDate: null,
+    simPace: 'monthly' as SimPace,
     gamesCompleted: 0,
     totalGames: 0,
     tutorialActive: false,
