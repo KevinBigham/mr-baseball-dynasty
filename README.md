@@ -101,9 +101,16 @@ Full sabermetric implementation — not approximations:
 | Dexie | 3.2.7 | IndexedDB persistence |
 | pure-rand | 6.1.0 | Seedable PRNG (determinism) |
 | pako | 2.1.0 | Gzip save compression |
-| recharts | 2.12.7 | Data visualization |
+| @tanstack/react-table | 8.x | Sortable data tables |
+| @nivo/bar, line, radar | 0.88.x | Data visualization (charts) |
+| shadcn/ui primitives | — | UI component library (Radix-based) |
+| cmdk | 1.x | Cmd+K command palette |
+| motion (Framer) | 12.x | Micro-animations |
+| @dnd-kit | 6.x | Drag-and-drop roster management |
+| Sonner | 2.x | Toast notification system |
+| Lucide React | 0.x | Icon system |
 | react-router-dom | 7.13.1 | Client-side routing |
-| Vitest | 2.1.4 | Testing (888 tests) |
+| Vitest | 2.1.4 | Testing (888+ tests) |
 | Web Audio API | native | Procedural audio (zero files) |
 
 **Zero backend. Everything runs client-side.** State lives in a Web Worker. Saves compress to IndexedDB.
@@ -137,8 +144,8 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 
 | Metric | Value |
 |--------|-------|
-| Lines of TypeScript/TSX | ~37,000+ |
-| Source files | 130+ |
+| Lines of TypeScript/TSX | ~56,000 |
+| Source files | 283 |
 | Test suites | 95 |
 | Passing tests | 888 |
 | Lines of test code | ~11,500 |
@@ -189,7 +196,7 @@ react-router-dom               ├► sim/seasonSimulator.ts
 npm install
 npm run dev          # http://localhost:5173
 npm run typecheck    # Zero-tolerance TypeScript check
-npm run test         # All 889 tests must pass
+npm run test         # All 888 tests must pass
 npm run build        # Production build → dist/
 npm run verify       # typecheck + test in one shot (run before any push)
 ```
@@ -259,11 +266,12 @@ This codebase was built through a structured 10-round development plan:
 
 This project is an experiment in **AI-collaborative game development**. The workflow:
 
-- **ChatGPT 5.4** serves as the project architect — designing systems, planning features, and coordinating the build
-- **Claude Code Opus 4.6** owns UI/dashboard, narrative systems, offseason flows, roster management, stats display, and executed all 10 GOAT rounds
-- **OpenAI Codex** owns the simulation engine, player systems, math layer, data files, and test coverage
+- **ChatGPT 5.4 Pro** serves as the project architect — designing systems, planning features, writing task specs
+- **OpenAI Codex 5.4** (Builder) owns the simulation engine, player systems, math layer, data files, and test coverage
+- **Claude Code Sonnet 4.6** (Reviewer) handles PR review, regression checks, type safety audits
+- **Claude Cowork Opus 4.6** (Ops) manages git operations, durable memory, sprint logs, and deep code reviews
 
-Each AI has a dedicated ownership map to prevent merge conflicts. Handoff documentation ensures any collaborator (human or AI) can pick up where the last one left off.
+Each AI has a dedicated ownership map to prevent merge conflicts. Handoff documentation and shared memory (`.codex/MBD/`) ensure any collaborator (human or AI) can pick up where the last one left off.
 
 The humans vibe. The AIs build. The games ship.
 
@@ -271,7 +279,12 @@ The humans vibe. The AIs build. The games ship.
 
 ## Status
 
-**Fully playable. Feature-complete through the 10-round GOAT Game Development Plan.** TypeScript strict mode. 888 tests passing. 127KB gzipped bundle. Active development continues — UI evolution with premium typography (Bebas Neue, Space Grotesk), refined panel system, and ambient polish.
+**Fully playable. Feature-complete through the 10-round GOAT Game Development Plan + Terminal Ascension UI upgrade + Deep Code Review hardening pass.** TypeScript strict mode. 888 tests passing. Zero type errors. Active development continues.
+
+### Recent Milestones
+
+- **Terminal Ascension (UI Evolution):** shadcn/ui primitives, TanStack Table, Framer Motion animations, nivo charts, dnd-kit drag-and-drop, Sonner toasts, Cmd+K command palette, Lucide icons. 13 new reusable components.
+- **Deep Code Review (Engine Hardening):** Line-by-line audit of the simulation engine — fixed pitcher W/L decision logic, batted ball probability normalization, trade payroll validation, injury recovery curves, home-field advantage, salary bracket ordering, Bayesian prior smoothing, and draft AI positional balance.
 
 ---
 

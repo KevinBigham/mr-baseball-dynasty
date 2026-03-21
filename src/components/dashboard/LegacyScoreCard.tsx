@@ -14,10 +14,10 @@ export default function LegacyScoreCard() {
   const breakdown = useMemo(() => calculateLegacyScore(franchiseHistory), [franchiseHistory]);
   const tier = useMemo(() => getLegacyTier(breakdown.total), [breakdown.total]);
 
-  if (franchiseHistory.length === 0) return null;
-
   // Season-by-season cumulative score for mini sparkline
+  // Must be called unconditionally to satisfy Rules of Hooks
   const cumulative = useMemo(() => {
+    if (franchiseHistory.length === 0) return [];
     const scores: number[] = [];
     const reversed = [...franchiseHistory].reverse();
     for (let i = 0; i < reversed.length; i++) {
@@ -25,6 +25,8 @@ export default function LegacyScoreCard() {
     }
     return scores;
   }, [franchiseHistory]);
+
+  if (franchiseHistory.length === 0) return null;
 
   const maxScore = Math.max(1, ...cumulative);
 

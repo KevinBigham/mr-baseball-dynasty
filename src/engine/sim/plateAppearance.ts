@@ -178,11 +178,18 @@ function stage2(
     fbProb *= (1 - interactionMod);
   }
 
+  // Apply floor clamps, then renormalize so probabilities sum to 1.0
+  const rawGB = Math.max(0.25, gbProb);
+  const rawFB = Math.max(0.20, fbProb);
+  const rawLD = baseLD;
+  const rawPU = 0.08;
+  const rawTotal = rawGB + rawFB + rawLD + rawPU;
+
   const outcomes = [
-    { name: 'GB', prob: Math.max(0.25, gbProb) },
-    { name: 'FB', prob: Math.max(0.20, fbProb) },
-    { name: 'LD', prob: baseLD },
-    { name: 'PU', prob: 0.08 },
+    { name: 'GB', prob: rawGB / rawTotal },
+    { name: 'FB', prob: rawFB / rawTotal },
+    { name: 'LD', prob: rawLD / rawTotal },
+    { name: 'PU', prob: rawPU / rawTotal },
   ];
 
   let roll: number;

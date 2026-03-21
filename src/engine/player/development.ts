@@ -151,18 +151,20 @@ function developPitcherAttrs(
     (newAttrs[key] as number) = newVal;
   }
 
-  // pitchArsenalCount (2–5): small chance to add a pitch during ascent/prime
+  // pitchArsenalCount (2–5): chance to add a pitch during ascent/prime.
+  // Use a discrete probability check rather than fractional accumulation
+  // (since the stored value is an integer, fractional deltas round to 0).
   {
     const curve = PITCHER_AGING.pitchArsenalCount;
     if (age <= (curve.peakAge ?? 28) && attrs.pitchArsenalCount < 5) {
-      let noise: number;
-      [noise, gen] = gaussian(gen, 0, 0.08);
-      // Expected growth ~0.05/season (add a pitch every ~20 seasons at base, faster with ethics)
-      const delta = 0.05 * workEthicFactor + noise;
-      // Only round up when the fractional accumulation tips over
-      // (We track continuous count, round for display)
-      const newCount = Math.max(2, Math.min(5, attrs.pitchArsenalCount + Math.max(0, delta)));
-      newAttrs.pitchArsenalCount = Math.round(newCount);
+      let roll: number;
+      [roll, gen] = gaussian(gen, 0, 1);
+      // ~12% chance per season to gain a pitch (higher with good work ethic)
+      // workEthicFactor of 1.4 → ~17% chance; 0.6 → ~7% chance
+      const gainThreshold = 1.17 - (0.12 * workEthicFactor); // lower = easier to gain
+      if (roll > gainThreshold) {
+        newAttrs.pitchArsenalCount = Math.min(5, attrs.pitchArsenalCount + 1);
+      }
     }
   }
 

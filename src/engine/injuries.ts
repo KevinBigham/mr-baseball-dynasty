@@ -7,6 +7,8 @@
  */
 
 import type { Player, InjuryRecord, InjurySeverity, RosterStatus } from '../types/player';
+import { createPRNG, nextFloat } from './math/prng';
+import type { RandomGenerator } from './math/prng';
 
 // ─── Injury type tables ──────────────────────────────────────────────────────
 
@@ -65,19 +67,21 @@ export function injuryProbability(player: Player): number {
 
 // ─── Deterministic injury selection ──────────────────────────────────────────
 
-function selectInjuryType(player: Player, seed: number): InjuryType {
+function selectInjuryType(player: Player, gen: RandomGenerator): [InjuryType, RandomGenerator] {
   const eligible = INJURY_TYPES.filter(t =>
     t.positionBias === 'any' ||
     (t.positionBias === 'pitcher' && player.isPitcher) ||
     (t.positionBias === 'hitter' && !player.isPitcher)
   );
   const totalWeight = eligible.reduce((s, t) => s + t.weight, 0);
-  let roll = (seed % totalWeight);
+  let rollVal: number;
+  [rollVal, gen] = nextFloat(gen);
+  let roll = rollVal * totalWeight;
   for (const t of eligible) {
     roll -= t.weight;
-    if (roll < 0) return t;
+    if (roll < 0) return [t, gen];
   }
-  return eligible[eligible.length - 1];
+  return [eligible[eligible.length - 1], gen];
 }
 
 function generateDescription(player: Player, injuryType: InjuryType): string {
@@ -121,6 +125,9 @@ export function processSeasonInjuries(
 
   const events: InjuryEvent[] = [];
 
+  // Initialize PRNG from baseSeed for injury simulation
+  let gen = createPRNG((baseSeed ^ 0x494E4A52) >>> 0); // XOR with 'INJR' magic for injury seed isolation
+
   // Only check MLB active players (not minors, not already on IL)
   const mlbPlayers = players.filter(p =>
     p.rosterData.rosterStatus === 'MLB_ACTIVE' && p.teamId >= 1
@@ -163,12 +170,13 @@ export function processSeasonInjuries(
         : recoverySpeedMultiplier;
 
       const prob = injuryProbability(p) * effectiveInjuryRate;
-      // Deterministic "roll" using player ID and game day as seed
-      const roll = ((p.playerId * 7919 + day * 31 + baseSeed) % 10000) / 10000;
+      // Deterministic roll using pure-rand PRNG
+      let roll: number;
+      [roll, gen] = nextFloat(gen);
 
       if (roll < prob) {
-        const typeSeed = Math.abs(p.playerId * 3571 + day * 13 + baseSeed);
-        const injuryType = selectInjuryType(p, typeSeed);
+        let injuryType: InjuryType;
+        [injuryType, gen] = selectInjuryType(p, gen);
 
         const ilStatus: RosterStatus = injuryType.severity === 'minor' ? 'MLB_IL_10' : 'MLB_IL_60';
 
