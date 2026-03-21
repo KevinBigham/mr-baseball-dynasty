@@ -42,38 +42,26 @@ function getPhase(age: number, position: string): PhaseInfo {
 
 export default function AgingBadge({ age, position, compact }: AgingBadgeProps) {
   const phase = getPhase(age, position);
+  const badgeStyle = { '--mbd-badge-color': phase.color } as React.CSSProperties;
 
   if (compact) {
     return (
       <span
-        className="inline-flex items-center gap-0.5"
+        className="mbd-badge mbd-badge-xs mbd-badge-dot"
+        style={badgeStyle}
         title={phase.tip}
       >
-        <span
-          className="inline-block w-1.5 h-1.5 rounded-full"
-          style={{ backgroundColor: phase.color }}
-        />
-        <span className="text-[8px] font-bold tracking-wider" style={{ color: phase.color }}>
-          {phase.label}
-        </span>
+        {phase.label}
       </span>
     );
   }
 
   return (
     <span
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider"
-      style={{
-        color: phase.color,
-        backgroundColor: phase.bg,
-        border: `1px solid ${phase.color}30`,
-      }}
+      className="mbd-badge mbd-badge-xs mbd-badge-light mbd-badge-dot"
+      style={badgeStyle}
       title={phase.tip}
     >
-      <span
-        className="inline-block w-1.5 h-1.5 rounded-full"
-        style={{ backgroundColor: phase.color }}
-      />
       {phase.label}
     </span>
   );

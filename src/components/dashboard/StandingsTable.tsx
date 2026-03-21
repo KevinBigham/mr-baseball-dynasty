@@ -190,10 +190,8 @@ export default function StandingsView() {
           {(['divisions', 'picture'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={[
-                'text-xs px-3 py-1 border font-normal transition-colors min-h-[44px]',
-                view === v
-                  ? 'border-orange-500 text-orange-400 bg-orange-950/30'
-                  : 'border-gray-700 text-gray-500 hover:text-gray-300',
+                'mbd-btn mbd-btn-sm',
+                view === v ? 'mbd-btn-light' : 'mbd-btn-subtle',
               ].join(' ')}
             >
               {v === 'divisions' ? 'DIVISIONS' : 'PLAYOFF PICTURE'}
@@ -214,21 +212,21 @@ export default function StandingsView() {
             return (
               <div key={divKey} className="bloomberg-border">
                 <div className="bloomberg-header text-xs">{divKey}</div>
-                <table className="w-full">
+                <table className="mbd-table">
                   <caption className="sr-only">{divKey} standings</caption>
                   <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
-                      <th scope="col" className="px-1 py-1 w-5"><span className="sr-only">Status</span></th>
-                      <th scope="col" className="text-left px-2 py-1 w-20">TEAM</th>
-                      <th scope="col" className="text-right px-2 py-1">W</th>
-                      <th scope="col" className="text-right px-2 py-1">L</th>
-                      <th scope="col" className="text-right px-2 py-1">PCT</th>
-                      <th scope="col" className="text-right px-2 py-1">GB</th>
-                      <th scope="col" className="text-right px-2 py-1">DIFF</th>
-                      <th scope="col" className="text-right px-2 py-1 text-orange-600" title="Pythagorean wins">xW</th>
+                    <tr>
+                      <th scope="col" className="mbd-th w-5 text-center"><span className="sr-only">Status</span></th>
+                      <th scope="col" className="mbd-th text-left w-20">TEAM</th>
+                      <th scope="col" className="mbd-th text-right">W</th>
+                      <th scope="col" className="mbd-th text-right">L</th>
+                      <th scope="col" className="mbd-th text-right">PCT</th>
+                      <th scope="col" className="mbd-th text-right">GB</th>
+                      <th scope="col" className="mbd-th text-right">DIFF</th>
+                      <th scope="col" className="mbd-th text-right" style={{ color: 'var(--mbd-orange-5)' }} title="Pythagorean wins">xW</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="mbd-table-striped">
                     {rows.map((row, i) => {
                       const inPO    = playoffIds.has(row.teamId);
                       const isDiv   = i === 0;
@@ -238,37 +236,37 @@ export default function StandingsView() {
                         <tr
                           key={row.teamId}
                           className={[
-                            'bloomberg-row cursor-pointer text-xs',
-                            isUser ? 'bg-orange-950/20' : '',
+                            'mbd-tr-hover cursor-pointer',
+                            isUser ? 'mbd-tr-selected' : '',
                           ].join(' ')}
                           onClick={() => handleRowClick(row.teamId)}
                         >
-                          <td className="px-1 py-1 text-center">
+                          <td className="mbd-td-xs text-center">
                             {isDiv && <span className="text-yellow-400">▲</span>}
                             {!isDiv && inPO && <span className="text-blue-400 text-xs">✦</span>}
-                            {!inPO && <span className="text-gray-800">·</span>}
+                            {!inPO && <span style={{ color: 'var(--mbd-gray-6)' }}>·</span>}
                           </td>
                           <td className={[
-                            'px-2 py-1 font-bold',
+                            'mbd-td-xs font-bold',
                             isUser   ? 'text-orange-400' :
                             isDiv    ? 'text-yellow-300' :
                             inPO     ? 'text-blue-300' : 'text-gray-400',
                           ].join(' ')}>
                             {row.abbreviation}
                           </td>
-                          <td className="text-right px-2 py-1 tabular-nums">{row.wins}</td>
-                          <td className="text-right px-2 py-1 tabular-nums">{row.losses}</td>
-                          <td className="text-right px-2 py-1 tabular-nums">{row.pct.toFixed(3).replace('0.', '.')}</td>
-                          <td className="text-right px-2 py-1 tabular-nums text-gray-500">
+                          <td className="mbd-td-xs text-right">{row.wins}</td>
+                          <td className="mbd-td-xs text-right">{row.losses}</td>
+                          <td className="mbd-td-xs text-right">{row.pct.toFixed(3).replace('0.', '.')}</td>
+                          <td className="mbd-td-xs text-right" style={{ color: 'var(--mbd-gray-4)' }}>
                             {row.gb === 0 ? '—' : row.gb.toFixed(1)}
                           </td>
                           <td className={[
-                            'text-right px-2 py-1 tabular-nums',
+                            'mbd-td-xs text-right',
                             row.runsScored > row.runsAllowed ? 'text-green-500' : 'text-red-500',
                           ].join(' ')}>
                             {runDiff(row)}
                           </td>
-                          <td className="text-right px-2 py-1 tabular-nums text-orange-600">{row.pythagWins}</td>
+                          <td className="mbd-td-xs text-right" style={{ color: 'var(--mbd-orange-6)' }}>{row.pythagWins}</td>
                         </tr>
                       );
                     })}

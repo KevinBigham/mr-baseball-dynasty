@@ -1,137 +1,237 @@
+/**
+ * DepthChart.tsx — Premium depth chart with baseball diamond field view.
+ *
+ * Visual centerpiece of the Team tab. Features:
+ * - Baseball diamond with positioned player cards on a dark-green field gradient
+ * - Refined batting order with slot badges and accent borders
+ * - Pitching staff with role badges (ACE, CLOSER, SETUP, MR)
+ * - Click-two-to-swap editing with orange glow pulse
+ */
+
 import { useState, useEffect } from 'react';
 import type { RosterPlayer } from '../../types/league';
 import { getEngine } from '../../engine/engineClient';
+import { OVRBadge } from './RosterCards';
 import AgingBadge from '../shared/AgingBadge';
 
-// ─── OVR grade helper ─────────────────────────────────────────────────────────
-function ovrGrade(ovr: number): { grade: string; color: string; bg: string } {
+// ─── Grade color helper ──────────────────────────────────────────────────────
+
+function gradeColor(ovr: number): string {
   const g = Math.round(20 + (ovr / 550) * 60);
-  if (g >= 70) return { grade: String(g), color: 'text-green-400', bg: 'bg-green-900/30 border-green-800' };
-  if (g >= 60) return { grade: String(g), color: 'text-blue-400', bg: 'bg-blue-900/30 border-blue-800' };
-  if (g >= 50) return { grade: String(g), color: 'text-gray-300', bg: 'bg-gray-800/50 border-gray-700' };
-  if (g >= 40) return { grade: String(g), color: 'text-orange-400', bg: 'bg-orange-900/30 border-orange-800' };
-  return { grade: String(g), color: 'text-red-400', bg: 'bg-red-900/30 border-red-800' };
+  if (g >= 70) return '#22C55E';
+  if (g >= 60) return '#38BDF8';
+  if (g >= 50) return '#E2E8F0';
+  if (g >= 40) return '#F59E0B';
+  return '#F43F5E';
 }
 
-// ─── Position slot on the diamond ─────────────────────────────────────────────
-function PositionSlot({ position, players, onClickPlayer }: {
+function toScout(ovr: number): number {
+  return Math.round(20 + (ovr / 550) * 60);
+}
+
+// ─── Position coordinates on the diamond (percentage-based) ──────────────────
+
+const FIELD_POSITIONS: Record<string, { left: string; top: string }> = {
+  LF:  { left: '18%', top: '10%' },
+  CF:  { left: '50%', top: '3%' },
+  RF:  { left: '82%', top: '10%' },
+  '3B': { left: '18%', top: '48%' },
+  SS:  { left: '38%', top: '40%' },
+  '2B': { left: '62%', top: '40%' },
+  '1B': { left: '82%', top: '48%' },
+  SP:  { left: '50%', top: '58%' },
+  C:   { left: '50%', top: '78%' },
+  DH:  { left: '50%', top: '93%' },
+};
+
+// ─── Role badge styling ─────────────────────────────────────────────────────
+
+const ROLE_STYLE: Record<string, { bg: string; text: string }> = {
+  ACE:    { bg: 'rgba(249,115,22,0.15)', text: '#f97316' },
+  SP2:    { bg: 'rgba(56,189,248,0.1)',  text: '#38BDF8' },
+  SP3:    { bg: 'rgba(56,189,248,0.1)',  text: '#38BDF8' },
+  SP4:    { bg: 'rgba(56,189,248,0.08)', text: '#60a5fa' },
+  SP5:    { bg: 'rgba(56,189,248,0.06)', text: '#7dd3fc' },
+  CL:     { bg: 'rgba(244,63,94,0.12)',  text: '#F43F5E' },
+  SU:     { bg: 'rgba(245,158,11,0.12)', text: '#F59E0B' },
+  MR:     { bg: 'rgba(100,116,139,0.1)', text: '#64748B' },
+};
+
+// ─── Field Position Card ────────────────────────────────────────────────────
+
+function FieldCard({ position, players, onClickPlayer, selected, onSelect }: {
   position: string;
   players: RosterPlayer[];
   onClickPlayer?: (id: number) => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const starter = players[0];
-  const backup = players[1];
+  const coords = FIELD_POSITIONS[position];
+  if (!coords) return null;
 
-  if (!starter) {
-    return (
-      <div className="flex flex-col items-center w-[60px] sm:w-[90px]">
-        <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
-        <div className="border border-gray-800 bg-gray-900/50 rounded px-2 py-1.5 w-full text-center">
-          <div className="text-gray-700 text-xs">EMPTY</div>
-        </div>
-      </div>
-    );
-  }
-
-  const g = ovrGrade(starter.overall);
+  const handleClick = () => {
+    if (onSelect) onSelect();
+    else if (starter && onClickPlayer) onClickPlayer(starter.playerId);
+  };
 
   return (
-    <div className="flex flex-col items-center w-[60px] sm:w-[90px]">
-      <div className="text-gray-500 text-[10px] font-bold tracking-wider mb-1">{position}</div>
-      {/* Starter */}
-      <div
-        className={`border ${g.bg} rounded px-2 py-1.5 w-full text-center ${onClickPlayer ? 'cursor-pointer hover:brightness-125' : ''}`}
-        onClick={() => onClickPlayer?.(starter.playerId)}
-      >
-        <div className="text-gray-200 text-xs font-bold truncate">{starter.name.split(' ').pop()}</div>
-        <div className="flex items-center justify-center gap-1.5 mt-0.5">
-          <span className={`text-xs font-bold tabular-nums ${g.color}`}>{g.grade}</span>
-          <span className="text-gray-500 text-[10px]">Age {starter.age}</span>
-          <AgingBadge age={starter.age} position={starter.position} compact />
-        </div>
+    <div
+      className={`depth-card ${selected ? 'depth-selected' : ''} ${starter ? 'cursor-pointer' : ''}`}
+      style={{ left: coords.left, top: coords.top }}
+      onClick={handleClick}
+    >
+      {/* Position label */}
+      <div className="text-[9px] font-bold tracking-[0.2em] mb-1" style={{ color: '#A7B3C7' }}>
+        {position}
       </div>
-      {/* Backup */}
-      {backup && (
-        <div
-          className="mt-0.5 px-1.5 py-0.5 w-full text-center cursor-pointer hover:bg-gray-800/50 rounded"
-          onClick={() => onClickPlayer?.(backup.playerId)}
-        >
-          <div className="text-gray-500 text-[10px] truncate">{backup.name.split(' ').pop()}</div>
-          <div className={`text-[10px] tabular-nums ${ovrGrade(backup.overall).color}`}>
-            {ovrGrade(backup.overall).grade}
+
+      {starter ? (
+        <>
+          {/* OVR circle */}
+          <div
+            className="mx-auto w-8 h-8 sm:w-9 sm:h-9 rounded-full border-[1.5px] flex items-center justify-center font-bold text-[11px] tabular-nums"
+            style={{
+              borderColor: gradeColor(starter.overall),
+              backgroundColor: `${gradeColor(starter.overall)}12`,
+              boxShadow: `0 0 6px ${gradeColor(starter.overall)}25`,
+              color: gradeColor(starter.overall),
+              fontFamily: 'Inter, system-ui, sans-serif',
+            }}
+          >
+            {toScout(starter.overall)}
           </div>
+
+          {/* Name */}
+          <div className="mt-0.5 text-[10px] font-bold truncate max-w-[70px] sm:max-w-[85px]"
+               style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+            {starter.name.split(' ').pop()}
+          </div>
+
+          {/* Age + Phase */}
+          <div className="flex items-center justify-center gap-0.5">
+            <span className="text-[8px]" style={{ color: '#64748B' }}>{starter.age}</span>
+            <AgingBadge age={starter.age} position={starter.position} compact />
+          </div>
+        </>
+      ) : (
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-dashed border-gray-700 flex items-center justify-center mx-auto">
+          <span className="text-[8px] text-gray-700">—</span>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Pitching card ────────────────────────────────────────────────────────────
-function PitcherCard({ player, role, onClickPlayer, selected, onSelect }: {
+// ─── Lineup Card ─────────────────────────────────────────────────────────────
+
+function LineupCard({ player, slot, selected, onSelect }: {
+  player: RosterPlayer;
+  slot: number;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const avg = typeof player.stats.avg === 'number'
+    ? player.stats.avg.toFixed(3).replace('0.', '.')
+    : (player.stats.avg ?? '—');
+  const slotClass = slot <= 3 ? 'lineup-slot-top' : slot <= 6 ? 'lineup-slot-mid' : 'lineup-slot-bot';
+  const bgClass = selected
+    ? 'bg-orange-950/20'
+    : slot % 2 === 0
+    ? 'bg-[#0F1930]/50'
+    : 'bg-transparent';
+
+  return (
+    <div
+      className={`flex items-center gap-3 px-4 py-3 rounded cursor-pointer transition-all hover:bg-[#142447]/40 ${slotClass} ${bgClass} ${selected ? 'depth-selected' : ''}`}
+      onClick={onSelect}
+    >
+      {/* Slot number badge */}
+      <div
+        className="w-7 h-7 rounded flex items-center justify-center font-extrabold text-xs shrink-0"
+        style={{
+          backgroundColor: slot <= 3 ? 'rgba(249,115,22,0.15)' : slot <= 6 ? 'rgba(56,189,248,0.1)' : 'rgba(59,74,107,0.2)',
+          color: slot <= 3 ? '#f97316' : slot <= 6 ? '#38BDF8' : '#64748B',
+          fontFamily: 'Inter, system-ui, sans-serif',
+        }}
+      >
+        {slot}
+      </div>
+
+      {/* Player info */}
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-bold truncate" style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          {player.name}
+        </div>
+        <div className="text-[10px]" style={{ color: '#64748B' }}>
+          {player.position} | Age {player.age}
+        </div>
+      </div>
+
+      {/* Stats cluster */}
+      <div className="flex items-center gap-3 shrink-0">
+        <OVRBadge ovr={player.overall} size="small" />
+        <span className="text-xs tabular-nums" style={{ color: '#A7B3C7' }}>{avg}</span>
+        <span className="text-[10px] tabular-nums" style={{ color: '#64748B' }}>{player.stats.hr ?? 0} HR</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pitching Card ───────────────────────────────────────────────────────────
+
+function PitchingCard({ player, role, onClickPlayer, selected, onSelect }: {
   player: RosterPlayer;
   role: string;
   onClickPlayer?: (id: number) => void;
   selected?: boolean;
   onSelect?: () => void;
 }) {
-  const g = ovrGrade(player.overall);
+  const roleStyle = ROLE_STYLE[role] ?? ROLE_STYLE.MR;
+  const era = player.isPitcher
+    ? (typeof player.stats.era === 'number' ? player.stats.era.toFixed(2) : (player.stats.era ?? '—'))
+    : '—';
+  const eraNum = typeof player.stats.era === 'number' ? player.stats.era : 99;
+  const eraColor = eraNum <= 3.0 ? '#22C55E' : eraNum <= 4.0 ? '#E2E8F0' : eraNum <= 5.0 ? '#F59E0B' : '#F43F5E';
+
   return (
     <div
-      className={[
-        `border ${g.bg} rounded px-3 py-1.5 flex items-center justify-between gap-2`,
-        onClickPlayer || onSelect ? 'cursor-pointer hover:brightness-125' : '',
-        selected ? 'ring-2 ring-orange-500' : '',
-      ].join(' ')}
+      className={`flex items-center gap-3 px-4 py-3 rounded cursor-pointer transition-all hover:bg-[#142447]/40 ${selected ? 'depth-selected' : ''}`}
+      style={{ backgroundColor: 'rgba(15,25,48,0.3)', border: '1px solid rgba(30,42,74,0.3)' }}
       onClick={() => onSelect ? onSelect() : onClickPlayer?.(player.playerId)}
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className={`text-xs font-bold tabular-nums w-5 text-right ${g.color}`}>{g.grade}</span>
-        <span className="text-gray-200 text-xs font-bold truncate">{player.name}</span>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="text-gray-500 text-[10px] tabular-nums">
-          {player.isPitcher
-            ? `${typeof player.stats.era === 'number' ? player.stats.era.toFixed(2) : (player.stats.era ?? '—')} ERA`
-            : ''}
-        </span>
-        <span className="text-gray-500 text-[10px] uppercase font-bold">{role}</span>
-      </div>
-    </div>
-  );
-}
+      {/* OVR */}
+      <OVRBadge ovr={player.overall} size="small" />
 
-// ─── Lineup editor row ───────────────────────────────────────────────────────
-function LineupRow({ player, slot, selected, onSelect }: {
-  player: RosterPlayer;
-  slot: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const g = ovrGrade(player.overall);
-  const avg = typeof player.stats.avg === 'number' ? player.stats.avg.toFixed(3).replace('0.', '.') : (player.stats.avg ?? '—');
-  return (
-    <div
-      className={[
-        'flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-gray-800/40 transition-colors',
-        selected ? 'ring-2 ring-orange-500 bg-orange-950/20' : '',
-      ].join(' ')}
-      onClick={onSelect}
-    >
-      <div className="flex items-center gap-3">
-        <span className="text-orange-500 font-bold text-xs tabular-nums w-4 text-right">{slot}</span>
-        <span className={`text-xs font-bold ${g.color}`}>{player.name}</span>
-        <span className="text-gray-500 text-[10px]">{player.position}</span>
-      </div>
-      <div className="flex items-center gap-3 text-[10px] tabular-nums">
-        <span className={`font-bold ${g.color}`}>{g.grade}</span>
-        <span className="text-gray-500">{avg}</span>
-        <span className="text-gray-500">{player.stats.hr ?? 0} HR</span>
+      {/* Role badge */}
+      <span
+        className="px-2 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0"
+        style={{ backgroundColor: roleStyle.bg, color: roleStyle.text }}
+      >
+        {role === 'CL' ? 'CLOSER' : role === 'SU' ? 'SETUP' : role === 'MR' ? 'MIDDLE' : role}
+      </span>
+
+      {/* Name */}
+      <span className="text-sm font-bold truncate flex-1" style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        {player.name}
+      </span>
+
+      {/* ERA + Record */}
+      <div className="text-right shrink-0">
+        <div className="text-sm font-bold tabular-nums" style={{ color: eraColor }}>
+          {era}
+        </div>
+        <div className="text-[9px] tabular-nums" style={{ color: '#64748B' }}>
+          {player.stats.w ?? 0}-{player.stats.l ?? 0}
+          {role === 'CL' || role === 'SU' ? ` | ${player.stats.sv ?? 0} SV` : ''}
+        </div>
       </div>
     </div>
   );
 }
 
 // ─── Main Depth Chart ─────────────────────────────────────────────────────────
+
 export default function DepthChart({ players, onClickPlayer, editable }: {
   players: RosterPlayer[];
   onClickPlayer?: (id: number) => void;
@@ -155,7 +255,7 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
       ]);
       if (lineup.length > 0) setLineupIds(lineup);
       if (rotation.length > 0) setRotationIds(rotation);
-    });
+    })();
   }, [editable]);
 
   // Auto-populate lineup from active position players sorted by OVR
@@ -171,7 +271,6 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
       if (p) effectiveLineup.push(p);
     }
   }
-  // Fall back to top 9 by OVR
   if (effectiveLineup.length < 9) {
     effectiveLineup.length = 0;
     effectiveLineup.push(...starters.slice(0, 9));
@@ -197,7 +296,7 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
 
   // Group by position for diamond display
   const byPos = (pos: string) =>
-    players.filter(p => p.position === pos).sort((a, b) => b.overall - a.overall);
+    players.filter(p => p.position === pos && p.rosterStatus === 'MLB_ACTIVE').sort((a, b) => b.overall - a.overall);
 
   // Swap handler for lineup
   const handleLineupClick = (idx: number) => {
@@ -205,7 +304,6 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
     if (selectedLineupIdx === null) {
       setSelectedLineupIdx(idx);
     } else {
-      // Swap
       const newIds = [...(lineupIds.length === 9 ? lineupIds : effectiveLineup.map(p => p.playerId))];
       const temp = newIds[selectedLineupIdx];
       newIds[selectedLineupIdx] = newIds[idx];
@@ -240,14 +338,8 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
       getEngine().setRotationOrder(tid, finalRotation),
     ]);
 
-    if (!lineupRes.ok) {
-      setSaveMsg('Failed to save lineup.');
-      return;
-    }
-    if (!rotationRes.ok) {
-      setSaveMsg('Failed to save rotation.');
-      return;
-    }
+    if (!lineupRes.ok) { setSaveMsg('Failed to save lineup.'); return; }
+    if (!rotationRes.ok) { setSaveMsg('Failed to save rotation.'); return; }
 
     setLineupIds(finalLineup);
     setRotationIds(finalRotation);
@@ -257,56 +349,112 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Edit controls */}
+    <div className="space-y-8">
+
+      {/* ═══ Edit Controls ═══════════════════════════════════════════════════ */}
       {editable && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (editing) {
-                  // Cancel edits
-                  setSelectedLineupIdx(null);
-                  setSelectedRotationIdx(null);
-                }
-                setEditing(!editing);
-              }}
-              className={[
-                'text-xs px-4 py-1.5 border font-bold uppercase tracking-wider transition-colors min-h-[44px]',
-                editing
-                  ? 'border-red-600 text-red-400 hover:bg-red-950/30'
-                  : 'border-orange-600 text-orange-400 hover:bg-orange-950/30',
-              ].join(' ')}
-            >
-              {editing ? 'CANCEL' : 'EDIT LINEUP'}
-            </button>
-            {editing && (
-              <button
-                onClick={handleSave}
-                className="text-xs px-4 py-1.5 border border-green-600 text-green-400 hover:bg-green-950/30 font-bold uppercase tracking-wider transition-colors min-h-[44px]"
-              >
-                SAVE
+        <div className="flex items-center gap-3 flex-wrap">
+          {editing ? (
+            <>
+              <button onClick={() => { setSelectedLineupIdx(null); setSelectedRotationIdx(null); setEditing(false); }}
+                className="bloomberg-btn text-xs min-h-[44px]">
+                CANCEL
               </button>
-            )}
-          </div>
+              <button onClick={handleSave}
+                className="bloomberg-btn-primary text-xs min-h-[44px]">
+                SAVE LINEUP
+              </button>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wider"
+                style={{ backgroundColor: 'rgba(249,115,22,0.1)', color: '#f97316', border: '1px solid rgba(249,115,22,0.3)' }}>
+                TAP TWO PLAYERS TO SWAP
+              </span>
+            </>
+          ) : (
+            <button onClick={() => setEditing(true)}
+              className="bloomberg-btn text-xs min-h-[44px]">
+              EDIT LINEUP
+            </button>
+          )}
           {saveMsg && (
-            <span className={`text-xs ${saveMsg.includes('saved') ? 'text-green-400' : 'text-red-400'}`}>
+            <span className={`text-xs font-bold ${saveMsg.includes('saved') ? 'text-green-400' : 'text-red-400'}`}>
               {saveMsg}
             </span>
-          )}
-          {editing && (
-            <span className="text-gray-500 text-xs">Click two players to swap their order</span>
           )}
         </div>
       )}
 
-      {/* Batting Order (shown when editing or lineup exists) */}
-      {(editing || lineupIds.length === 9) && (
-        <div className="bloomberg-border bg-gray-900">
-          <div className="bloomberg-header text-xs">BATTING ORDER</div>
-          <div className="divide-y divide-gray-800/50">
+      {/* ═══ Defensive Alignment — The Diamond ═══════════════════════════════ */}
+      <section>
+        <h3 className="text-sm font-extrabold tracking-wider mb-4"
+            style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          DEFENSIVE ALIGNMENT
+        </h3>
+        <div className="depth-field mx-auto w-full max-w-[540px] p-3"
+             style={{ minHeight: 280 }}>
+          <div className="relative w-full" style={{ minHeight: 360, paddingBottom: '70%' }}>
+            {Object.keys(FIELD_POSITIONS).map(pos => (
+              <FieldCard
+                key={pos}
+                position={pos}
+                players={byPos(pos)}
+                onClickPlayer={editing ? undefined : onClickPlayer}
+                selected={false}
+                onSelect={undefined}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ Bench ═══════════════════════════════════════════════════════════ */}
+      {(() => {
+        const lineupIds = new Set(effectiveLineup.map(p => p.playerId));
+        const bench = activePlayers.filter(p => !p.isPitcher && !lineupIds.has(p.playerId))
+          .sort((a, b) => b.overall - a.overall);
+        if (bench.length === 0) return null;
+        return (
+          <section>
+            <h3 className="text-sm font-extrabold tracking-wider mb-3"
+                style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+              BENCH
+              <span className="text-[10px] font-normal ml-2" style={{ color: '#64748B' }}>
+                {bench.length} player{bench.length !== 1 ? 's' : ''}
+              </span>
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {bench.map(p => (
+                <div
+                  key={p.playerId}
+                  className="flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-all hover:bg-[#142447]/40"
+                  style={{ backgroundColor: 'rgba(15,25,48,0.3)', border: '1px solid rgba(30,42,74,0.3)' }}
+                  onClick={() => onClickPlayer?.(p.playerId)}
+                >
+                  <OVRBadge ovr={p.overall} size="small" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold truncate" style={{ color: '#E2E8F0', fontFamily: 'Inter, system-ui, sans-serif' }}>
+                      {p.name}
+                    </div>
+                    <div className="text-[8px]" style={{ color: '#64748B' }}>
+                      {p.position} | {p.age}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* ═══ Batting Order ════════════════════════════════════════════════════ */}
+      {(editing || effectiveLineup.length > 0) && (
+        <section>
+          <h3 className="text-sm font-extrabold tracking-wider mb-4"
+              style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+            BATTING ORDER
+          </h3>
+          <div className="space-y-1">
             {effectiveLineup.map((p, i) => (
-              <LineupRow
+              <LineupCard
                 key={p.playerId}
                 player={p}
                 slot={i + 1}
@@ -315,88 +463,59 @@ export default function DepthChart({ players, onClickPlayer, editable }: {
               />
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Diamond visual */}
-      <div className="bloomberg-border bg-gray-900 p-4">
-        <div className="text-gray-500 text-xs font-bold tracking-widest mb-4">DEFENSIVE ALIGNMENT</div>
+      {/* ═══ Pitching Staff ═══════════════════════════════════════════════════ */}
+      <section>
+        <h3 className="text-sm font-extrabold tracking-wider mb-4"
+            style={{ color: '#F8FAFC', fontFamily: 'Inter, system-ui, sans-serif' }}>
+          PITCHING STAFF
+        </h3>
 
-        <div className="relative mx-auto w-full max-w-[420px]" style={{ minHeight: 300 }}>
-          {/* Outfield row */}
-          <div className="flex justify-around mb-6">
-            <PositionSlot position="LF" players={byPos('LF')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="CF" players={byPos('CF')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="RF" players={byPos('RF')} onClickPlayer={onClickPlayer} />
-          </div>
-
-          {/* Infield row */}
-          <div className="flex justify-around mb-6">
-            <PositionSlot position="3B" players={byPos('3B')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="SS" players={byPos('SS')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="2B" players={byPos('2B')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="1B" players={byPos('1B')} onClickPlayer={onClickPlayer} />
-          </div>
-
-          {/* Battery row */}
-          <div className="flex justify-center gap-12">
-            <PositionSlot position="SP" players={byPos('SP')} onClickPlayer={onClickPlayer} />
-            <PositionSlot position="C" players={byPos('C')} onClickPlayer={onClickPlayer} />
-          </div>
-
-          {/* DH below */}
-          <div className="flex justify-center mt-4">
-            <PositionSlot position="DH" players={byPos('DH')} onClickPlayer={onClickPlayer} />
-          </div>
-        </div>
-      </div>
-
-      {/* Rotation + Bullpen */}
-      <div className="grid grid-cols-2 gap-4">
         {/* Rotation */}
-        <div className="bloomberg-border bg-gray-900 p-4">
-          <div className="text-gray-500 text-xs font-bold tracking-widest mb-3">ROTATION</div>
-          <div className="space-y-1.5">
-            {effectiveRotation.length === 0 ? (
-              <div className="text-gray-700 text-xs text-center py-2">No starting pitchers</div>
-            ) : effectiveRotation.map((p, i) => (
-              <PitcherCard
-                key={p.playerId}
-                player={p}
-                role={`SP${i + 1}`}
-                onClickPlayer={editing ? undefined : onClickPlayer}
-                selected={editing && selectedRotationIdx === i}
-                onSelect={editing ? () => handleRotationClick(i) : undefined}
-              />
-            ))}
-          </div>
+        <div className="space-y-1.5">
+          {effectiveRotation.length === 0 ? (
+            <div className="text-gray-500 text-xs text-center py-4">No starting pitchers</div>
+          ) : effectiveRotation.map((p, i) => (
+            <PitchingCard
+              key={p.playerId}
+              player={p}
+              role={i === 0 ? 'ACE' : `SP${i + 1}`}
+              onClickPlayer={editing ? undefined : onClickPlayer}
+              selected={editing && selectedRotationIdx === i}
+              onSelect={editing ? () => handleRotationClick(i) : undefined}
+            />
+          ))}
         </div>
+
+        {/* Divider */}
+        {(closer || bullpen.length > 0) && (
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px" style={{ backgroundColor: '#1E2A4A' }} />
+            <span className="text-[9px] font-bold tracking-[0.2em]" style={{ color: '#3B4A6B' }}>BULLPEN</span>
+            <div className="flex-1 h-px" style={{ backgroundColor: '#1E2A4A' }} />
+          </div>
+        )}
 
         {/* Bullpen */}
-        <div className="bloomberg-border bg-gray-900 p-4">
-          <div className="text-gray-500 text-xs font-bold tracking-widest mb-3">BULLPEN</div>
-          <div className="space-y-1.5">
-            {closer && (
-              <PitcherCard
-                player={closer}
-                role="CL"
-                onClickPlayer={onClickPlayer}
-              />
-            )}
-            {bullpen.map(p => (
-              <PitcherCard
-                key={p.playerId}
-                player={p}
-                role={p.position === 'CL' ? 'SU' : 'MR'}
-                onClickPlayer={onClickPlayer}
-              />
-            ))}
-            {!closer && bullpen.length === 0 && (
-              <div className="text-gray-700 text-xs text-center py-2">No relievers</div>
-            )}
-          </div>
+        <div className="space-y-1.5">
+          {closer && (
+            <PitchingCard player={closer} role="CL" onClickPlayer={onClickPlayer} />
+          )}
+          {bullpen.map(p => (
+            <PitchingCard
+              key={p.playerId}
+              player={p}
+              role={p.position === 'CL' ? 'SU' : 'MR'}
+              onClickPlayer={onClickPlayer}
+            />
+          ))}
+          {!closer && bullpen.length === 0 && (
+            <div className="text-gray-500 text-xs text-center py-4">No relievers</div>
+          )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

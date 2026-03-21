@@ -59,40 +59,82 @@ function OVRBadge({ ovr }: { ovr: number }) {
 function TitleScreen() {
   const { setSetupScreen } = useGameStore();
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-8 p-8"
-      style={{ background: 'radial-gradient(ellipse at 50% 10%, #1a2a1a 0%, #050a05 60%)' }}>
-      <div className="text-center space-y-2">
-        <div className="text-gray-500 text-xs tracking-[0.3em] uppercase">Season 2026</div>
-        <div className="text-orange-500 font-black text-4xl tracking-widest">MR. BASEBALL</div>
-        <div className="text-orange-700 font-bold text-xl tracking-[0.4em]">DYNASTY</div>
-        <div className="text-gray-500 text-xs mt-4">A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION</div>
-      </div>
+    <div className="relative flex flex-col items-center justify-center min-h-screen p-8 overflow-hidden"
+      style={{ background: '#060B14' }}>
 
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        <button
-          onClick={() => setSetupScreen('teamSelect')}
-          className="bg-orange-600 hover:bg-orange-500 text-black font-black text-sm py-4 uppercase tracking-widest transition-colors"
-        >
-          ⚾ START NEW DYNASTY
-        </button>
-        <div className="text-center text-gray-700 text-xs">
-          Full minor system — AAA through INTL ·{' '}
-          <span className="text-gray-500">~5,300 players generated</span>
-        </div>
-      </div>
+      {/* Ambient field glow */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse 80% 50% at 50% 80%, rgba(13,40,24,0.5) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 50% 0%, rgba(249,115,22,0.04) 0%, transparent 50%)',
+      }} />
 
-      <div className="grid grid-cols-3 gap-4 text-center max-w-sm w-full mt-4">
-        {[
-          { icon: '📊', label: 'Log5 + Markov', sub: 'Statistically credible' },
-          { icon: '⚡', label: 'SDE Aging', sub: 'Players develop & decline' },
-          { icon: '🔍', label: 'Fog of War', sub: 'Scouting uncertainty' },
-        ].map(f => (
-          <div key={f.label} className="space-y-1">
-            <div className="text-xl">{f.icon}</div>
-            <div className="text-orange-400 text-xs font-bold">{f.label}</div>
-            <div className="text-gray-500 text-xs">{f.sub}</div>
+      {/* Geometric accent lines */}
+      <div className="absolute top-0 left-0 w-full h-px" style={{ background: 'linear-gradient(90deg, transparent, #f97316, transparent)' }} />
+      <div className="absolute bottom-0 left-0 w-full h-px" style={{ background: 'linear-gradient(90deg, transparent, #1E2A4A, transparent)' }} />
+
+      {/* Main content */}
+      <div className="relative z-10 flex flex-col items-center gap-10 max-w-lg w-full">
+
+        {/* Brand mark */}
+        <div className="text-center space-y-1">
+          <div className="text-[10px] tracking-[0.5em] uppercase" style={{ color: '#64748B', fontFamily: 'Space Grotesk, sans-serif' }}>
+            Season 2026
           </div>
-        ))}
+          <h1 className="leading-none" style={{ fontFamily: 'Bebas Neue, sans-serif' }}>
+            <span className="block text-6xl sm:text-7xl tracking-wider" style={{ color: '#f97316' }}>
+              MR. BASEBALL
+            </span>
+            <span className="block text-3xl sm:text-4xl tracking-[0.5em] -mt-1" style={{ color: '#A7B3C7' }}>
+              DYNASTY
+            </span>
+          </h1>
+          <div className="h-px w-48 mx-auto mt-4" style={{ background: 'linear-gradient(90deg, transparent, #f97316, transparent)' }} />
+          <p className="text-[10px] tracking-[0.2em] mt-3" style={{ color: '#3B4A6B', fontFamily: 'Space Grotesk, sans-serif' }}>
+            A SABERMETRICALLY CREDIBLE FRANCHISE SIMULATION
+          </p>
+        </div>
+
+        {/* CTA */}
+        <div className="w-full max-w-xs space-y-3">
+          <button
+            onClick={() => setSetupScreen('teamSelect')}
+            className="w-full py-4 text-sm tracking-[0.3em] uppercase transition-all duration-200 hover:shadow-lg"
+            style={{
+              fontFamily: 'Space Grotesk, sans-serif',
+              fontWeight: 700,
+              backgroundColor: '#f97316',
+              color: '#060B14',
+              border: 'none',
+              borderRadius: '2px',
+              boxShadow: '0 0 30px rgba(249,115,22,0.2)',
+            }}
+            onMouseOver={e => { (e.target as HTMLElement).style.boxShadow = '0 0 40px rgba(249,115,22,0.35)'; (e.target as HTMLElement).style.backgroundColor = '#fb923c'; }}
+            onMouseOut={e => { (e.target as HTMLElement).style.boxShadow = '0 0 30px rgba(249,115,22,0.2)'; (e.target as HTMLElement).style.backgroundColor = '#f97316'; }}
+          >
+            START NEW DYNASTY
+          </button>
+          <p className="text-center text-[9px] tracking-wider" style={{ color: '#3B4A6B' }}>
+            Full minor league system · ~5,300 generated players
+          </p>
+        </div>
+
+        {/* Feature pillars */}
+        <div className="grid grid-cols-3 gap-6 w-full max-w-md">
+          {[
+            { label: 'LOG5 + MARKOV', sub: 'Statistically credible simulation', accent: '#f97316' },
+            { label: 'SDE AGING', sub: 'Stochastic player development', accent: '#22C55E' },
+            { label: 'FOG OF WAR', sub: 'Scouting uncertainty & discovery', accent: '#38BDF8' },
+          ].map(f => (
+            <div key={f.label} className="text-center space-y-2">
+              <div className="w-8 h-px mx-auto" style={{ backgroundColor: f.accent }} />
+              <div className="text-[9px] font-bold tracking-[0.15em]" style={{ color: f.accent, fontFamily: 'Space Grotesk, sans-serif' }}>
+                {f.label}
+              </div>
+              <div className="text-[9px] leading-relaxed" style={{ color: '#64748B' }}>
+                {f.sub}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

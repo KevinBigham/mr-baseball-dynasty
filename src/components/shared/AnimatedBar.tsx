@@ -12,8 +12,6 @@ interface Props {
   color?: string;
   /** Height class (default 'h-1.5') */
   height?: string;
-  /** Background class (default 'bg-[#1E2A4A]') */
-  bgColor?: string;
   /** Additional className for outer container */
   className?: string;
   /** Accessible label */
@@ -24,7 +22,6 @@ export default function AnimatedBar({
   value,
   color = 'bg-orange-500',
   height = 'h-1.5',
-  bgColor = 'bg-[#1E2A4A]',
   className = '',
   label,
 }: Props) {
@@ -36,9 +33,12 @@ export default function AnimatedBar({
   // Determine if color is a Tailwind class or CSS value
   const isClass = color.startsWith('bg-');
 
+  // Map height prop to mbd-progress size class
+  const sizeClass = height === 'h-1' ? 'mbd-progress-xs' : height === 'h-2' ? 'mbd-progress-md' : height === 'h-3' ? 'mbd-progress-lg' : 'mbd-progress-sm';
+
   return (
     <div
-      className={`w-full ${height} ${bgColor} rounded overflow-hidden ${className}`}
+      className={`mbd-progress ${sizeClass} ${className}`}
       role="progressbar"
       aria-valuenow={Math.round(clamped)}
       aria-valuemin={0}
@@ -46,7 +46,7 @@ export default function AnimatedBar({
       aria-label={label}
     >
       <div
-        className={`h-full rounded ${shouldAnimate ? 'transition-all duration-500 ease-out' : ''} ${isClass ? color : ''}`}
+        className={`mbd-progress-bar ${shouldAnimate ? '' : 'transition-none'} ${isClass ? color : ''}`}
         style={{
           width: `${clamped}%`,
           ...(isClass ? {} : { backgroundColor: color }),

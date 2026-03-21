@@ -212,54 +212,56 @@ export default function Shell() {
       )}
 
       {/* ── Header bar ──────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2 border-b border-dynasty-base shrink-0 safe-top" style={{ backgroundColor: '#0D1628' }} role="banner">
-        <div className="flex items-center gap-1.5 sm:gap-4 min-w-0">
-          <span className="text-orange-500 font-bold text-[10px] sm:text-sm tracking-widest truncate">MR. BASEBALL DYNASTY</span>
-          <span className="text-gray-500 text-xs hidden sm:inline"><GameIcon name="home" size="sm" /></span>
-          <span className="text-gray-500 text-[10px] sm:text-xs">S{season}</span>
+      <header className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-2.5 shrink-0 safe-top" style={{ backgroundColor: '#060B14', borderBottom: '1px solid rgba(30,42,74,0.5)' }} role="banner">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <span className="tracking-wider truncate" style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '18px', color: '#f97316', letterSpacing: '0.08em' }}>MR. BASEBALL DYNASTY</span>
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.15)' }}>
+            <span style={{ color: '#64748B', fontSize: '10px', fontFamily: 'Space Grotesk, sans-serif' }}>SZN</span>
+            <span style={{ color: '#f97316', fontSize: '12px', fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700 }}>{season}</span>
+          </div>
+          <span className="sm:hidden text-[10px]" style={{ color: '#64748B' }}>S{season}</span>
         </div>
         {isSimulating && (
           <div className="flex items-center gap-2" aria-live="polite" role="status">
-            <div className="w-32 h-1.5 bg-gray-800 rounded overflow-hidden" role="progressbar" aria-valuenow={Math.round(simProgress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Simulation progress">
+            <div className="w-32 h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(30,42,74,0.5)' }} role="progressbar" aria-valuenow={Math.round(simProgress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Simulation progress">
               <div
-                className="h-full bg-orange-500 transition-all duration-200"
-                style={{ width: `${Math.round(simProgress * 100)}%` }}
+                className="h-full rounded-full transition-all duration-200"
+                style={{ width: `${Math.round(simProgress * 100)}%`, backgroundColor: '#f97316', boxShadow: '0 0 8px rgba(249,115,22,0.4)' }}
               />
             </div>
-            <span className="text-orange-400 text-xs animate-pulse">SIMULATING…</span>
+            <span className="text-[10px] tracking-wider animate-pulse" style={{ color: '#f97316', fontFamily: 'Space Grotesk, sans-serif' }}>SIMULATING</span>
           </div>
         )}
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="flex items-center gap-1 sm:gap-2">
           <OfflineIndicator />
           <span aria-live="assertive">
             {saveFlash && (
-              <span className="text-green-400 text-xs font-bold tracking-wider animate-pulse">SAVED</span>
+              <span className="text-[10px] font-bold tracking-wider animate-pulse" style={{ color: '#22C55E', fontFamily: 'Space Grotesk, sans-serif' }}>SAVED</span>
             )}
           </span>
-          <button
-            onClick={handleSave}
-            className="border border-gray-700 hover:border-orange-500 text-gray-500 hover:text-orange-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
-            aria-label="Save game"
-          >
-            SAVE
-          </button>
-          <button
-            onClick={() => setShowSaveManager(true)}
-            className="border border-gray-700 hover:border-blue-500 text-gray-500 hover:text-blue-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
-            aria-label="Load game"
-          >
-            LOAD
-          </button>
-          <button
-            onClick={() => setShowNewGameConfirm(true)}
-            className="border border-gray-700 hover:border-red-500 text-gray-500 hover:text-red-400 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
-            aria-label="Start new game"
-          >
-            NEW GAME
-          </button>
+          {[
+            { label: 'SAVE', onClick: handleSave, hoverColor: '#f97316' },
+            { label: 'LOAD', onClick: () => setShowSaveManager(true), hoverColor: '#38BDF8' },
+            { label: 'NEW', onClick: () => setShowNewGameConfirm(true), hoverColor: '#F43F5E' },
+          ].map(btn => (
+            <button
+              key={btn.label}
+              onClick={btn.onClick}
+              className="text-[10px] px-2.5 sm:px-3 py-1.5 uppercase tracking-[0.15em] transition-all duration-150 min-h-[44px] sm:min-h-0"
+              style={{ color: '#64748B', fontFamily: 'Space Grotesk, sans-serif', fontWeight: 600, border: '1px solid rgba(30,42,74,0.5)', borderRadius: '3px', backgroundColor: 'transparent' }}
+              onMouseOver={e => { (e.target as HTMLElement).style.borderColor = btn.hoverColor; (e.target as HTMLElement).style.color = btn.hoverColor; }}
+              onMouseOut={e => { (e.target as HTMLElement).style.borderColor = 'rgba(30,42,74,0.5)'; (e.target as HTMLElement).style.color = '#64748B'; }}
+              aria-label={`${btn.label} game`}
+            >
+              {btn.label}
+            </button>
+          ))}
           <button
             onClick={() => { void play('playClick'); setShowSettings(true); }}
-            className="border border-gray-700 hover:border-gray-400 text-gray-500 hover:text-gray-300 text-xs px-2 sm:px-3 py-1 uppercase tracking-wider transition-colors min-h-[44px] sm:min-h-0"
+            className="text-sm px-2 py-1.5 transition-all duration-150 min-h-[44px] sm:min-h-0"
+            style={{ color: '#3B4A6B', border: '1px solid rgba(30,42,74,0.3)', borderRadius: '3px' }}
+            onMouseOver={e => { (e.target as HTMLElement).style.color = '#A7B3C7'; (e.target as HTMLElement).style.borderColor = 'rgba(30,42,74,0.6)'; }}
+            onMouseOut={e => { (e.target as HTMLElement).style.color = '#3B4A6B'; (e.target as HTMLElement).style.borderColor = 'rgba(30,42,74,0.3)'; }}
             aria-label="Settings"
           >
             ⚙
@@ -291,44 +293,56 @@ export default function Shell() {
       )}
 
       {/* ── Desktop Nav — 5 Pillars ─────────────────────────────────── */}
-      <nav className="hidden sm:block border-b shrink-0" style={{ backgroundColor: '#0D1628', borderColor: '#1E2A4A' }} role="navigation" aria-label="Main navigation">
+      <nav className="hidden sm:block shrink-0" style={{ backgroundColor: '#060B14', borderBottom: '1px solid rgba(30,42,74,0.3)' }} role="navigation" aria-label="Main navigation">
         {/* Primary pillar tabs */}
         <div className="flex">
-          {NAV_PILLARS.map(pillar => (
-            <button
-              key={pillar.id}
-              onClick={() => { void play('playNav'); navigate(pillar.id, pillar.subTabs[0]?.id ?? ''); }}
-              className={[
-                'px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition-colors flex items-center gap-1.5',
-                effectiveTab === pillar.id
-                  ? 'text-orange-400 border-b-2 border-b-orange-500'
-                  : 'text-gray-500 hover:text-gray-300',
-              ].join(' ')}
-              style={effectiveTab === pillar.id ? { backgroundColor: 'rgba(249,115,22,0.08)' } : {}}
-              aria-current={effectiveTab === pillar.id ? 'page' : undefined}
-            >
-              <GameIcon name={pillar.icon} size="md" />
-              {pillar.label}
-            </button>
-          ))}
+          {NAV_PILLARS.map(pillar => {
+            const active = effectiveTab === pillar.id;
+            return (
+              <button
+                key={pillar.id}
+                onClick={() => { void play('playNav'); navigate(pillar.id, pillar.subTabs[0]?.id ?? ''); }}
+                className="relative px-5 py-3 text-[11px] tracking-[0.15em] uppercase transition-all duration-150 flex items-center gap-2"
+                style={{
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontWeight: active ? 700 : 500,
+                  color: active ? '#f97316' : '#64748B',
+                  backgroundColor: active ? 'rgba(249,115,22,0.06)' : 'transparent',
+                }}
+                onMouseOver={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#A7B3C7'; }}
+                onMouseOut={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#64748B'; }}
+                aria-current={active ? 'page' : undefined}
+              >
+                <GameIcon name={pillar.icon} size="md" />
+                {pillar.label}
+                {active && <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full" style={{ backgroundColor: '#f97316', boxShadow: '0 0 6px rgba(249,115,22,0.4)' }} />}
+              </button>
+            );
+          })}
         </div>
         {/* Sub-navigation for active pillar */}
         {currentPillar.subTabs.length > 0 && (
-          <div className="flex" style={{ backgroundColor: '#0B1020', borderTop: '1px solid rgba(30,42,74,0.5)' }}>
-            {currentPillar.subTabs.map(st => (
-              <button
-                key={st.id}
-                onClick={() => navigate(effectiveTab as NavTab, st.id)}
-                className={[
-                  'px-3 py-1.5 text-[10px] font-semibold tracking-widest uppercase transition-colors',
-                  subTab === st.id
-                    ? 'text-orange-400 border-b border-orange-500'
-                    : 'text-gray-500 hover:text-gray-400',
-                ].join(' ')}
-              >
-                {st.label}
-              </button>
-            ))}
+          <div className="flex px-1" style={{ backgroundColor: '#0B1020', borderTop: '1px solid rgba(30,42,74,0.2)' }}>
+            {currentPillar.subTabs.map(st => {
+              const active = subTab === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => navigate(effectiveTab as NavTab, st.id)}
+                  className="relative px-3.5 py-2 text-[10px] tracking-[0.12em] uppercase transition-all duration-150"
+                  style={{
+                    fontFamily: 'Space Grotesk, sans-serif',
+                    fontWeight: active ? 700 : 500,
+                    color: active ? '#F8FAFC' : '#64748B',
+                  }}
+                  onMouseOver={e => { if (!active) (e.currentTarget as HTMLElement).style.color = '#A7B3C7'; }}
+                  onMouseOut={e => { if (!active) (e.currentTarget as HTMLElement).style.color = active ? '#F8FAFC' : '#64748B'; }}
+                >
+                  {st.label}
+                  {active && <div className="absolute bottom-0 left-1 right-1 h-[1px]" style={{ backgroundColor: '#f97316' }} />}
+                </button>
+              );
+            })}
           </div>
         )}
       </nav>

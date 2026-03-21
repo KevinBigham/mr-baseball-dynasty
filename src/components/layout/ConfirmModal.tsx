@@ -20,22 +20,19 @@ export default function ConfirmModal({
   onCancel,
 }: ConfirmModalProps) {
   useEscapeKey(onCancel);
-  const btnClass = variant === 'danger'
-    ? 'bg-red-700 hover:bg-red-600 text-white'
-    : 'bg-orange-700 hover:bg-orange-600 text-white';
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
-      <div className="bloomberg-border bg-gray-900 p-6 max-w-sm">
-        {title && <div id="confirm-modal-title" className="text-orange-400 text-xs font-bold uppercase tracking-widest mb-2">{title}</div>}
-        <div className="text-gray-200 text-sm mb-4">{message}</div>
+      <div className="mbd-card-overlay p-6 max-w-sm w-full">
+        {title && <div id="confirm-modal-title" className="mbd-card-header rounded-t -mx-6 -mt-6 mb-4 px-6 py-3">{title}</div>}
+        <div className="text-sm mb-5" style={{ color: '#E2E8F0' }}>{message}</div>
         <div className="flex gap-3">
           <button onClick={onConfirm}
-            className={`flex-1 ${btnClass} font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]`}>
+            className={`flex-1 mbd-btn mbd-btn-md ${variant === 'danger' ? 'mbd-btn-danger' : 'mbd-btn-filled'}`}>
             {confirmLabel}
           </button>
           <button onClick={onCancel}
-            className="flex-1 border border-gray-600 hover:border-gray-400 text-gray-400 font-bold text-xs py-2 uppercase tracking-widest min-h-[44px]">
+            className="flex-1 mbd-btn mbd-btn-md mbd-btn-subtle">
             {cancelLabel}
           </button>
         </div>

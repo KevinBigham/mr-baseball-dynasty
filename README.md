@@ -103,7 +103,7 @@ Full sabermetric implementation — not approximations:
 | pako | 2.1.0 | Gzip save compression |
 | recharts | 2.12.7 | Data visualization |
 | react-router-dom | 7.13.1 | Client-side routing |
-| Vitest | 2.1.4 | Testing (889 tests) |
+| Vitest | 2.1.4 | Testing (888 tests) |
 | Web Audio API | native | Procedural audio (zero files) |
 
 **Zero backend. Everything runs client-side.** State lives in a Web Worker. Saves compress to IndexedDB.
@@ -140,7 +140,7 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 | Lines of TypeScript/TSX | ~37,000+ |
 | Source files | 130+ |
 | Test suites | 95 |
-| Passing tests | 889 |
+| Passing tests | 888 |
 | Lines of test code | ~11,500 |
 | Teams | 30 |
 | Generated players | ~3,700 |
@@ -154,7 +154,8 @@ Team Wins SD:      7 – 14      (Real: 12–15)
 | Prospect traits | 14 |
 | Sound effects | 9 |
 | Ambient modes | 5 |
-| CSS animations | 6 |
+| CSS animations | 9 |
+| Custom fonts | 3 (Bebas Neue, Space Grotesk, JetBrains Mono) |
 
 ---
 
@@ -178,7 +179,7 @@ react-router-dom               ├► sim/seasonSimulator.ts
 
 **Key invariant:** The UI never directly mutates game state. All mutations flow through the engine worker via Comlink RPC. The UI re-fetches what it needs after each action.
 
-**Design aesthetic:** Bloomberg Terminal — dark backgrounds (#0B1020), orange accents (#f97316), monospace everything, ALL CAPS headers.
+**Design aesthetic:** Bloomberg Terminal — dark backgrounds (#060B14), orange accents (#f97316), Space Grotesk + Bebas Neue + JetBrains Mono typography, ALL CAPS headers.
 
 ---
 
@@ -270,7 +271,7 @@ The humans vibe. The AIs build. The games ship.
 
 ## Status
 
-**Fully playable. Feature-complete through the 10-round GOAT Game Development Plan.** TypeScript strict mode. 889 tests passing. 126KB gzipped bundle. Active development continues.
+**Fully playable. Feature-complete through the 10-round GOAT Game Development Plan.** TypeScript strict mode. 888 tests passing. 127KB gzipped bundle. Active development continues — UI evolution with premium typography (Bebas Neue, Space Grotesk), refined panel system, and ambient polish.
 
 ---
 

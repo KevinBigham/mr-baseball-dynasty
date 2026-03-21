@@ -190,7 +190,8 @@ function PlayerRow({
 
 // ─── Payroll Bar ─────────────────────────────────────────────────────────────
 function PayrollBar({ payroll, budget }: { payroll: number; budget: number }) {
-  const budgetDollars = budget * 1_000_000;
+  // Budget may arrive as raw dollars (155000000) or millions (155) — normalize
+  const budgetDollars = budget > 1000 ? budget : budget * 1_000_000;
   const pct = budgetDollars > 0 ? (payroll / budgetDollars) * 100 : 0;
   const barColor = pct > 100 ? 'bg-red-500' : pct > 80 ? 'bg-yellow-500' : 'bg-green-500';
   const textColor = pct > 100 ? 'text-red-400' : pct > 80 ? 'text-yellow-400' : 'text-green-400';
@@ -202,7 +203,7 @@ function PayrollBar({ payroll, budget }: { payroll: number; budget: number }) {
         <div className="flex items-center gap-4 text-xs">
           <span className={textColor + ' font-bold'}>{formatSalary(payroll)}</span>
           <span className="text-gray-500">of</span>
-          <span className="text-gray-400 font-bold">${budget}M</span>
+          <span className="text-gray-400 font-bold">{formatSalary(budgetDollars)}</span>
           <span className={textColor + ' tabular-nums'}>{pct.toFixed(0)}%</span>
         </div>
       </div>

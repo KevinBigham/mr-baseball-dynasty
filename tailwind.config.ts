@@ -6,7 +6,36 @@ export default {
     extend: {
       fontFamily: {
         mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
-        display: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+        brand: ['Bebas Neue', 'Space Grotesk', 'sans-serif'],
+      },
+      spacing: {
+        'mbd-xs': 'var(--mbd-sp-xs)',
+        'mbd-sm': 'var(--mbd-sp-sm)',
+        'mbd-md': 'var(--mbd-sp-md)',
+        'mbd-lg': 'var(--mbd-sp-lg)',
+        'mbd-xl': 'var(--mbd-sp-xl)',
+        'mbd-2xl': 'var(--mbd-sp-2xl)',
+      },
+      borderRadius: {
+        'mbd-xs': 'var(--mbd-radius-xs)',
+        'mbd-sm': 'var(--mbd-radius-sm)',
+        'mbd-md': 'var(--mbd-radius-md)',
+        'mbd-lg': 'var(--mbd-radius-lg)',
+        'mbd-xl': 'var(--mbd-radius-xl)',
+      },
+      boxShadow: {
+        'mbd-0': 'var(--mbd-shadow-0)',
+        'mbd-1': 'var(--mbd-shadow-1)',
+        'mbd-2': 'var(--mbd-shadow-2)',
+        'mbd-3': 'var(--mbd-shadow-3)',
+      },
+      fontSize: {
+        'mbd-xs': 'var(--mbd-fz-xs)',
+        'mbd-sm': 'var(--mbd-fz-sm)',
+        'mbd-md': 'var(--mbd-fz-md)',
+        'mbd-lg': 'var(--mbd-fz-lg)',
+        'mbd-xl': 'var(--mbd-fz-xl)',
       },
       colors: {
         // ── Surface tiers (ink navy depth, not pure black) ──────

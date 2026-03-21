@@ -22,13 +22,13 @@ function DialMeter({ dial }: { dial: BriefingDial }) {
   const badge = SOURCE_BADGE[dial.source] ?? SOURCE_BADGE.unavailable;
 
   return (
-    <div className="bloomberg-border bg-gray-900 px-3 py-2 flex-1 min-w-[140px]">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-gray-500 text-[10px] uppercase tracking-wider">{dial.label}</span>
+    <div className="mbd-card mbd-card-body flex-1 min-w-[140px]">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] uppercase tracking-wider" style={{ color: '#64748B', fontFamily: 'Space Grotesk, sans-serif' }}>{dial.label}</span>
         <div className="flex items-center gap-1.5">
           <span
-            className="text-[8px] font-bold tracking-widest px-1 py-0.5 rounded"
-            style={{ color: badge.color, backgroundColor: badge.color + '15', border: `1px solid ${badge.color}30` }}
+            className="mbd-badge mbd-badge-xs mbd-badge-light"
+            style={{ '--mbd-badge-color': badge.color } as React.CSSProperties}
             title={dial.sourceNote ?? badge.title}
           >
             {badge.label}
@@ -41,19 +41,17 @@ function DialMeter({ dial }: { dial: BriefingDial }) {
           </span>
         </div>
       </div>
-      {dial.source !== 'unavailable' ? (
-        <div className="w-full h-1.5 bg-gray-800 rounded overflow-hidden mb-1">
+      <div className="mbd-progress mbd-progress-sm mb-1.5">
+        {dial.source !== 'unavailable' ? (
           <div
-            className="h-full rounded transition-all duration-500"
+            className="mbd-progress-bar"
             style={{ width: `${dial.value}%`, backgroundColor: dial.color }}
           />
-        </div>
-      ) : (
-        <div className="w-full h-1.5 bg-gray-800 rounded overflow-hidden mb-1">
-          <div className="h-full rounded bg-gray-700 w-full opacity-30" />
-        </div>
-      )}
-      <div className="text-gray-500 text-[10px] truncate">{dial.desc}</div>
+        ) : (
+          <div className="mbd-progress-bar opacity-30" style={{ width: '100%', backgroundColor: '#374151' }} />
+        )}
+      </div>
+      <div className="text-[10px] truncate" style={{ color: '#64748B' }}>{dial.desc}</div>
     </div>
   );
 }
@@ -63,10 +61,10 @@ export default function BriefingHeader({ dials, season, teamName }: Props) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-orange-500 font-bold text-xs tracking-widest uppercase">
+          <div className="text-xs tracking-[0.15em] uppercase" style={{ color: '#f97316', fontFamily: 'Space Grotesk, sans-serif', fontWeight: 700 }}>
             FRONT OFFICE BRIEFING
           </div>
-          <div className="text-gray-500 text-[10px]">
+          <div className="text-[10px]" style={{ color: '#64748B' }}>
             {teamName} — Season {season}
           </div>
         </div>

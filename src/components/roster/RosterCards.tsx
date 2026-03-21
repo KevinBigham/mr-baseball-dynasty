@@ -13,21 +13,21 @@ import type { RosterPlayer } from '../../types/league';
 
 // ─── OVR Badge ────────────────────────────────────────────────────────────────
 
-function getOVRColor(ovr: number): { bg: string; text: string; border: string } {
-  if (ovr >= 85) return { bg: 'rgba(34,197,94,0.15)', text: '#22C55E', border: '#22C55E40' };   // Elite — green
-  if (ovr >= 75) return { bg: 'rgba(56,189,248,0.15)', text: '#38BDF8', border: '#38BDF840' };   // Great — blue
-  if (ovr >= 65) return { bg: 'rgba(226,232,240,0.08)', text: '#E2E8F0', border: '#E2E8F020' };  // Solid — white
-  if (ovr >= 55) return { bg: 'rgba(167,179,199,0.08)', text: '#A7B3C7', border: '#A7B3C720' };  // Below avg — gray
-  return { bg: 'rgba(244,63,94,0.12)', text: '#F43F5E', border: '#F43F5E30' };                   // Poor — red
+function getOVRColor(ovr: number): string {
+  if (ovr >= 85) return '#22C55E';   // Elite — green
+  if (ovr >= 75) return '#38BDF8';   // Great — blue
+  if (ovr >= 65) return '#E2E8F0';   // Solid — white
+  if (ovr >= 55) return '#A7B3C7';   // Below avg — gray
+  return '#F43F5E';                   // Poor — red
 }
 
 export function OVRBadge({ ovr, size = 'normal' }: { ovr: number; size?: 'small' | 'normal' | 'large' }) {
-  const colors = getOVRColor(ovr);
+  const color = getOVRColor(ovr);
   const sizeClasses = size === 'large' ? 'w-12 h-12 text-lg' : size === 'small' ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-sm';
   return (
     <div
-      className={`${sizeClasses} rounded flex items-center justify-center font-bold tabular-nums shrink-0`}
-      style={{ backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+      className={`${sizeClasses} mbd-badge mbd-badge-light rounded shrink-0`}
+      style={{ '--mbd-badge-color': color } as React.CSSProperties}
       title={`Overall: ${ovr}`}
     >
       {ovr}
@@ -55,8 +55,8 @@ export function ContractBadge({ years, salary }: { years: number; salary: number
   const label = years <= 1 ? 'EXPIRING' : `${years}YR`;
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[9px] font-bold tracking-wider" style={{ color }}>{label}</span>
-      <span className="text-gray-500 text-[9px]">{formatSalary(salary)}</span>
+      <span className="mbd-badge mbd-badge-xs mbd-badge-light" style={{ '--mbd-badge-color': color } as React.CSSProperties}>{label}</span>
+      <span className="text-[9px]" style={{ color: '#64748B' }}>{formatSalary(salary)}</span>
     </div>
   );
 }
@@ -131,7 +131,7 @@ export function PlayerDetailPanel({ player, onClose, onOpenProfile }: PlayerDeta
 
   const p = player;
   const traits = assignTraits(p);
-  const ovrColors = getOVRColor(p.overall);
+  const ovrColor = getOVRColor(p.overall);
 
   // Development phase
   const devPhase = p.age <= 24 ? 'PROSPECT' : p.age <= 28 ? 'ASCENT' : p.age <= 32 ? 'PRIME' : 'DECLINE';
@@ -168,7 +168,7 @@ export function PlayerDetailPanel({ player, onClose, onOpenProfile }: PlayerDeta
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded px-3 py-2" style={{ backgroundColor: '#0B1020', border: '1px solid #1E2A4A' }}>
             <div className="text-[8px] font-bold tracking-widest" style={{ color: '#64748B' }}>OVERALL</div>
-            <div className="text-xl font-bold tabular-nums" style={{ color: ovrColors.text }}>{p.overall}</div>
+            <div className="text-xl font-bold tabular-nums" style={{ color: ovrColor }}>{p.overall}</div>
           </div>
           <div className="rounded px-3 py-2" style={{ backgroundColor: '#0B1020', border: '1px solid #1E2A4A' }}>
             <div className="text-[8px] font-bold tracking-widest" style={{ color: '#64748B' }}>POTENTIAL</div>
