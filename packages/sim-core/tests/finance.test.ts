@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   GameRNG,
+  TEAMS,
   generatePlayer,
   generateTeamRoster,
   calculatePlayerValue,
@@ -116,14 +117,28 @@ describe('calculateLuxuryTax', () => {
 
 describe('getTeamBudget', () => {
   it('returns different amounts for large vs small market', () => {
-    const largeBudget = getTeamBudget('NYY');
-    const smallBudget = getTeamBudget('PIT');
+    const largeBudget = getTeamBudget('nyy');
+    const smallBudget = getTeamBudget('pit');
     expect(largeBudget).toBeGreaterThan(smallBudget);
   });
 
   it('returns a reasonable value for unknown team', () => {
     const budget = getTeamBudget('UNKNOWN');
     expect(budget).toBeGreaterThan(0);
+  });
+
+  it('maps every canonical generated team id to a valid budget', () => {
+    for (const team of TEAMS) {
+      expect(getTeamBudget(team.id)).toBeGreaterThan(0);
+    }
+  });
+
+  it('normalizes legacy alias keys to the canonical team budget', () => {
+    expect(getTeamBudget('TBR')).toBe(getTeamBudget('tb'));
+    expect(getTeamBudget('KCR')).toBe(getTeamBudget('kc'));
+    expect(getTeamBudget('SDP')).toBe(getTeamBudget('sd'));
+    expect(getTeamBudget('SFG')).toBe(getTeamBudget('sf'));
+    expect(getTeamBudget('ANA')).toBe(getTeamBudget('laa'));
   });
 });
 

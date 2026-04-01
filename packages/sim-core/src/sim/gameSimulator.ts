@@ -52,6 +52,8 @@ export interface PlayerGameStats {
   strikeouts: number;
   walks: number;
   hitsAllowed: number;
+  wins: number;
+  losses: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,7 @@ export function simulateGame(
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0,
         rbi: 0, bb: 0, k: 0, runs: 0,
         ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
+        wins: 0, losses: 0,
       };
       playerStats.set(player.id, stats);
     }
@@ -170,6 +173,13 @@ export function simulateGame(
 
   // Update pitcher IP
   updatePitcherStats(playerStats, homePitcher, away.pitcher, awayScore, homeScore);
+  if (homeScore > awayScore) {
+    getStats(homePitcher, home.teamId).wins++;
+    getStats(awayPitcher, away.teamId).losses++;
+  } else {
+    getStats(awayPitcher, away.teamId).wins++;
+    getStats(homePitcher, home.teamId).losses++;
+  }
 
   return {
     boxScore: {
@@ -234,6 +244,7 @@ function simulateHalfInning(
     paCount++;
 
     // Advance runners
+    const outsBefore = runnerState.outs;
     const markovResult = advanceRunners(runnerState, paResult.outcome);
     runs += markovResult.runsScored;
     runnerState = markovResult.newState;
@@ -258,6 +269,7 @@ function simulateHalfInning(
     if (HIT_OUTCOMES.has(paResult.outcome)) pStats.hitsAllowed++;
     if (paResult.outcome === 'K') pStats.strikeouts++;
     if (paResult.outcome === 'BB' || paResult.outcome === 'HBP') pStats.walks++;
+    pStats.ip += markovResult.inningOver ? 3 - outsBefore : runnerState.outs - outsBefore;
     pStats.earnedRuns += markovResult.runsScored;
 
     if (markovResult.inningOver) break;

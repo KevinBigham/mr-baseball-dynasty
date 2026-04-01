@@ -72,6 +72,20 @@ describe('simulateGame', () => {
     }
   });
 
+  it('assigns exactly one pitcher win and one pitcher loss per game', () => {
+    const rng = new GameRNG(77);
+    const away = buildTeam('nyy', rng.fork());
+    const home = buildTeam('bos', rng.fork());
+
+    const { playerStats } = simulateGame(rng, away, home, 'S1D9');
+    const pitchers = [...playerStats.values()].filter((stats) => stats.ip > 0);
+    const totalWins = pitchers.reduce((sum, stats) => sum + stats.wins, 0);
+    const totalLosses = pitchers.reduce((sum, stats) => sum + stats.losses, 0);
+
+    expect(totalWins).toBe(1);
+    expect(totalLosses).toBe(1);
+  });
+
   it('produces realistic scores (0-20 range)', () => {
     const rng = new GameRNG(42);
     // Sim 10 games and check scores are in reasonable range

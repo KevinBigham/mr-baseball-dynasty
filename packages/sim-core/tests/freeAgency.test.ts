@@ -8,6 +8,7 @@ import {
   createFreeAgencyMarket,
   projectContractYears,
   getTopFreeAgents,
+  simulateFullFreeAgency,
 } from '../src/index.js';
 import type { GeneratedPlayer } from '../src/index.js';
 
@@ -141,5 +142,36 @@ describe('getTopFreeAgents', () => {
     for (const fa of spAgents) {
       expect(fa.player.position).toBe('SP');
     }
+  });
+});
+
+describe('simulateFullFreeAgency', () => {
+  it('is deterministic for the same market, budgets, and team needs', () => {
+    const players = [
+      { ...makeExpiringPlayer(201), teamId: '' },
+      { ...makeExpiringPlayer(202), teamId: '' },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    const budgets = new Map([
+      ['bos', 220],
+      ['tor', 5],
+    ]);
+    const payrolls = new Map([
+      ['bos', 20],
+      ['tor', 4.8],
+    ]);
+    const needs = new Map([
+      ['bos', new Map([['SS', 95]])],
+      ['tor', new Map([['SS', 10]])],
+    ]);
+
+    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+
+    expect(second).toEqual(first);
+    expect(first.day).toBe(60);
+    expect(first.freeAgents).toEqual([]);
+    expect(first.signedPlayers[0]?.signedWith).toBe('bos');
+    expect(first.signedPlayers[0]?.contract).toBeTruthy();
   });
 });

@@ -83,45 +83,59 @@ const LARGE_MARKET: MarketConfig = { size: 'large', budgetMin: 280, budgetMax: 3
 const MEDIUM_MARKET: MarketConfig = { size: 'medium', budgetMin: 200, budgetMax: 280 };
 const SMALL_MARKET: MarketConfig = { size: 'small', budgetMin: 150, budgetMax: 200 };
 
+const TEAM_MARKET_ALIASES: Record<string, string> = {
+  tbr: 'tb',
+  kcr: 'kc',
+  sdp: 'sd',
+  sfg: 'sf',
+  ana: 'laa',
+  mon: 'mtl',
+};
+
 /** Team-to-market-config mapping */
 export const TEAM_MARKETS: Record<string, MarketConfig> = {
   // Large markets
-  NYY: LARGE_MARKET,
-  LAD: LARGE_MARKET,
-  NYM: LARGE_MARKET,
-  CHC: LARGE_MARKET,
-  BOS: LARGE_MARKET,
-  SF:  LARGE_MARKET,
-  PHI: LARGE_MARKET,
-  HOU: LARGE_MARKET,
+  nyy: LARGE_MARKET,
+  lad: LARGE_MARKET,
+  nym: LARGE_MARKET,
+  chc: LARGE_MARKET,
+  bos: LARGE_MARKET,
+  sf:  LARGE_MARKET,
+  phi: LARGE_MARKET,
+  hou: LARGE_MARKET,
   // Medium markets
-  ATL: MEDIUM_MARKET,
-  STL: MEDIUM_MARKET,
-  TEX: MEDIUM_MARKET,
-  SD:  MEDIUM_MARKET,
-  SEA: MEDIUM_MARKET,
-  ANA: MEDIUM_MARKET,
-  TOR: MEDIUM_MARKET,
-  WSH: MEDIUM_MARKET,
-  MIN: MEDIUM_MARKET,
-  CLE: MEDIUM_MARKET,
-  DET: MEDIUM_MARKET,
-  ARI: MEDIUM_MARKET,
-  COL: MEDIUM_MARKET,
+  atl: MEDIUM_MARKET,
+  stl: MEDIUM_MARKET,
+  tex: MEDIUM_MARKET,
+  sd:  MEDIUM_MARKET,
+  sea: MEDIUM_MARKET,
+  laa: MEDIUM_MARKET,
+  tor: MEDIUM_MARKET,
+  wsh: MEDIUM_MARKET,
+  min: MEDIUM_MARKET,
+  cle: MEDIUM_MARKET,
+  det: MEDIUM_MARKET,
+  ari: MEDIUM_MARKET,
+  col: MEDIUM_MARKET,
   // Small markets
-  MIL: SMALL_MARKET,
-  PIT: SMALL_MARKET,
-  CIN: SMALL_MARKET,
-  TB:  SMALL_MARKET,
-  OAK: SMALL_MARKET,
-  KC:  SMALL_MARKET,
-  BAL: SMALL_MARKET,
-  MIA: SMALL_MARKET,
-  CWS: SMALL_MARKET,
-  POR: SMALL_MARKET,
+  mil: SMALL_MARKET,
+  pit: SMALL_MARKET,
+  cin: SMALL_MARKET,
+  tb:  SMALL_MARKET,
+  oak: SMALL_MARKET,
+  kc:  SMALL_MARKET,
+  bal: SMALL_MARKET,
+  mia: SMALL_MARKET,
+  cws: SMALL_MARKET,
+  por: SMALL_MARKET,
   // Special
-  MON: { size: 'small', budgetMin: 155, budgetMax: 165 },
+  mtl: { size: 'small', budgetMin: 155, budgetMax: 165 },
 };
+
+function normalizeTeamMarketKey(teamId: string): string {
+  const normalized = teamId.trim().toLowerCase();
+  return TEAM_MARKET_ALIASES[normalized] ?? normalized;
+}
 
 // ---------------------------------------------------------------------------
 // Contract Types
@@ -342,7 +356,7 @@ export function calculateLuxuryTax(payroll: number): number {
  * market's budget range in millions.
  */
 export function getTeamBudget(teamId: string): number {
-  const market = TEAM_MARKETS[teamId];
+  const market = TEAM_MARKETS[normalizeTeamMarketKey(teamId)];
   if (!market) {
     // Unknown team defaults to small-market midpoint
     return (SMALL_MARKET.budgetMin + SMALL_MARKET.budgetMax) / 2;

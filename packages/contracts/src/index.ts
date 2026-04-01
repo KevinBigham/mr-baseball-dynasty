@@ -91,7 +91,13 @@ export {
   BriefingCategoryEnum,
   BriefingItemSchema,
   RivalrySchema,
+  AwardLeagueEnum,
   AwardHistoryEntrySchema,
+  SeasonStatLeaderSchema,
+  SeasonStatLeadersSchema,
+  RetirementSummarySchema,
+  BlockbusterTradeSummarySchema,
+  UserSeasonSummarySchema,
   SeasonHistoryEntrySchema,
 } from "./schemas/narrative.js";
 export type {
@@ -109,13 +115,20 @@ export type {
   BriefingCategory,
   BriefingItem,
   Rivalry,
+  AwardLeague,
   AwardHistoryEntry,
+  SeasonStatLeader,
+  SeasonStatLeaders,
+  RetirementSummary,
+  BlockbusterTradeSummary,
+  UserSeasonSummary,
   SeasonHistoryEntry,
 } from "./schemas/narrative.js";
 
 export {
   SaveMetaSchema,
   SaveSlotSchema,
+  CURRENT_GAME_SNAPSHOT_VERSION,
   GameRNGStateSchema,
   SimPhaseEnum,
   SnapshotPlayerSchema,
@@ -124,7 +137,10 @@ export {
   PlayerStatEntrySchema,
   SerializedSeasonStateSchema,
   NarrativeSnapshotSchema,
+  GameSnapshotV2Schema,
   GameSnapshotSchema,
+  migrateGameSnapshot,
+  parseGameSnapshot,
 } from "./schemas/save.js";
 export type {
   SaveMeta,
@@ -137,6 +153,7 @@ export type {
   PlayerStatEntry,
   SerializedSeasonState,
   NarrativeSnapshot,
+  GameSnapshotV2,
   GameSnapshot,
 } from "./schemas/save.js";
 

@@ -206,15 +206,15 @@ describe('awards and rivalries', () => {
     const stats = new Map<string, PlayerGameStats>([
       [hitter.id, {
         pa: 650, ab: 570, hits: 190, doubles: 42, triples: 4, hr: 39, rbi: 118, bb: 72, k: 120, runs: 101,
-        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
       }],
       [rookie.id, {
         pa: 590, ab: 520, hits: 161, doubles: 28, triples: 6, hr: 24, rbi: 88, bb: 58, k: 132, runs: 92,
-        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
       }],
       [ace.id, {
         pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, runs: 0,
-        ip: 615, earnedRuns: 68, strikeouts: 244, walks: 51, hitsAllowed: 142,
+        ip: 615, earnedRuns: 68, strikeouts: 244, walks: 51, hitsAllowed: 142, wins: 18, losses: 7,
       }],
     ]);
 
@@ -226,19 +226,49 @@ describe('awards and rivalries', () => {
   });
 
   it('finalizes award history entries from race leaders', () => {
-    const hitter = makePlayer(41, 'nyy', 'LF');
+    const alHitter = makePlayer(41, 'nyy', 'LF');
+    const nlHitter = makePlayer(42, 'lad', 'RF');
+    const alPitcher = makePlayer(43, 'bos', 'SP');
+    const nlPitcher = makePlayer(44, 'sd', 'SP');
+    const alRookie = { ...makePlayer(45, 'nyy', 'CF'), age: 22 };
+    const nlRookie = { ...makePlayer(46, 'lad', 'SS'), age: 21 };
     const stats = new Map<string, PlayerGameStats>([
-      [hitter.id, {
+      [alHitter.id, {
         pa: 640, ab: 560, hits: 188, doubles: 34, triples: 3, hr: 36, rbi: 111, bb: 77, k: 101, runs: 109,
-        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
+      }],
+      [nlHitter.id, {
+        pa: 638, ab: 552, hits: 182, doubles: 30, triples: 4, hr: 34, rbi: 106, bb: 70, k: 104, runs: 103,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
+      }],
+      [alPitcher.id, {
+        pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, runs: 0,
+        ip: 612, earnedRuns: 64, strikeouts: 238, walks: 49, hitsAllowed: 136, wins: 19, losses: 6,
+      }],
+      [nlPitcher.id, {
+        pa: 0, ab: 0, hits: 0, doubles: 0, triples: 0, hr: 0, rbi: 0, bb: 0, k: 0, runs: 0,
+        ip: 606, earnedRuns: 66, strikeouts: 231, walks: 47, hitsAllowed: 139, wins: 17, losses: 8,
+      }],
+      [alRookie.id, {
+        pa: 590, ab: 522, hits: 167, doubles: 29, triples: 5, hr: 27, rbi: 91, bb: 55, k: 118, runs: 94,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
+      }],
+      [nlRookie.id, {
+        pa: 575, ab: 509, hits: 159, doubles: 31, triples: 7, hr: 25, rbi: 87, bb: 61, k: 109, runs: 96,
+        ip: 0, earnedRuns: 0, strikeouts: 0, walks: 0, hitsAllowed: 0, wins: 0, losses: 0,
       }],
     ]);
-    const races = calculateAwardRaces([hitter], stats);
-    const history = finalizeAwardResults(3, races, [hitter]);
+    const players = [alHitter, nlHitter, alPitcher, nlPitcher, alRookie, nlRookie];
+    const history = finalizeAwardResults(3, players, stats);
 
-    expect(history).toHaveLength(3);
+    expect(history).toHaveLength(6);
     expect(history[0]?.season).toBe(3);
-    expect(history.some((entry) => entry.award === 'MVP')).toBe(true);
+    expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'MVP' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'CY_YOUNG' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'CY_YOUNG' && entry.league === 'NL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'AL')).toBe(true);
+    expect(history.some((entry) => entry.award === 'ROY' && entry.league === 'NL')).toBe(true);
   });
 
   it('creates and intensifies rivalries from close division races', () => {

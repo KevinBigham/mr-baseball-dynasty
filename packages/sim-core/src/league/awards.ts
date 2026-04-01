@@ -1,6 +1,7 @@
 import type { AwardHistoryEntry } from '@mbd/contracts';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
+import { getTeamById } from './teams.js';
 
 export interface AwardRaceEntry {
   playerId: string;
@@ -14,6 +15,8 @@ export interface AwardRaces {
   cyYoung: AwardRaceEntry[];
   roy: AwardRaceEntry[];
 }
+
+type LeagueId = 'AL' | 'NL';
 
 function hitterScore(stats: PlayerGameStats): number {
   return (
@@ -86,6 +89,12 @@ export function calculateAwardRaces(
   };
 }
 
+function leagueForTeam(teamId: string): LeagueId | null {
+  const division = getTeamById(teamId)?.division;
+  if (!division) return null;
+  return division.startsWith('AL') ? 'AL' : 'NL';
+}
+
 function createAwardEntry(
   season: number,
   award: string,
@@ -94,11 +103,13 @@ function createAwardEntry(
 ): AwardHistoryEntry {
   const playerId = winner?.playerId ?? fallback?.id ?? 'unknown';
   const teamId = winner?.teamId ?? fallback?.teamId ?? 'unknown';
+  const division = getTeamById(teamId)?.division;
   const summary = winner?.summary ?? `No qualified ${award} pool existed; defaulted to best available player.`;
 
   return {
     season,
     award,
+    league: division?.startsWith('AL') ? 'AL' : division?.startsWith('NL') ? 'NL' : 'MLB',
     playerId,
     teamId,
     summary,
@@ -107,13 +118,31 @@ function createAwardEntry(
 
 export function finalizeAwardResults(
   season: number,
-  races: AwardRaces,
   players: GeneratedPlayer[],
+  statsByPlayer: Map<string, PlayerGameStats>,
 ): AwardHistoryEntry[] {
-  const fallback = players[0];
-  return [
-    createAwardEntry(season, 'MVP', races.mvp[0], fallback),
-    createAwardEntry(season, 'CY_YOUNG', races.cyYoung[0], fallback),
-    createAwardEntry(season, 'ROY', races.roy[0], fallback),
-  ];
+  const winners: AwardHistoryEntry[] = [];
+
+  for (const league of ['AL', 'NL'] as const) {
+    const leaguePlayers = players.filter((player) => leagueForTeam(player.teamId) === league);
+    const leagueRaces = calculateAwardRaces(leaguePlayers, statsByPlayer);
+    const fallback = leaguePlayers[0];
+
+    winners.push(
+      {
+        ...createAwardEntry(season, 'MVP', leagueRaces.mvp[0], fallback),
+        league,
+      },
+      {
+        ...createAwardEntry(season, 'CY_YOUNG', leagueRaces.cyYoung[0], fallback),
+        league,
+      },
+      {
+        ...createAwardEntry(season, 'ROY', leagueRaces.roy[0], fallback),
+        league,
+      },
+    );
+  }
+
+  return winners;
 }

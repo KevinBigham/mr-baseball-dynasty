@@ -8,7 +8,10 @@ import {
   type SeasonHistoryEntry,
   type TeamChemistry,
 } from '@mbd/contracts';
-import { GameSnapshotSchema } from '../../../../packages/contracts/src/schemas/save';
+import {
+  CURRENT_GAME_SNAPSHOT_VERSION,
+  parseGameSnapshot,
+} from '../../../../packages/contracts/src/schemas/save';
 import {
   GameRNG,
   StandingsTracker,
@@ -67,21 +70,22 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     typeof snapshot === 'object' &&
     snapshot !== null &&
     'schemaVersion' in snapshot &&
-    snapshot.schemaVersion !== 2
+    snapshot.schemaVersion !== 2 &&
+    snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
   }
-  const result = GameSnapshotSchema.safeParse(snapshot);
-  if (!result.success) {
-    const message = result.error.issues[0]?.message ?? 'Invalid snapshot payload';
+  try {
+    return parseGameSnapshot(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid snapshot payload';
     throw new Error(`Invalid snapshot: ${message}`);
   }
-  return result.data;
 }
 
 export function exportGameSnapshot(state: FullGameState): GameSnapshot {
   return validateSnapshot({
-    schemaVersion: 2,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     rng: state.rng.getState(),
     season: state.season,
     day: state.day,

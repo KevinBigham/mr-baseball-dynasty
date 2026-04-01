@@ -3,7 +3,10 @@ import {
   type GameSnapshot,
   type SimPhase,
 } from '@mbd/contracts';
-import { GameSnapshotSchema } from '../../../../../packages/contracts/src/schemas/save';
+import {
+  GameSnapshotSchema,
+  parseGameSnapshot,
+} from '../../../../../packages/contracts/src/schemas/save';
 
 export interface SaveData {
   id: string;
@@ -55,7 +58,7 @@ class MBDDatabase extends Dexie {
 export const db = new MBDDatabase();
 
 export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
-  const snapshot = raw.snapshot ? GameSnapshotSchema.parse(raw.snapshot) : null;
+  const snapshot = raw.snapshot ? parseGameSnapshot(raw.snapshot) : null;
 
   return {
     id: raw.id ?? `save-slot-${raw.slotNumber ?? 1}`,
@@ -64,7 +67,7 @@ export function normalizeLoadedSaveRecord(raw: Partial<SaveData>): SaveData {
     season: raw.season ?? snapshot?.season ?? 1,
     day: raw.day ?? snapshot?.day ?? 1,
     phase: (raw.phase ?? snapshot?.phase ?? 'preseason') as SimPhase,
-    schemaVersion: snapshot ? 2 : 1,
+    schemaVersion: snapshot?.schemaVersion ?? 1,
     hasSnapshot: snapshot != null,
     snapshot,
     legacyState: raw.legacyState ?? raw.gameState ?? null,
@@ -89,7 +92,7 @@ export function buildSaveRecord(
     season: parsedSnapshot.season,
     day: parsedSnapshot.day,
     phase: parsedSnapshot.phase,
-    schemaVersion: 2,
+    schemaVersion: parsedSnapshot.schemaVersion,
     hasSnapshot: true,
     snapshot: parsedSnapshot,
     legacyState: null,

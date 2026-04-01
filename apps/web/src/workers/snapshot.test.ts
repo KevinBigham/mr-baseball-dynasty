@@ -152,7 +152,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -170,6 +170,69 @@ describe('snapshot helpers', () => {
     expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
     expect(restored.storyFlags.get('nyy')).toContain('owner_hot_seat');
     expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
+  });
+
+  it('migrates v2 snapshots into the v3 narrative and stat shape', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const v2Snapshot = {
+      ...snapshot,
+      schemaVersion: 2,
+      seasonState: {
+        ...snapshot.seasonState,
+        playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(([playerId, stats]) => [
+          playerId,
+          {
+            pa: stats.pa,
+            ab: stats.ab,
+            hits: stats.hits,
+            doubles: stats.doubles,
+            triples: stats.triples,
+            hr: stats.hr,
+            rbi: stats.rbi,
+            bb: stats.bb,
+            k: stats.k,
+            runs: stats.runs,
+            ip: stats.ip,
+            earnedRuns: stats.earnedRuns,
+            strikeouts: stats.strikeouts,
+            walks: stats.walks,
+            hitsAllowed: stats.hitsAllowed,
+          },
+        ]),
+      },
+      narrative: {
+        ...snapshot.narrative,
+        awardHistory: [
+          {
+            season: 1,
+            award: 'MVP',
+            playerId: 'player-1',
+            teamId: 'nyy',
+            summary: 'Historic season.',
+          },
+        ],
+        seasonHistory: [
+          {
+            season: 1,
+            championTeamId: 'nyy',
+            summary: 'Won the title.',
+            awards: [],
+            keyMoments: ['Won Game 6 at home.'],
+          },
+        ],
+      },
+    } as unknown as GameSnapshot;
+
+    const restored = importGameSnapshot(v2Snapshot);
+
+    const migratedStats = restored.seasonState.playerSeasonStats.get(
+      restored.seasonState.playerSeasonStats.keys().next().value as string,
+    );
+    expect(migratedStats?.wins).toBe(0);
+    expect(migratedStats?.losses).toBe(0);
+    expect(restored.awardHistory[0]?.league).toBe('MLB');
+    expect(restored.seasonHistory[0]?.runnerUpTeamId).toBeNull();
+    expect(restored.seasonHistory[0]?.statLeaders.hr).toEqual([]);
   });
 
   it('rejects unsupported snapshot schema versions', () => {

@@ -161,6 +161,8 @@ export function simulateDay(
         existing.strikeouts += gameStats.strikeouts;
         existing.walks += gameStats.walks;
         existing.hitsAllowed += gameStats.hitsAllowed;
+        existing.wins += gameStats.wins;
+        existing.losses += gameStats.losses;
       } else {
         state.playerSeasonStats.set(playerId, { ...gameStats });
       }

@@ -121,6 +121,26 @@ describe('autoResolveTenderNonTender', () => {
       expect(inTendered || inNonTendered).toBe(true);
     }
   });
+
+  it('is deterministic for the same roster and service-time map', () => {
+    const roster = generateTeamRoster(new GameRNG(77), 'NYY');
+    const mlbPlayers = roster.filter((player) => player.teamId === 'NYY' && player.rosterStatus === 'MLB');
+    const serviceTime = new Map<string, number>();
+
+    mlbPlayers.forEach((player, index) => {
+      serviceTime.set(player.id, index % 2 === 0 ? 4 : 2);
+      if (index === 0) {
+        player.overallRating = 120;
+        player.contract.annualSalary = 18;
+      }
+    });
+
+    const first = autoResolveTenderNonTender(new GameRNG(901), 'NYY', roster, serviceTime);
+    const second = autoResolveTenderNonTender(new GameRNG(901), 'NYY', roster, serviceTime);
+
+    expect(second).toEqual(first);
+    expect(first.nonTendered.length).toBeGreaterThan(0);
+  });
 });
 
 describe('summarizeOffseason', () => {

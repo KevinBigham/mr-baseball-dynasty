@@ -267,6 +267,10 @@ export {
 export type {
   OffseasonPhase,
   OffseasonState,
+  PhaseResults,
+  ArbitrationResult,
+  FASigningResult,
+  DraftPickResult,
   OffseasonSummary,
 } from './roster/index.js';
 

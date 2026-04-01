@@ -155,20 +155,73 @@ export const RivalrySchema = z.object({
 });
 export type Rivalry = z.infer<typeof RivalrySchema>;
 
+export const AwardLeagueEnum = z.enum(["AL", "NL", "MLB"]);
+export type AwardLeague = z.infer<typeof AwardLeagueEnum>;
+
 export const AwardHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
   award: z.string(),
+  league: AwardLeagueEnum,
   playerId: z.string(),
   teamId: z.string(),
   summary: z.string(),
 });
 export type AwardHistoryEntry = z.infer<typeof AwardHistoryEntrySchema>;
 
+export const SeasonStatLeaderSchema = z.object({
+  playerId: z.string(),
+  teamId: z.string(),
+  value: z.string(),
+  summary: z.string(),
+});
+export type SeasonStatLeader = z.infer<typeof SeasonStatLeaderSchema>;
+
+export const SeasonStatLeadersSchema = z.object({
+  hr: z.array(SeasonStatLeaderSchema),
+  rbi: z.array(SeasonStatLeaderSchema),
+  avg: z.array(SeasonStatLeaderSchema),
+  era: z.array(SeasonStatLeaderSchema),
+  k: z.array(SeasonStatLeaderSchema),
+  w: z.array(SeasonStatLeaderSchema),
+});
+export type SeasonStatLeaders = z.infer<typeof SeasonStatLeadersSchema>;
+
+export const RetirementSummarySchema = z.object({
+  playerId: z.string(),
+  teamId: z.string(),
+  seasonsPlayed: z.number().int().min(0),
+  overallRating: z.number().int().min(0).max(100),
+  summary: z.string(),
+});
+export type RetirementSummary = z.infer<typeof RetirementSummarySchema>;
+
+export const BlockbusterTradeSummarySchema = z.object({
+  headline: z.string().min(1),
+  summary: z.string(),
+  playerIds: z.array(z.string()),
+  teamIds: z.array(z.string()),
+});
+export type BlockbusterTradeSummary = z.infer<typeof BlockbusterTradeSummarySchema>;
+
+export const UserSeasonSummarySchema = z.object({
+  teamId: z.string(),
+  record: z.string(),
+  playoffResult: z.string(),
+  storylines: z.array(z.string()),
+});
+export type UserSeasonSummary = z.infer<typeof UserSeasonSummarySchema>;
+
 export const SeasonHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
   championTeamId: z.string().nullable(),
+  runnerUpTeamId: z.string().nullable(),
+  worldSeriesRecord: z.string().nullable(),
   summary: z.string(),
   awards: z.array(AwardHistoryEntrySchema),
   keyMoments: z.array(z.string()),
+  statLeaders: SeasonStatLeadersSchema,
+  notableRetirements: z.array(RetirementSummarySchema),
+  blockbusterTrades: z.array(BlockbusterTradeSummarySchema),
+  userSeason: UserSeasonSummarySchema.nullable(),
 });
 export type SeasonHistoryEntry = z.infer<typeof SeasonHistoryEntrySchema>;
