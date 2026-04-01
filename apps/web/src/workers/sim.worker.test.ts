@@ -183,4 +183,125 @@ describe('sim worker narrative APIs', () => {
     expect(retirementNews).toBeTruthy();
     expect(retirementBriefing).toBeTruthy();
   });
+
+  it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
+    api.newGame(777, 'nyy');
+    const state = requireState();
+    state.news = [
+      {
+        id: 'news-read-feature',
+        headline: 'Read feature still belongs in the archive',
+        body: 'Previously read items should remain visible in Press Room.',
+        priority: 2,
+        category: 'performance',
+        timestamp: 'S1D9',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['nyy'],
+        read: true,
+      },
+      {
+        id: 'news-breaker',
+        headline: 'Breaking trade headline',
+        body: 'This should sort behind same-timestamp briefing items.',
+        priority: 2,
+        category: 'trade',
+        timestamp: 'S1D10',
+        relatedPlayerIds: [],
+        relatedTeamIds: ['nyy', 'bos'],
+        read: false,
+      },
+    ];
+    state.briefingQueue = [
+      {
+        id: 'brief-news-breaker',
+        priority: 1,
+        category: 'news',
+        headline: 'Duplicate wrapper should be suppressed',
+        body: 'This wrapper should not survive when the underlying news item exists.',
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+        timestamp: 'S1D10',
+        acknowledged: false,
+      },
+      {
+        id: 'brief-owner-heat',
+        priority: 2,
+        category: 'owner',
+        headline: 'Owner pressure is rising.',
+        body: 'Ownership wants a stronger response after a rough week.',
+        relatedTeamIds: ['nyy'],
+        relatedPlayerIds: [],
+        timestamp: 'S1D10',
+        acknowledged: false,
+      },
+      {
+        id: 'brief-rivalry',
+        priority: 2,
+        category: 'rivalry',
+        headline: 'The rivalry is escalating.',
+        body: 'Boston keeps showing up in the biggest spots.',
+        relatedTeamIds: ['nyy', 'bos'],
+        relatedPlayerIds: [],
+        timestamp: 'S1D10',
+        acknowledged: false,
+      },
+    ];
+
+    const feed = api.getPressRoomFeed();
+
+    expect(feed).toEqual([
+      expect.objectContaining({
+        id: 'brief-owner-heat',
+        source: 'briefing',
+        category: 'owner',
+        headline: 'Owner pressure is rising.',
+        timestamp: 'S1D10',
+      }),
+      expect.objectContaining({
+        id: 'brief-rivalry',
+        source: 'briefing',
+        category: 'rivalry',
+        headline: 'The rivalry is escalating.',
+        timestamp: 'S1D10',
+      }),
+      expect.objectContaining({
+        id: 'news-breaker',
+        source: 'news',
+        category: 'trade',
+        headline: 'Breaking trade headline',
+        timestamp: 'S1D10',
+      }),
+      expect.objectContaining({
+        id: 'news-read-feature',
+        source: 'news',
+        category: 'performance',
+        headline: 'Read feature still belongs in the archive',
+        timestamp: 'S1D9',
+      }),
+    ]);
+    expect(feed.some((entry) => entry.id === 'brief-news-breaker')).toBe(false);
+  });
+
+  it('defaults press room feed to the newest 100 entries', () => {
+    api.newGame(778, 'nyy');
+    const state = requireState();
+    state.news = Array.from({ length: 120 }, (_, index) => ({
+      id: `news-${index + 1}`,
+      headline: `Headline ${index + 1}`,
+      body: `Body ${index + 1}`,
+      priority: 3,
+      category: 'performance' as const,
+      timestamp: `S1D${index + 1}`,
+      relatedPlayerIds: [],
+      relatedTeamIds: ['nyy'],
+      read: index % 2 === 0,
+    }));
+    state.briefingQueue = [];
+
+    const feed = api.getPressRoomFeed();
+
+    expect(feed).toHaveLength(100);
+    expect(feed[0]?.id).toBe('news-120');
+    expect(feed.at(-1)?.id).toBe('news-21');
+  });
 });

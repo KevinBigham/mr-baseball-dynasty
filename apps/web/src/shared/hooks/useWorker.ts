@@ -102,6 +102,10 @@ export function useWorker() {
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
   const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
+  const getPressRoomFeed = useCallback(
+    async (limit?: number) => api.getPressRoomFeed(limit),
+    [api],
+  );
   const getTeamChemistry = useCallback(
     async (teamId?: string) => api.getTeamChemistry(teamId),
     [api],
@@ -133,7 +137,7 @@ export function useWorker() {
     getStandings, getTeamRoster, getFullRoster, getPlayer,
     getLeagueLeaders, getPlayoffBracket,
     getScoutingStaff, scoutPlayerReport,
-    getNews, markNewsRead, getBriefing, getTeamChemistry, getOwnerState,
+    getNews, markNewsRead, getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory,
     searchPlayers,

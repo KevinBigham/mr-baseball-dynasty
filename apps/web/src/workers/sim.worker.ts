@@ -84,6 +84,7 @@ import {
   applySigningConsequences,
   applyTradeConsequences,
 } from './sim.worker.consequences.js';
+import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
 
 // ---------------------------------------------------------------------------
 // Worker API
@@ -579,6 +580,7 @@ export const api = {
   getNews(limit: number = 50) { return getUnreadNews(requireState().news).slice(0, limit); },
   markNewsRead(newsId: string) { const s = requireState(); s.news = markAsRead(s.news, newsId); },
   getBriefing(limit: number = 5) { return requireState().briefingQueue.slice(0, limit); },
+  getPressRoomFeed(limit: number = 100) { return buildPressRoomFeed(requireState(), limit); },
   getTeamChemistry(teamId?: string) {
     const s = requireState();
     return s.teamChemistry.get(teamId ?? s.userTeamId) ?? null;

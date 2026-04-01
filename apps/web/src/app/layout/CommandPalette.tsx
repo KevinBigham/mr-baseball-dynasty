@@ -9,6 +9,7 @@ import {
   FileText,
   ArrowLeftRight,
   Trophy,
+  Newspaper,
   History,
   Settings,
   Save,
@@ -53,6 +54,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { id: 'nav-trade', label: 'Trade Center', icon: <ArrowLeftRight className="h-4 w-4" />, action: () => navigate('/trade'), group: 'navigation' },
     { id: 'nav-standings', label: 'League Standings', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/standings'), group: 'navigation' },
     { id: 'nav-leaders', label: 'Stat Leaders', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/leaders'), group: 'navigation' },
+    { id: 'nav-press-room', label: 'Press Room', icon: <Newspaper className="h-4 w-4" />, action: () => navigate('/press-room'), group: 'navigation' },
     { id: 'nav-history', label: 'Franchise History', icon: <History className="h-4 w-4" />, action: () => navigate('/history'), group: 'navigation' },
     { id: 'nav-settings', label: 'Settings', icon: <Settings className="h-4 w-4" />, action: () => navigate('/settings'), group: 'navigation' },
     // Actions

@@ -33,6 +33,9 @@ const LeadersPage = lazy(
 const HistoryPage = lazy(
   () => import('@/features/history/routes/HistoryPage')
 );
+const PressRoomPage = lazy(
+  () => import('@/features/press-room/routes/PressRoomPage')
+);
 const FreeAgencyPage = lazy(
   () => import('@/features/free-agency/routes/FreeAgencyPage')
 );
@@ -75,6 +78,7 @@ export function AppRoutes() {
             <Route path="leaders" element={<LeadersPage />} />
             <Route index element={<Navigate to="standings" replace />} />
           </Route>
+          <Route path="press-room" element={<PressRoomPage />} />
           <Route path="free-agency" element={<FreeAgencyPage />} />
           <Route path="offseason" element={<OffseasonPage />} />
           <Route path="history" element={<HistoryPage />} />

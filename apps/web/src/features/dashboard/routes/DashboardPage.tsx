@@ -5,11 +5,13 @@ import {
   ChevronRight,
   Activity,
   Users,
-  Bell,
   Briefcase,
+  Newspaper,
+  Radio,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import type { PressRoomEntry } from '@/shared/types/pressRoom';
 
 interface TeamStandings {
   teamId: string;
@@ -41,24 +43,6 @@ interface PlayerStat {
   } | null;
 }
 
-interface BriefingItem {
-  id: string;
-  priority: number;
-  category: string;
-  headline: string;
-  body: string;
-  timestamp: string;
-}
-
-interface NewsItem {
-  id: string;
-  priority: number;
-  category: string;
-  headline: string;
-  body: string;
-  timestamp: string;
-}
-
 interface TeamChemistry {
   score: number;
   tier: string;
@@ -84,13 +68,6 @@ function gradeColor(grade: string): string {
   }
 }
 
-function priorityTone(priority: number): string {
-  if (priority <= 1) return 'text-accent-danger';
-  if (priority === 2) return 'text-accent-warning';
-  if (priority === 3) return 'text-accent-info';
-  return 'text-dynasty-muted';
-}
-
 function chemistryTone(tier: string | undefined): string {
   switch (tier) {
     case 'electric': return 'text-accent-success';
@@ -110,8 +87,7 @@ export default function DashboardPage() {
   const [divisionStandings, setDivisionStandings] = useState<TeamStandings[]>([]);
   const [roster, setRoster] = useState<PlayerStat[]>([]);
   const [leaders, setLeaders] = useState<PlayerStat[]>([]);
-  const [briefing, setBriefing] = useState<BriefingItem[]>([]);
-  const [unreadNews, setUnreadNews] = useState<NewsItem[]>([]);
+  const [pressRoomFeed, setPressRoomFeed] = useState<PressRoomEntry[]>([]);
   const [chemistry, setChemistry] = useState<TeamChemistry | null>(null);
   const [ownerState, setOwnerState] = useState<OwnerState | null>(null);
 
@@ -123,16 +99,14 @@ export default function DashboardPage() {
         standingsData,
         rosterData,
         hrLeaders,
-        briefingData,
-        newsData,
+        pressRoomData,
         chemistryData,
         ownerData,
       ] = await Promise.all([
         worker.getStandings(),
         worker.getTeamRoster(userTeamId),
         worker.getLeagueLeaders('hr', 5),
-        worker.getBriefing(5),
-        worker.getNews(5),
+        worker.getPressRoomFeed(12),
         worker.getTeamChemistry(userTeamId),
         worker.getOwnerState(userTeamId),
       ]);
@@ -151,8 +125,7 @@ export default function DashboardPage() {
 
       setRoster(rosterData as PlayerStat[]);
       setLeaders(hrLeaders as PlayerStat[]);
-      setBriefing((briefingData ?? []) as BriefingItem[]);
-      setUnreadNews((newsData ?? []) as NewsItem[]);
+      setPressRoomFeed((pressRoomData ?? []) as PressRoomEntry[]);
       setChemistry((chemistryData ?? null) as TeamChemistry | null);
       setOwnerState((ownerData ?? null) as OwnerState | null);
     } catch (err) {
@@ -164,11 +137,9 @@ export default function DashboardPage() {
     fetchData();
   }, [fetchData, day, season, phase]);
 
-  const handleMarkNewsRead = useCallback(async (newsId: string) => {
-    if (!workerReady) return;
-    await worker.markNewsRead(newsId);
-    await fetchData();
-  }, [fetchData, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  const latestPressItem = pressRoomFeed[0] ?? null;
+  const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+  const newsCount = pressRoomFeed.length - briefingCount;
 
   return (
     <div className="space-y-6">
@@ -243,7 +214,65 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
           <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">Front Office Briefing</h2>
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <Newspaper className="h-4 w-4 text-accent-warning" />
+              Press Room
+            </h2>
+            <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Open archive <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid gap-4 p-4 md:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">
+                Latest Edition
+              </div>
+              {latestPressItem ? (
+                <>
+                  <div className="mt-2 font-heading text-lg text-dynasty-textBright">
+                    {latestPressItem.headline}
+                  </div>
+                  <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                    {latestPressItem.body}
+                  </div>
+                  <div className="mt-3 font-data text-[11px] uppercase text-dynasty-muted">
+                    {latestPressItem.source} | {latestPressItem.category.replace('_', ' ')} | {latestPressItem.timestamp}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                  No archived items yet. The Press Room will start filling as the sim creates storylines.
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3">
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex items-center gap-2 font-heading text-xs uppercase tracking-wide text-dynasty-muted">
+                  <Briefcase className="h-4 w-4 text-accent-info" />
+                  Briefing Desk
+                </div>
+                <div className="mt-2 font-data text-3xl text-accent-info">{briefingCount}</div>
+                <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                  front-office items in the archive
+                </div>
+              </div>
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex items-center gap-2 font-heading text-xs uppercase tracking-wide text-dynasty-muted">
+                  <Radio className="h-4 w-4 text-accent-warning" />
+                  News Wire
+                </div>
+                <div className="mt-2 font-data text-3xl text-accent-warning">{newsCount}</div>
+                <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                  league headlines available
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
+            <h2 className="font-heading text-sm font-semibold text-dynasty-text">Front Office Pulse</h2>
             <div className="flex items-center gap-3 font-data text-xs">
               {chemistry && (
                 <span className={chemistryTone(chemistry.tier)}>
@@ -257,68 +286,29 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <div className="space-y-3 p-4">
-            {briefing.length > 0 ? briefing.map((item) => (
-              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-heading text-sm font-semibold text-dynasty-text">
-                      {item.headline}
-                    </div>
-                    <div className="mt-1 font-heading text-xs text-dynasty-muted">
-                      {item.body}
-                    </div>
-                  </div>
-                  <div className={`font-data text-xs ${priorityTone(item.priority)}`}>
-                    P{item.priority}
-                  </div>
-                </div>
+          <div className="grid gap-4 p-4 md:grid-cols-2">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">
+                Ownership
               </div>
-            )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
-                No new briefing items. Sim ahead or open the scouting and history tabs for more context.
+              <div className={`mt-2 font-data text-2xl ${ownerState?.hotSeat ? 'text-accent-danger' : 'text-dynasty-textBright'}`}>
+                {ownerState?.hotSeat ? 'HOT SEAT' : 'STABLE'}
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-              <Bell className="h-4 w-4 text-accent-warning" />
-              Unread Inbox
-            </h2>
-            <span className="font-data text-xs text-dynasty-muted">{unreadNews.length} unread</span>
-          </div>
-          <div className="space-y-3 p-4">
-            {unreadNews.length > 0 ? unreadNews.map((item) => (
-              <div key={item.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-heading text-sm font-semibold text-dynasty-text">
-                      {item.headline}
-                    </div>
-                    <div className="mt-1 font-heading text-xs text-dynasty-muted">
-                      {item.body}
-                    </div>
-                    <div className="mt-2 font-data text-[11px] uppercase text-dynasty-muted">
-                      {item.category.replace('_', ' ')} | {item.timestamp}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { void handleMarkNewsRead(item.id); }}
-                    className="rounded border border-dynasty-border px-2 py-1 font-heading text-[11px] uppercase text-dynasty-muted hover:text-accent-primary"
-                  >
-                    Read
-                  </button>
-                </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                {ownerState?.summary ?? 'Owner narrative not available yet.'}
               </div>
-            )) : (
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
-                Inbox is clear.
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-xs uppercase tracking-wide text-dynasty-muted">
+                Clubhouse
               </div>
-            )}
+              <div className={`mt-2 font-data text-2xl ${chemistryTone(chemistry?.tier)}`}>
+                {chemistry?.tier?.toUpperCase() ?? 'STEADY'}
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                {chemistry?.summary ?? 'Chemistry summary will populate once the season starts.'}
+              </div>
+            </div>
           </div>
         </div>
       </div>
