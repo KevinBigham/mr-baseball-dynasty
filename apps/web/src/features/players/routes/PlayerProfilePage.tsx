@@ -47,6 +47,7 @@ const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 export default function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { isInitialized, day, season } = useGameStore();
   const [player, setPlayer] = useState<PlayerDTO | null>(null);
 
@@ -54,7 +55,7 @@ export default function PlayerProfilePage() {
     if (!isInitialized || !worker.isReady || !playerId) return;
     const data = await worker.getPlayer(playerId);
     setPlayer(data as PlayerDTO | null);
-  }, [isInitialized, worker, playerId]);
+  }, [isInitialized, workerReady, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPlayer();

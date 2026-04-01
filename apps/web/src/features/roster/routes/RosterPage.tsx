@@ -45,6 +45,7 @@ const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 export default function RosterPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { day, season, phase, userTeamId, isInitialized } = useGameStore();
   const [mlbRoster, setMlbRoster] = useState<PlayerDTO[]>([]);
   const [minors, setMinors] = useState<Record<string, PlayerDTO[]>>({});
@@ -57,7 +58,7 @@ export default function RosterPage() {
       setMlbRoster(data.mlb as PlayerDTO[]);
       setMinors(data.minors as Record<string, PlayerDTO[]>);
     }
-  }, [isInitialized, worker, userTeamId]);
+  }, [isInitialized, workerReady, userTeamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchRoster();

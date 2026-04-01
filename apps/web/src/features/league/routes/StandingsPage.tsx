@@ -27,6 +27,7 @@ const DIVISION_LABELS: Record<string, string> = {
 
 export default function StandingsPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { day, season, phase, userTeamId, isInitialized } = useGameStore();
   const [standings, setStandings] = useState<Record<string, TeamStandings[]>>({});
 
@@ -34,7 +35,7 @@ export default function StandingsPage() {
     if (!isInitialized || !worker.isReady) return;
     const data = await worker.getStandings();
     if (data) setStandings(data.divisions as Record<string, TeamStandings[]>);
-  }, [isInitialized, worker]);
+  }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchStandings();

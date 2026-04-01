@@ -29,6 +29,12 @@ export class GameRNG {
     this.seed = seed;
     this.rng = prand.xoroshiro128plus(seed);
     this.callCount = 0;
+    // Warm-up: skip the first few values to avoid degenerate small-seed patterns
+    // where xoroshiro128plus returns near-max values for seeds 0..N.
+    for (let i = 0; i < 4; i++) {
+      const [, next] = prand.uniformIntDistribution(0, 1, this.rng);
+      this.rng = next;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -146,16 +152,12 @@ export class GameRNG {
    */
   static fromState(state: GameRNGState): GameRNG {
     const rng = new GameRNG(state.seed);
-    // Fast-forward by consuming `callCount` values.
-    // We use unsafeSkipN for speed — it advances the generator
-    // without producing output. However pure-rand's skip does not
-    // track our mixed call types, so we replay manually.
-    let gen = prand.xoroshiro128plus(state.seed);
+    // GameRNG constructor already performs warmup, so rng is now at callCount=0
+    // after warmup. We need to fast-forward by consuming `callCount` values.
     for (let i = 0; i < state.callCount; i++) {
-      const [, next] = prand.uniformIntDistribution(0, 0x7fffffff, gen);
-      gen = next;
+      const [, next] = prand.uniformIntDistribution(0, 0x7fffffff, rng.rng);
+      rng.rng = next;
     }
-    rng.rng = gen;
     rng.callCount = state.callCount;
     return rng;
   }

@@ -35,3 +35,28 @@ export type {
   DevPhase,
   GeneratedPlayer,
 } from './generation.js';
+
+// Development
+export {
+  developPlayer,
+  developAllPlayers,
+  updateDevPhase,
+  shouldRetire,
+  growMentalToughness,
+} from './development.js';
+export type { DevProgram } from './development.js';
+
+// Injuries
+export {
+  checkInjury,
+  advanceInjury,
+  getInjuryMultiplier,
+  generateInjury,
+  describeInjury,
+  processInjuries,
+} from './injury.js';
+export type {
+  InjuryType,
+  InjurySeverity,
+  Injury,
+} from './injury.js';

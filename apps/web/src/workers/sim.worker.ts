@@ -1,6 +1,8 @@
 /**
  * Web Worker entry point.
- * Full simulation engine: player generation, schedule, game sim, standings.
+ * Full simulation engine: player generation, schedule, game sim, standings,
+ * plus Phase 2 systems (injuries, scouting, draft, trade, roster, offseason,
+ * free agency, finance, narrative).
  */
 import * as Comlink from 'comlink';
 import {
@@ -8,148 +10,62 @@ import {
   generateLeaguePlayers,
   TEAMS,
   generateSchedule,
-  StandingsTracker,
   createSeasonState,
   simulateDay,
   simulateWeek,
   simulateMonth,
   determinePlayoffSeeds,
   simulatePlayoffs,
-  toDisplayRating,
-  toLetterGrade,
   getTeamById,
-  HITTER_POSITIONS,
-  PITCHER_POSITIONS,
+  developAllPlayers,
+  describeInjury,
+  calculateTeamPayroll,
+  calculateLuxuryTax,
+  getTeamBudget,
+  generateScoutingStaff,
+  scoutPlayer,
+  generateDraftClass,
+  rankProspects,
+  determineDraftOrder,
+  simulateFullDraft,
+  evaluatePlayerTradeValue,
+  evaluateTradeProposal,
+  executeTrade,
+  assignGMPersonality,
+  generateAITradeOffers,
+  generateTradeId,
+  buildRosterState,
+  promotePlayer,
+  demotePlayer,
+  dfaPlayer,
+  skipCurrentPhase,
+  determineRetirements,
+  createFreeAgencyMarket,
+  getTopFreeAgents,
+  makeUserOffer,
+  getUnreadNews,
+  markAsRead,
 } from '@mbd/sim-core';
 import type {
   GeneratedPlayer,
-  ScheduledGame,
-  SeasonState,
   StandingsEntry,
   PlayoffBracket,
   PlayerGameStats,
+  ScoutReport,
+  DraftResult,
+  TradeProposal,
+  RosterState,
+  OffseasonState,
+  PlayerTradeValue,
+  ContractOffer,
+  FreeAgent,
 } from '@mbd/sim-core';
-
-// ---------------------------------------------------------------------------
-// Full game state
-// ---------------------------------------------------------------------------
-
-interface FullGameState {
-  rng: GameRNG;
-  season: number;
-  day: number;
-  phase: 'preseason' | 'regular' | 'playoffs' | 'offseason';
-  players: GeneratedPlayer[];
-  schedule: ScheduledGame[];
-  seasonState: SeasonState;
-  userTeamId: string;
-  playoffBracket: PlayoffBracket | null;
-}
-
-let state: FullGameState | null = null;
-
-// ---------------------------------------------------------------------------
-// DTO types for the UI
-// ---------------------------------------------------------------------------
-
-interface TeamStandingsDTO {
-  teamId: string;
-  teamName: string;
-  city: string;
-  abbreviation: string;
-  division: string;
-  wins: number;
-  losses: number;
-  pct: string;
-  gamesBack: number;
-  streak: string;
-  runDifferential: number;
-}
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    // Pitching
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
-}
-
-interface SimResultDTO {
-  day: number;
-  season: number;
-  phase: string;
-  gamesPlayed: number;
-  seasonComplete: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: build player DTO
-// ---------------------------------------------------------------------------
-
-function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): PlayerDTO {
-  const seasonStats = stats ?? (state ? state.seasonState.playerSeasonStats.get(player.id) : undefined);
-
-  let statBlock: PlayerDTO['stats'] = null;
-  if (seasonStats && (seasonStats.pa > 0 || seasonStats.strikeouts > 0)) {
-    const avg = seasonStats.ab > 0
-      ? (seasonStats.hits / seasonStats.ab).toFixed(3).replace(/^0/, '')
-      : '.000';
-    const era = seasonStats.ip > 0
-      ? ((seasonStats.earnedRuns / (seasonStats.ip / 3)) * 9).toFixed(2)
-      : '0.00';
-
-    statBlock = {
-      pa: seasonStats.pa,
-      ab: seasonStats.ab,
-      hits: seasonStats.hits,
-      hr: seasonStats.hr,
-      rbi: seasonStats.rbi,
-      bb: seasonStats.bb,
-      k: seasonStats.k,
-      avg,
-      ip: seasonStats.ip,
-      earnedRuns: seasonStats.earnedRuns,
-      strikeouts: seasonStats.strikeouts,
-      walks: seasonStats.walks,
-      era,
-    };
-  }
-
-  return {
-    id: player.id,
-    firstName: player.firstName,
-    lastName: player.lastName,
-    age: player.age,
-    position: player.position,
-    overallRating: player.overallRating,
-    displayRating: toDisplayRating(player.overallRating),
-    letterGrade: toLetterGrade(player.overallRating),
-    rosterStatus: player.rosterStatus,
-    teamId: player.teamId,
-    stats: statBlock,
-  };
-}
+import {
+  state, setState,
+  requireState, timestamp, getTeamPlayers,
+  toPlayerDTO, processDayInjuriesAndNews, advanceOffseasonOnce,
+} from './sim.worker.helpers.js';
+import type { SimResultDTO, TeamStandingsDTO, PlayerDTO } from './sim.worker.helpers.js';
 
 // ---------------------------------------------------------------------------
 // Worker API
@@ -162,306 +78,399 @@ const api = {
 
   newGame(seed: number, userTeamId: string = 'nyy') {
     const rng = new GameRNG(seed);
-
-    // Generate all players for all 32 teams
     const teamIds = TEAMS.map(t => t.id);
     const players = generateLeaguePlayers(rng.fork(), teamIds);
-
-    // Generate schedule
     const schedule = generateSchedule(rng.fork());
-
-    // Initialize season state
     const seasonState = createSeasonState(1, teamIds);
 
-    state = {
-      rng,
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      players,
-      schedule,
-      seasonState,
-      userTeamId,
-      playoffBracket: null,
-    };
+    const serviceTime = new Map<string, number>();
+    for (const p of players) {
+      if (p.rosterStatus === 'MLB') serviceTime.set(p.id, rng.nextInt(0, 8));
+    }
+
+    const scoutingStaffs = new Map();
+    const gmPersonalities = new Map();
+    const rosterStates = new Map();
+    for (const tid of teamIds) {
+      scoutingStaffs.set(tid, generateScoutingStaff(rng.fork(), tid));
+      gmPersonalities.set(tid, assignGMPersonality(rng.fork(), tid));
+      rosterStates.set(tid, buildRosterState(tid, players));
+    }
+
+    setState({
+      rng, season: 1, day: 1, phase: 'preseason',
+      players, schedule, seasonState, userTeamId,
+      playoffBracket: null, injuries: new Map(),
+      serviceTime, scoutingStaffs, gmPersonalities,
+      offseasonState: null, draftClass: null,
+      freeAgencyMarket: null, news: [], rosterStates,
+    });
 
     return {
-      success: true as const,
-      season: 1,
-      day: 1,
-      phase: 'preseason' as const,
-      playerCount: players.length,
-      teamCount: teamIds.length,
+      success: true as const, season: 1, day: 1, phase: 'preseason' as const,
+      playerCount: players.length, teamCount: teamIds.length,
       gamesScheduled: schedule.length,
     };
   },
 
   simDay(): SimResultDTO {
-    if (!state) throw new Error('No game initialized');
+    const s = requireState();
+    if (s.phase === 'preseason') { s.phase = 'regular'; s.day = 1; }
 
-    if (state.phase === 'preseason') {
-      state.phase = 'regular';
-      state.day = 1;
-      // Fall through to simulate the first day of the regular season
+    if (s.phase === 'regular') {
+      const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
+      s.seasonState = newState;
+      s.day = newState.currentDay;
+      processDayInjuriesAndNews(s);
+      if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+      return { day: s.day, season: s.season, phase: s.phase,
+        gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
     }
 
-    if (state.phase === 'regular') {
-      const { newState, result } = simulateDay(
-        state.rng, state.seasonState, state.schedule, state.players,
-      );
-      state.seasonState = newState;
-      state.day = newState.currentDay;
-
-      if (result.seasonComplete) {
-        state.phase = 'playoffs';
-        state.day = 1;
+    if (s.phase === 'playoffs') {
+      if (!s.playoffBracket) {
+        const seeds = determinePlayoffSeeds(s.seasonState.standings.getFullStandings());
+        s.playoffBracket = simulatePlayoffs(s.rng, seeds, s.players);
       }
-
-      return {
-        day: state.day,
-        season: state.season,
-        phase: state.phase,
-        gamesPlayed: result.games.length,
-        seasonComplete: result.seasonComplete,
-      };
+      s.phase = 'offseason'; s.day = 1;
+      return { day: 1, season: s.season, phase: 'offseason', gamesPlayed: 0, seasonComplete: true };
     }
 
-    if (state.phase === 'playoffs') {
-      // Run entire playoffs at once
-      if (!state.playoffBracket) {
-        const fullStandings = state.seasonState.standings.getFullStandings();
-        const seeds = determinePlayoffSeeds(fullStandings);
-        state.playoffBracket = simulatePlayoffs(state.rng, seeds, state.players);
+    if (s.phase === 'offseason') {
+      advanceOffseasonOnce(s);
+      if (s.offseasonState?.completed) {
+        s.players = developAllPlayers(s.rng.fork(), s.players);
+        const retired = determineRetirements(s.rng.fork(), s.players);
+        s.players = s.players.filter(p => !retired.includes(p.id));
+        s.season++; s.day = 1; s.phase = 'preseason';
+        s.playoffBracket = null; s.offseasonState = null;
+        s.draftClass = null; s.freeAgencyMarket = null;
+        const teamIds = TEAMS.map(t => t.id);
+        s.schedule = generateSchedule(s.rng.fork());
+        s.seasonState = createSeasonState(s.season, teamIds);
+        for (const tid of teamIds) s.rosterStates.set(tid, buildRosterState(tid, s.players));
+        return { day: 1, season: s.season, phase: 'preseason', gamesPlayed: 0, seasonComplete: false };
       }
-      state.phase = 'offseason';
-      state.day = 1;
-      return {
-        day: 1,
-        season: state.season,
-        phase: 'offseason',
-        gamesPlayed: 0,
-        seasonComplete: true,
-      };
+      return { day: s.day, season: s.season, phase: 'offseason', gamesPlayed: 0, seasonComplete: true };
     }
 
-    if (state.phase === 'offseason') {
-      // Start new season
-      state.season++;
-      state.day = 1;
-      state.phase = 'preseason';
-      state.playoffBracket = null;
-
-      // Regenerate schedule, reset season state
-      const teamIds = TEAMS.map(t => t.id);
-      state.schedule = generateSchedule(state.rng.fork());
-      state.seasonState = createSeasonState(state.season, teamIds);
-
-      // Age players
-      for (const p of state.players) {
-        (p as { age: number }).age++;
-      }
-
-      return {
-        day: 1,
-        season: state.season,
-        phase: 'preseason',
-        gamesPlayed: 0,
-        seasonComplete: false,
-      };
-    }
-
-    return { day: state.day, season: state.season, phase: state.phase, gamesPlayed: 0, seasonComplete: false };
+    return { day: s.day, season: s.season, phase: s.phase, gamesPlayed: 0, seasonComplete: false };
   },
 
   simWeek(): SimResultDTO {
-    if (!state) throw new Error('No game initialized');
-
-    if (state.phase !== 'regular') {
-      return this.simDay();
-    }
-
-    const { newState, result } = simulateWeek(
-      state.rng, state.seasonState, state.schedule, state.players,
-    );
-    state.seasonState = newState;
-    state.day = newState.currentDay;
-
-    if (result.seasonComplete) {
-      state.phase = 'playoffs';
-      state.day = 1;
-    }
-
-    return {
-      day: state.day,
-      season: state.season,
-      phase: state.phase,
-      gamesPlayed: result.games.length,
-      seasonComplete: result.seasonComplete,
-    };
+    const s = requireState();
+    if (s.phase !== 'regular') return this.simDay();
+    const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+    s.seasonState = newState; s.day = newState.currentDay;
+    processDayInjuriesAndNews(s);
+    if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+    return { day: s.day, season: s.season, phase: s.phase,
+      gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
   },
 
   simMonth(): SimResultDTO {
-    if (!state) throw new Error('No game initialized');
-
-    if (state.phase !== 'regular') {
-      return this.simDay();
-    }
-
-    const { newState, result } = simulateMonth(
-      state.rng, state.seasonState, state.schedule, state.players,
-    );
-    state.seasonState = newState;
-    state.day = newState.currentDay;
-
-    if (result.seasonComplete) {
-      state.phase = 'playoffs';
-      state.day = 1;
-    }
-
-    return {
-      day: state.day,
-      season: state.season,
-      phase: state.phase,
-      gamesPlayed: result.games.length,
-      seasonComplete: result.seasonComplete,
-    };
+    const s = requireState();
+    if (s.phase !== 'regular') return this.simDay();
+    const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
+    s.seasonState = newState; s.day = newState.currentDay;
+    processDayInjuriesAndNews(s);
+    if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+    return { day: s.day, season: s.season, phase: s.phase,
+      gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
   },
 
   getState() {
     if (!state) return null;
-    return {
-      season: state.season,
-      day: state.day,
-      phase: state.phase,
-      userTeamId: state.userTeamId,
-      playerCount: state.players.length,
-    };
+    return { season: state.season, day: state.day, phase: state.phase,
+      userTeamId: state.userTeamId, playerCount: state.players.length };
   },
 
   // -----------------------------------------------------------------------
-  // Data queries
+  // Standings & Rosters (Phase 1)
   // -----------------------------------------------------------------------
 
   getStandings(): { divisions: Record<string, TeamStandingsDTO[]> } | null {
     if (!state) return null;
-
     const fullStandings = state.seasonState.standings.getFullStandings();
     const divisions: Record<string, TeamStandingsDTO[]> = {};
-
     for (const [div, entries] of Object.entries(fullStandings)) {
       divisions[div] = entries.map((e: StandingsEntry) => {
         const team = getTeamById(e.teamId);
         return {
-          teamId: e.teamId,
-          teamName: team?.name ?? e.teamId,
-          city: team?.city ?? '',
-          abbreviation: team?.abbreviation ?? '',
-          division: div,
-          wins: e.wins,
-          losses: e.losses,
+          teamId: e.teamId, teamName: team?.name ?? e.teamId,
+          city: team?.city ?? '', abbreviation: team?.abbreviation ?? '',
+          division: div, wins: e.wins, losses: e.losses,
           pct: e.pct.toFixed(3).replace(/^0/, ''),
-          gamesBack: e.gamesBack,
-          streak: e.streak,
-          runDifferential: e.runDifferential,
+          gamesBack: e.gamesBack, streak: e.streak, runDifferential: e.runDifferential,
         };
       });
     }
-
     return { divisions };
   },
 
   getTeamRoster(teamId: string): PlayerDTO[] {
     if (!state) return [];
-    return state.players
-      .filter(p => p.teamId === teamId && p.rosterStatus === 'MLB')
-      .sort((a, b) => b.overallRating - a.overallRating)
-      .map(p => toPlayerDTO(p));
+    return state.players.filter(p => p.teamId === teamId && p.rosterStatus === 'MLB')
+      .sort((a, b) => b.overallRating - a.overallRating).map(p => toPlayerDTO(p));
   },
 
   getFullRoster(teamId: string): { mlb: PlayerDTO[]; minors: Record<string, PlayerDTO[]> } {
     if (!state) return { mlb: [], minors: {} };
-
-    const teamPlayers = state.players.filter(p => p.teamId === teamId);
-    const mlb = teamPlayers
-      .filter(p => p.rosterStatus === 'MLB')
-      .sort((a, b) => b.overallRating - a.overallRating)
-      .map(p => toPlayerDTO(p));
-
+    const tp = state.players.filter(p => p.teamId === teamId);
+    const mlb = tp.filter(p => p.rosterStatus === 'MLB')
+      .sort((a, b) => b.overallRating - a.overallRating).map(p => toPlayerDTO(p));
     const minors: Record<string, PlayerDTO[]> = {};
     for (const level of ['AAA', 'AA', 'A_PLUS', 'A', 'ROOKIE', 'INTERNATIONAL']) {
-      minors[level] = teamPlayers
-        .filter(p => p.rosterStatus === level)
-        .sort((a, b) => b.overallRating - a.overallRating)
-        .map(p => toPlayerDTO(p));
+      minors[level] = tp.filter(p => p.rosterStatus === level)
+        .sort((a, b) => b.overallRating - a.overallRating).map(p => toPlayerDTO(p));
     }
-
     return { mlb, minors };
   },
 
   getPlayer(playerId: string): PlayerDTO | null {
     if (!state) return null;
     const player = state.players.find(p => p.id === playerId);
-    if (!player) return null;
-    return toPlayerDTO(player);
+    return player ? toPlayerDTO(player) : null;
   },
 
   getLeagueLeaders(stat: string, limit: number = 20): PlayerDTO[] {
     if (!state) return [];
-
-    const mlbPlayers = state.players.filter(p => p.rosterStatus === 'MLB');
-    const withStats = mlbPlayers
-      .map(p => ({
-        player: p,
-        stats: state!.seasonState.playerSeasonStats.get(p.id),
-      }))
+    const withStats = state.players.filter(p => p.rosterStatus === 'MLB')
+      .map(p => ({ player: p, stats: state!.seasonState.playerSeasonStats.get(p.id) }))
       .filter((item): item is { player: GeneratedPlayer; stats: PlayerGameStats } =>
-        item.stats != null && item.stats.pa > 0
-      );
-
-    // Sort by requested stat
+        item.stats != null && item.stats.pa > 0);
     const sorted = [...withStats].sort((a, b) => {
       switch (stat) {
         case 'hr': return b.stats.hr - a.stats.hr;
         case 'rbi': return b.stats.rbi - a.stats.rbi;
         case 'hits': return b.stats.hits - a.stats.hits;
-        case 'avg': {
-          const aAvg = a.stats.ab > 0 ? a.stats.hits / a.stats.ab : 0;
-          const bAvg = b.stats.ab > 0 ? b.stats.hits / b.stats.ab : 0;
-          return bAvg - aAvg;
-        }
+        case 'avg': return (b.stats.ab > 0 ? b.stats.hits / b.stats.ab : 0) -
+          (a.stats.ab > 0 ? a.stats.hits / a.stats.ab : 0);
         case 'k': return b.stats.strikeouts - a.stats.strikeouts;
-        case 'era': {
-          const aEra = a.stats.ip > 0 ? (a.stats.earnedRuns / (a.stats.ip / 3)) * 9 : 99;
-          const bEra = b.stats.ip > 0 ? (b.stats.earnedRuns / (b.stats.ip / 3)) * 9 : 99;
-          return aEra - bEra; // Lower ERA is better
-        }
+        case 'era': return (a.stats.ip > 0 ? (a.stats.earnedRuns / (a.stats.ip / 3)) * 9 : 99) -
+          (b.stats.ip > 0 ? (b.stats.earnedRuns / (b.stats.ip / 3)) * 9 : 99);
         default: return b.stats.hr - a.stats.hr;
       }
     });
-
     return sorted.slice(0, limit).map(item => toPlayerDTO(item.player, item.stats));
   },
 
-  getPlayoffBracket(): PlayoffBracket | null {
-    if (!state) return null;
-    return state.playoffBracket;
-  },
-
-  getUserTeamId(): string {
-    return state?.userTeamId ?? 'nyy';
-  },
+  getPlayoffBracket(): PlayoffBracket | null { return state?.playoffBracket ?? null; },
+  getUserTeamId(): string { return state?.userTeamId ?? 'nyy'; },
 
   searchPlayers(query: string, limit: number = 20): PlayerDTO[] {
     if (!state || !query) return [];
     const q = query.toLowerCase();
     return state.players
-      .filter(p =>
-        p.firstName.toLowerCase().includes(q) ||
-        p.lastName.toLowerCase().includes(q) ||
-        `${p.firstName} ${p.lastName}`.toLowerCase().includes(q)
-      )
-      .slice(0, limit)
-      .map(p => toPlayerDTO(p));
+      .filter(p => p.firstName.toLowerCase().includes(q) || p.lastName.toLowerCase().includes(q) ||
+        `${p.firstName} ${p.lastName}`.toLowerCase().includes(q))
+      .slice(0, limit).map(p => toPlayerDTO(p));
+  },
+
+  // -----------------------------------------------------------------------
+  // Injuries (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getInjuries(teamId: string) {
+    const s = requireState();
+    const results: { playerId: string; playerName: string; injury: string; daysRemaining: number }[] = [];
+    for (const [pid, injury] of s.injuries) {
+      const player = s.players.find(p => p.id === pid);
+      if (player && player.teamId === teamId) {
+        results.push({ playerId: pid, playerName: `${player.firstName} ${player.lastName}`,
+          injury: describeInjury(injury), daysRemaining: injury.daysRemaining });
+      }
+    }
+    return results;
+  },
+
+  // -----------------------------------------------------------------------
+  // Scouting (Phase 2)
+  // -----------------------------------------------------------------------
+
+  scoutPlayerReport(playerId: string): ScoutReport | null {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return null;
+    const staff = s.scoutingStaffs.get(s.userTeamId);
+    if (!staff || staff.length === 0) return null;
+    return scoutPlayer(s.rng.fork(), staff[0]!, player, timestamp());
+  },
+
+  getScoutingStaff() { return requireState().scoutingStaffs.get(requireState().userTeamId) ?? []; },
+
+  // -----------------------------------------------------------------------
+  // Draft (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getDraftClass() {
+    const s = requireState();
+    if (!s.draftClass) return null;
+    return {
+      prospects: rankProspects(s.draftClass.prospects).map(p => ({
+        id: p.player.id, name: `${p.player.firstName} ${p.player.lastName}`,
+        position: p.player.position, grade: p.scoutingGrade,
+        college: p.collegeOrHS === 'college' ? 'College' : 'HS',
+      })),
+    };
+  },
+
+  startDraft() {
+    const s = requireState();
+    s.draftClass = generateDraftClass(s.rng.fork(), s.season);
+  },
+
+  makeDraftPick(prospectId: string) {
+    const s = requireState();
+    if (!s.draftClass) return { success: false, pick: null };
+    const prospect = s.draftClass.prospects.find(p => p.player.id === prospectId);
+    if (!prospect) return { success: false, pick: null };
+    s.draftClass = { ...s.draftClass, prospects: s.draftClass.prospects.filter(p => p.player.id !== prospectId) };
+    return { success: true, pick: { prospectId: prospect.player.id,
+      name: `${prospect.player.firstName} ${prospect.player.lastName}`,
+      position: prospect.player.position, grade: prospect.scoutingGrade, teamId: s.userTeamId } };
+  },
+
+  simulateRemainingDraft(): DraftResult | null {
+    const s = requireState();
+    if (!s.draftClass) return null;
+    const records: { teamId: string; wins: number; losses: number }[] = [];
+    for (const entries of Object.values(s.seasonState.standings.getFullStandings())) {
+      for (const e of entries as StandingsEntry[]) records.push({ teamId: e.teamId, wins: e.wins, losses: e.losses });
+    }
+    const draftOrder = determineDraftOrder(records);
+    const teamRosters = new Map<string, GeneratedPlayer[]>();
+    for (const tid of TEAMS.map(t => t.id)) teamRosters.set(tid, getTeamPlayers(tid));
+    return simulateFullDraft(s.rng.fork(), s.draftClass, draftOrder, teamRosters, s.userTeamId);
+  },
+
+  // -----------------------------------------------------------------------
+  // Trade (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getPlayerTradeValue(playerId: string): PlayerTradeValue | null {
+    const player = requireState().players.find(p => p.id === playerId);
+    return player ? evaluatePlayerTradeValue(player) : null;
+  },
+
+  proposeTrade(offered: string[], requested: string[], toTeamId: string) {
+    const s = requireState();
+    const gm = s.gmPersonalities.get(toTeamId);
+    if (!gm) return { decision: 'rejected', reason: 'Unknown team' };
+    const proposal: TradeProposal = { id: generateTradeId(s.rng.fork()),
+      fromTeamId: s.userTeamId, toTeamId, playersOffered: offered,
+      playersRequested: requested, status: 'proposed', reason: '' };
+    const result = evaluateTradeProposal(
+      s.rng.fork(), proposal, getTeamPlayers(s.userTeamId), getTeamPlayers(toTeamId), gm, false);
+    if (result.decision === 'accepted') {
+      executeTrade(proposal, s.players);
+      s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+      s.rosterStates.set(toTeamId, buildRosterState(toTeamId, s.players));
+    }
+    return { decision: result.decision, reason: result.reason, counter: result.counter ?? undefined };
+  },
+
+  getTradeOffers(): TradeProposal[] {
+    const s = requireState();
+    const gm = s.gmPersonalities.get(s.userTeamId);
+    if (!gm) return [];
+    return generateAITradeOffers(s.rng.fork(), s.userTeamId, getTeamPlayers(s.userTeamId), s.players, gm, false);
+  },
+
+  // -----------------------------------------------------------------------
+  // Roster Management (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getRosterState(teamId: string): RosterState | null { return requireState().rosterStates.get(teamId) ?? null; },
+
+  promotePlayerAction(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+    const rs = s.rosterStates.get(player.teamId);
+    if (!rs) return { success: false, error: 'No roster state' };
+    const result = promotePlayer(playerId, s.players, rs, timestamp());
+    s.players = result.players; s.rosterStates.set(player.teamId, result.rosterState);
+    return { success: result.success, error: result.error };
+  },
+
+  demotePlayerAction(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+    const rs = s.rosterStates.get(player.teamId);
+    if (!rs) return { success: false, error: 'No roster state' };
+    const result = demotePlayer(playerId, s.players, rs, timestamp());
+    s.players = result.players; s.rosterStates.set(player.teamId, result.rosterState);
+    return { success: result.success, error: result.error };
+  },
+
+  dfaPlayerAction(playerId: string) {
+    const s = requireState();
+    const player = s.players.find(p => p.id === playerId);
+    if (!player) return { success: false, error: 'Player not found' };
+    const rs = s.rosterStates.get(player.teamId);
+    if (!rs) return { success: false, error: 'No roster state' };
+    const result = dfaPlayer(playerId, s.players, rs, timestamp());
+    s.players = result.players; s.rosterStates.set(player.teamId, result.rosterState);
+    return { success: result.success, error: result.error };
+  },
+
+  // -----------------------------------------------------------------------
+  // Free Agency (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getFreeAgents(limit: number = 25): FreeAgent[] {
+    const s = requireState();
+    if (!s.freeAgencyMarket) s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
+    return getTopFreeAgents(s.freeAgencyMarket, undefined, limit);
+  },
+
+  makeContractOffer(playerId: string, years: number, salary: number) {
+    const s = requireState();
+    if (!s.freeAgencyMarket) s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
+    const offer: ContractOffer = { teamId: s.userTeamId, playerId, years, annualSalary: salary,
+      totalValue: years * salary, noTradeClause: false, playerOption: false,
+      teamOption: false, signingBonus: 0 };
+    return makeUserOffer(s.freeAgencyMarket, offer);
+  },
+
+  // -----------------------------------------------------------------------
+  // Offseason (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getOffseasonState(): OffseasonState | null { return requireState().offseasonState; },
+
+  advanceOffseason(): OffseasonState | null {
+    const s = requireState();
+    advanceOffseasonOnce(s);
+    return s.offseasonState;
+  },
+
+  skipOffseasonPhase(): OffseasonState | null {
+    const s = requireState();
+    if (s.offseasonState) s.offseasonState = skipCurrentPhase(s.offseasonState);
+    return s.offseasonState;
+  },
+
+  // -----------------------------------------------------------------------
+  // News (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getNews(limit: number = 50) { return getUnreadNews(requireState().news).slice(0, limit); },
+  markNewsRead(newsId: string) { const s = requireState(); s.news = markAsRead(s.news, newsId); },
+
+  // -----------------------------------------------------------------------
+  // Finance (Phase 2)
+  // -----------------------------------------------------------------------
+
+  getTeamFinances(teamId: string) {
+    const s = requireState();
+    const payrollInfo = calculateTeamPayroll(teamId, getTeamPlayers(teamId));
+    const budget = getTeamBudget(teamId);
+    const luxuryTax = calculateLuxuryTax(payrollInfo.totalPayroll);
+    return { payroll: payrollInfo.totalPayroll, budget, luxuryTax,
+      capSpace: budget - payrollInfo.totalPayroll };
   },
 };
 

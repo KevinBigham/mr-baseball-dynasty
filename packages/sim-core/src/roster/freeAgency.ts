@@ -1,0 +1,572 @@
+/**
+ * @module freeAgency
+ * Free agency market simulation: competitive bidding, contract generation,
+ * and AI team decision-making for off-season player signings.
+ *
+ * All randomness flows through GameRNG -- Math.random() is NEVER used.
+ */
+
+import type { GameRNG } from '../math/prng.js';
+import type { GeneratedPlayer, Position } from '../player/generation.js';
+import { PITCHER_POSITIONS } from '../player/generation.js';
+import { hitterOverall, pitcherOverall, toDisplayRating } from '../player/attributes.js';
+import { RATING_MAX } from '../player/attributes.js';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum AAV a player can earn (in millions). */
+const MAX_AAV_MILLIONS = 35;
+
+/** Total days the free agency market runs. */
+const MARKET_DURATION_DAYS = 60;
+
+/** Day ranges for each demand tier to sign. */
+const SIGNING_WINDOWS: Record<FreeAgent['demandLevel'], [number, number]> = {
+  elite: [1, 15],
+  high: [16, 30],
+  moderate: [31, 45],
+  low: [46, 55],
+  fringe: [56, 60],
+};
+
+/** Demand level thresholds (AAV in millions). */
+const DEMAND_ELITE_THRESHOLD = 25;
+const DEMAND_HIGH_THRESHOLD = 15;
+const DEMAND_MODERATE_THRESHOLD = 8;
+const DEMAND_LOW_THRESHOLD = 3;
+
+/** Age bracket boundaries. */
+const AGE_YOUNG_PRIME = 25;
+const AGE_PEAK_START = 29;
+const AGE_DECLINE_START = 32;
+const AGE_VETERAN_START = 35;
+
+/** Age multipliers for market value. */
+const AGE_MULTIPLIER_YOUNG = 1.1;
+const AGE_MULTIPLIER_PEAK = 1.0;
+const AGE_MULTIPLIER_DECLINE = 0.7;
+const AGE_MULTIPLIER_VETERAN = 0.4;
+
+/** Position multipliers for market value. */
+const POSITION_MULTIPLIERS: Partial<Record<Position, number>> = {
+  SP: 1.2,
+  CL: 1.1,
+  C: 1.05,
+  SS: 1.05,
+  DH: 0.8,
+  RP: 0.85,
+};
+const DEFAULT_POSITION_MULTIPLIER = 1.0;
+
+/** Budget safety threshold -- teams won't spend beyond 90% of budget. */
+const BUDGET_SAFETY_FACTOR = 0.9;
+
+/** Need bonus when a team badly needs a position. */
+const NEED_BONUS_FACTOR = 0.3;
+
+/** Price inflation range when multiple teams compete. */
+const COMPETITION_INFLATION_MIN = 0.10;
+const COMPETITION_INFLATION_MAX = 0.20;
+
+/** Rating thresholds for contract-year projection. */
+const ELITE_RATING_THRESHOLD = 400;
+const GOOD_RATING_THRESHOLD = 300;
+
+/** Minor league deal AAV floor (in millions). */
+const MINOR_LEAGUE_DEAL_AAV = 0.75;
+const MINOR_LEAGUE_DEAL_YEARS = 1;
+
+/** Minimum number of interested teams to trigger competition inflation. */
+const COMPETITION_TEAM_THRESHOLD = 3;
+
+/** AI offer jitter range (percentage of base salary). */
+const OFFER_JITTER_MIN = -10;
+const OFFER_JITTER_MAX = 15;
+
+/** Signing bonus as fraction of annual salary. */
+const SIGNING_BONUS_FRACTION = 0.10;
+
+/** NTC probability threshold (rating / RATING_MAX). */
+const NTC_RATING_THRESHOLD = 0.7;
+
+/** Player/team option probability thresholds. */
+const PLAYER_OPTION_CHANCE = 0.3;
+const TEAM_OPTION_CHANCE = 0.25;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface FreeAgent {
+  player: GeneratedPlayer;
+  marketValue: number;
+  demandLevel: 'elite' | 'high' | 'moderate' | 'low' | 'fringe';
+  interestedTeams: string[];
+  signedWith: string | null;
+  contract: ContractOffer | null;
+}
+
+export interface ContractOffer {
+  teamId: string;
+  playerId: string;
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  playerOption: boolean;
+  teamOption: boolean;
+  signingBonus: number;
+}
+
+export interface FreeAgencyMarket {
+  season: number;
+  freeAgents: FreeAgent[];
+  signedPlayers: FreeAgent[];
+  day: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Get the overall rating for any player, dispatching to hitter or pitcher calc. */
+function getOverall(player: GeneratedPlayer): number {
+  if (
+    (PITCHER_POSITIONS as readonly string[]).includes(player.position) &&
+    player.pitcherAttributes !== null
+  ) {
+    return pitcherOverall(player.pitcherAttributes);
+  }
+  return hitterOverall(player.hitterAttributes);
+}
+
+/** Look up the age multiplier for market value calculation. */
+function ageMultiplier(age: number): number {
+  if (age < AGE_YOUNG_PRIME) return AGE_MULTIPLIER_YOUNG;
+  if (age < AGE_PEAK_START) return AGE_MULTIPLIER_YOUNG;
+  if (age < AGE_DECLINE_START) return AGE_MULTIPLIER_PEAK;
+  if (age < AGE_VETERAN_START) return AGE_MULTIPLIER_DECLINE;
+  return AGE_MULTIPLIER_VETERAN;
+}
+
+/** Look up the position multiplier for market value calculation. */
+function positionMultiplier(position: Position): number {
+  return POSITION_MULTIPLIERS[position] ?? DEFAULT_POSITION_MULTIPLIER;
+}
+
+/** Check if a player's contract has expired (0 years remaining). */
+function isExpiring(player: GeneratedPlayer): boolean {
+  return player.contract.years <= 0;
+}
+
+// ---------------------------------------------------------------------------
+// Core functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Calculate the expected annual market value (AAV in millions) for a player.
+ */
+export function calculateMarketValue(player: GeneratedPlayer): number {
+  const overall = getOverall(player);
+  const baseValue = (overall / RATING_MAX) * MAX_AAV_MILLIONS;
+  const ageMult = ageMultiplier(player.age);
+  const posMult = positionMultiplier(player.position);
+  const value = baseValue * ageMult * posMult;
+  return Math.round(value * 100) / 100; // round to cents
+}
+
+/**
+ * Determine the demand level for a given market value.
+ */
+export function getDemandLevel(marketValue: number): FreeAgent['demandLevel'] {
+  if (marketValue >= DEMAND_ELITE_THRESHOLD) return 'elite';
+  if (marketValue >= DEMAND_HIGH_THRESHOLD) return 'high';
+  if (marketValue >= DEMAND_MODERATE_THRESHOLD) return 'moderate';
+  if (marketValue >= DEMAND_LOW_THRESHOLD) return 'low';
+  return 'fringe';
+}
+
+/**
+ * Project contract years based on player age and rating.
+ * Uses RNG to pick within the valid range.
+ */
+export function projectContractYears(rng: GameRNG, player: GeneratedPlayer): number {
+  const overall = getOverall(player);
+  const age = player.age;
+
+  let min: number;
+  let max: number;
+
+  if (age <= 28 && overall > ELITE_RATING_THRESHOLD) {
+    min = 6; max = 8;
+  } else if (age <= 28 && overall > GOOD_RATING_THRESHOLD) {
+    min = 4; max = 6;
+  } else if (age >= AGE_PEAK_START && age < AGE_DECLINE_START) {
+    min = 3; max = 5;
+  } else if (age >= AGE_DECLINE_START && age < AGE_VETERAN_START) {
+    min = 1; max = 3;
+  } else if (age >= AGE_VETERAN_START) {
+    min = 1; max = 2;
+  } else {
+    // age < 25, not elite or good -- short prove-it deals
+    min = 1; max = 3;
+  }
+
+  return rng.nextInt(min, max);
+}
+
+/**
+ * Create the free agency market from all players with expiring contracts.
+ */
+export function createFreeAgencyMarket(
+  season: number,
+  allPlayers: GeneratedPlayer[],
+): FreeAgencyMarket {
+  const freeAgents: FreeAgent[] = allPlayers
+    .filter(isExpiring)
+    .map((player) => {
+      const marketValue = calculateMarketValue(player);
+      return {
+        player,
+        marketValue,
+        demandLevel: getDemandLevel(marketValue),
+        interestedTeams: [],
+        signedWith: null,
+        contract: null,
+      };
+    })
+    .sort((a, b) => b.marketValue - a.marketValue);
+
+  return {
+    season,
+    freeAgents,
+    signedPlayers: [],
+    day: 0,
+  };
+}
+
+/**
+ * AI team generates a contract offer for a free agent.
+ * Returns null if the team cannot afford the player or has no interest.
+ */
+export function generateAIOffer(
+  rng: GameRNG,
+  teamId: string,
+  player: GeneratedPlayer,
+  teamBudget: number,
+  currentPayroll: number,
+  teamNeed: number,
+): ContractOffer | null {
+  const baseValue = calculateMarketValue(player);
+
+  // Budget check: can the team afford roughly this AAV?
+  const availableBudget = teamBudget * BUDGET_SAFETY_FACTOR - currentPayroll;
+  if (availableBudget < baseValue * 0.5) return null;
+
+  // Need adjustment: teams that need this position bid higher
+  const needMultiplier = 1.0 + (teamNeed / 100) * NEED_BONUS_FACTOR;
+
+  // Jitter: each team's valuation varies slightly
+  const jitterPct = rng.nextInt(OFFER_JITTER_MIN, OFFER_JITTER_MAX) / 100;
+  const offeredAAV = Math.max(
+    MINOR_LEAGUE_DEAL_AAV,
+    Math.round(baseValue * needMultiplier * (1 + jitterPct) * 100) / 100,
+  );
+
+  // If offered AAV exceeds what team can spend, reduce or bail
+  if (offeredAAV > availableBudget) return null;
+
+  const years = projectContractYears(rng, player);
+  const totalValue = Math.round(offeredAAV * years * 100) / 100;
+  const signingBonus = Math.round(offeredAAV * SIGNING_BONUS_FRACTION * 100) / 100;
+
+  // Contract clauses based on player quality
+  const ratingRatio = getOverall(player) / RATING_MAX;
+  const noTradeClause = ratingRatio >= NTC_RATING_THRESHOLD;
+  const playerOption = rng.nextFloat() < PLAYER_OPTION_CHANCE;
+  const teamOption = !playerOption && rng.nextFloat() < TEAM_OPTION_CHANCE;
+
+  return {
+    teamId,
+    playerId: player.id,
+    years,
+    annualSalary: offeredAAV,
+    totalValue,
+    noTradeClause,
+    playerOption,
+    teamOption,
+    signingBonus,
+  };
+}
+
+/**
+ * Simulate one day of free agency. Players within their signing window
+ * may receive and accept offers.
+ */
+export function simulateFADay(
+  rng: GameRNG,
+  market: FreeAgencyMarket,
+  teamBudgets: Map<string, number>,
+  teamPayrolls: Map<string, number>,
+  teamNeeds: Map<string, Map<string, number>>,
+): FreeAgencyMarket {
+  const nextDay = market.day + 1;
+  const stillAvailable: FreeAgent[] = [];
+  const newlySigned: FreeAgent[] = [...market.signedPlayers];
+
+  // Mutable copy of payrolls for this day (signings affect remaining budget)
+  const dayPayrolls = new Map(teamPayrolls);
+
+  for (const fa of market.freeAgents) {
+    // Already signed -- shouldn't happen but guard
+    if (fa.signedWith !== null) {
+      newlySigned.push(fa);
+      continue;
+    }
+
+    const [windowStart, windowEnd] = SIGNING_WINDOWS[fa.demandLevel];
+
+    // Not yet in signing window
+    if (nextDay < windowStart) {
+      stillAvailable.push(fa);
+      continue;
+    }
+
+    // Past the market entirely -- force minor league deal
+    if (nextDay > MARKET_DURATION_DAYS) {
+      const teamIds = [...teamBudgets.keys()];
+      const randomTeam = teamIds[rng.nextInt(0, teamIds.length - 1)]!;
+      const minorDeal: ContractOffer = {
+        teamId: randomTeam,
+        playerId: fa.player.id,
+        years: MINOR_LEAGUE_DEAL_YEARS,
+        annualSalary: MINOR_LEAGUE_DEAL_AAV,
+        totalValue: MINOR_LEAGUE_DEAL_AAV,
+        noTradeClause: false,
+        playerOption: false,
+        teamOption: true,
+        signingBonus: 0,
+      };
+      newlySigned.push({
+        ...fa,
+        signedWith: randomTeam,
+        contract: minorDeal,
+      });
+      continue;
+    }
+
+    // In the signing window -- collect AI offers
+    const offers: ContractOffer[] = [];
+
+    for (const [teamId, budget] of teamBudgets) {
+      const payroll = dayPayrolls.get(teamId) ?? 0;
+      const posNeeds = teamNeeds.get(teamId);
+      const need = posNeeds?.get(fa.player.position) ?? 50; // default moderate need
+
+      const offer = generateAIOffer(rng, teamId, fa.player, budget, payroll, need);
+      if (offer !== null) {
+        offers.push(offer);
+      }
+    }
+
+    if (offers.length === 0) {
+      // No offers yet -- stays on the market
+      stillAvailable.push(fa);
+      continue;
+    }
+
+    // Competition inflation: more bidders drive price up
+    if (offers.length >= COMPETITION_TEAM_THRESHOLD) {
+      const inflationPct =
+        COMPETITION_INFLATION_MIN +
+        rng.nextFloat() * (COMPETITION_INFLATION_MAX - COMPETITION_INFLATION_MIN);
+      for (const offer of offers) {
+        offer.annualSalary = Math.round(offer.annualSalary * (1 + inflationPct) * 100) / 100;
+        offer.totalValue = Math.round(offer.annualSalary * offer.years * 100) / 100;
+      }
+    }
+
+    // Signing probability ramps up through the window
+    const windowLength = windowEnd - windowStart + 1;
+    const daysIntoWindow = nextDay - windowStart;
+    const signProbability = Math.min(1.0, (daysIntoWindow + 1) / windowLength);
+
+    if (rng.nextFloat() > signProbability) {
+      // Player decides to wait for a better offer
+      stillAvailable.push({
+        ...fa,
+        interestedTeams: offers.map((o) => o.teamId),
+      });
+      continue;
+    }
+
+    // Player signs the best offer (highest AAV)
+    offers.sort((a, b) => b.annualSalary - a.annualSalary);
+    const bestOffer = offers[0]!;
+
+    // Update day payrolls so the next signing accounts for this spend
+    const currentTeamPayroll = dayPayrolls.get(bestOffer.teamId) ?? 0;
+    dayPayrolls.set(bestOffer.teamId, currentTeamPayroll + bestOffer.annualSalary);
+
+    newlySigned.push({
+      ...fa,
+      signedWith: bestOffer.teamId,
+      contract: bestOffer,
+      interestedTeams: offers.map((o) => o.teamId),
+    });
+  }
+
+  return {
+    season: market.season,
+    freeAgents: stillAvailable,
+    signedPlayers: newlySigned,
+    day: nextDay,
+  };
+}
+
+/**
+ * Run the full free agency period (~60 days).
+ * User offers (if any) are applied on day 1 before simulation begins.
+ */
+export function simulateFullFreeAgency(
+  rng: GameRNG,
+  market: FreeAgencyMarket,
+  teamBudgets: Map<string, number>,
+  teamPayrolls: Map<string, number>,
+  teamNeeds: Map<string, Map<string, number>>,
+  userTeamId: string,
+  userOffers?: ContractOffer[],
+): FreeAgencyMarket {
+  let current = { ...market, day: 0, freeAgents: [...market.freeAgents], signedPlayers: [...market.signedPlayers] };
+
+  // Apply user offers first -- these are guaranteed attempts on day 0
+  if (userOffers && userOffers.length > 0) {
+    for (const offer of userOffers) {
+      const result = makeUserOffer(current, offer);
+      if (result.accepted) {
+        // Find the FA and move to signed
+        const idx = current.freeAgents.findIndex((fa) => fa.player.id === offer.playerId);
+        if (idx !== -1) {
+          const fa = current.freeAgents[idx]!;
+          current.signedPlayers.push({
+            ...fa,
+            signedWith: userTeamId,
+            contract: offer,
+          });
+          current.freeAgents.splice(idx, 1);
+
+          // Update user's payroll
+          const userPayroll = teamPayrolls.get(userTeamId) ?? 0;
+          teamPayrolls.set(userTeamId, userPayroll + offer.annualSalary);
+        }
+      }
+    }
+  }
+
+  // Remove user team from AI bidding pool
+  const aiBudgets = new Map(teamBudgets);
+  aiBudgets.delete(userTeamId);
+  const aiNeeds = new Map(teamNeeds);
+  aiNeeds.delete(userTeamId);
+
+  // Simulate each day
+  for (let day = 0; day < MARKET_DURATION_DAYS; day++) {
+    current = simulateFADay(rng, current, aiBudgets, teamPayrolls, aiNeeds);
+  }
+
+  // Force-sign anyone still unsigned with minor league deals
+  const finalUnsigned = current.freeAgents.filter((fa) => fa.signedWith === null);
+  for (const fa of finalUnsigned) {
+    const teamIds = [...teamBudgets.keys()];
+    const randomTeam = teamIds[rng.nextInt(0, teamIds.length - 1)]!;
+    current.signedPlayers.push({
+      ...fa,
+      signedWith: randomTeam,
+      contract: {
+        teamId: randomTeam,
+        playerId: fa.player.id,
+        years: MINOR_LEAGUE_DEAL_YEARS,
+        annualSalary: MINOR_LEAGUE_DEAL_AAV,
+        totalValue: MINOR_LEAGUE_DEAL_AAV,
+        noTradeClause: false,
+        playerOption: false,
+        teamOption: true,
+        signingBonus: 0,
+      },
+    });
+  }
+
+  return {
+    season: current.season,
+    freeAgents: [],
+    signedPlayers: current.signedPlayers,
+    day: MARKET_DURATION_DAYS,
+  };
+}
+
+/**
+ * User makes an offer to a free agent.
+ * Returns whether the player accepted and a reason string.
+ */
+export function makeUserOffer(
+  market: FreeAgencyMarket,
+  offer: ContractOffer,
+): { accepted: boolean; reason: string } {
+  const fa = market.freeAgents.find((f) => f.player.id === offer.playerId);
+  if (!fa) {
+    return { accepted: false, reason: 'Player is not available in the free agent market.' };
+  }
+
+  if (fa.signedWith !== null) {
+    return { accepted: false, reason: 'Player has already signed with another team.' };
+  }
+
+  // Player evaluates offer vs their market value
+  const expectedAAV = fa.marketValue;
+
+  // Must meet at least 80% of expected value
+  const MINIMUM_OFFER_RATIO = 0.8;
+  if (offer.annualSalary < expectedAAV * MINIMUM_OFFER_RATIO) {
+    return {
+      accepted: false,
+      reason: `Offer of $${offer.annualSalary.toFixed(2)}M is below the player's minimum ($${(expectedAAV * MINIMUM_OFFER_RATIO).toFixed(2)}M).`,
+    };
+  }
+
+  // Years must be at least 1
+  if (offer.years < 1) {
+    return { accepted: false, reason: 'Contract must be at least 1 year.' };
+  }
+
+  // If the offer meets or exceeds market value, auto-accept
+  if (offer.annualSalary >= expectedAAV) {
+    return { accepted: true, reason: 'Player accepted the offer.' };
+  }
+
+  // Between 80-100% of market value: accept but note it was a discount
+  return {
+    accepted: true,
+    reason: 'Player accepted a below-market offer, hoping to prove their worth.',
+  };
+}
+
+/**
+ * Get the top available free agents, optionally filtered by position.
+ */
+export function getTopFreeAgents(
+  market: FreeAgencyMarket,
+  position?: Position,
+  limit: number = 25,
+): FreeAgent[] {
+  let available = market.freeAgents.filter((fa) => fa.signedWith === null);
+
+  if (position !== undefined) {
+    available = available.filter((fa) => fa.player.position === position);
+  }
+
+  return available
+    .sort((a, b) => b.marketValue - a.marketValue)
+    .slice(0, limit);
+}

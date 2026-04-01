@@ -33,6 +33,12 @@ const LeadersPage = lazy(
 const HistoryPage = lazy(
   () => import('@/features/history/routes/HistoryPage')
 );
+const FreeAgencyPage = lazy(
+  () => import('@/features/free-agency/routes/FreeAgencyPage')
+);
+const OffseasonPage = lazy(
+  () => import('@/features/offseason/routes/OffseasonPage')
+);
 const SettingsPage = lazy(
   () => import('@/features/settings/routes/SettingsPage')
 );
@@ -69,6 +75,8 @@ export function AppRoutes() {
             <Route path="leaders" element={<LeadersPage />} />
             <Route index element={<Navigate to="standings" replace />} />
           </Route>
+          <Route path="free-agency" element={<FreeAgencyPage />} />
+          <Route path="offseason" element={<OffseasonPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="settings" element={<SettingsPage />} />
           {/* Catch-all redirect */}

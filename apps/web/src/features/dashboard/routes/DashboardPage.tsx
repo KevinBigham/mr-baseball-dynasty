@@ -48,6 +48,7 @@ function gradeColor(grade: string): string {
 
 export default function DashboardPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { season, day, phase, userTeamId, isInitialized } = useGameStore();
   const [userStandings, setUserStandings] = useState<TeamStandings | null>(null);
   const [divisionStandings, setDivisionStandings] = useState<TeamStandings[]>([]);
@@ -81,7 +82,7 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
     }
-  }, [isInitialized, worker, userTeamId]);
+  }, [isInitialized, workerReady, userTeamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchData();
