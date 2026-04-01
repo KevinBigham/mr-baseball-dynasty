@@ -1,0 +1,22 @@
+{
+  "name": "mr-baseball-dynasty",
+  "private": true,
+  "version": "0.0.1",
+  "description": "A browser-based baseball franchise dynasty simulator",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "verify": "turbo typecheck && turbo test && turbo build"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  }
+}
