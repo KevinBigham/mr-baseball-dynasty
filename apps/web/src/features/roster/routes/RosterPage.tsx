@@ -31,13 +31,31 @@ interface PlayerDTO {
   } | null;
 }
 
+interface TeamChemistry {
+  score: number;
+  tier: string;
+  trend: string;
+  summary: string;
+  reasons: string[];
+}
+
 function gradeColor(grade: string): string {
   switch (grade) {
     case 'A': return 'bg-accent-success/20 text-accent-success';
     case 'B': return 'bg-accent-info/20 text-accent-info';
     case 'C': return 'bg-accent-warning/20 text-accent-warning';
     case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default:  return 'bg-dynasty-border text-dynasty-muted';
+    default: return 'bg-dynasty-border text-dynasty-muted';
+  }
+}
+
+function chemistryTone(tier: string): string {
+  switch (tier) {
+    case 'electric': return 'text-accent-success';
+    case 'connected': return 'text-accent-info';
+    case 'steady': return 'text-dynasty-text';
+    case 'tense': return 'text-accent-warning';
+    default: return 'text-accent-danger';
   }
 }
 
@@ -49,25 +67,30 @@ export default function RosterPage() {
   const { day, season, phase, userTeamId, isInitialized } = useGameStore();
   const [mlbRoster, setMlbRoster] = useState<PlayerDTO[]>([]);
   const [minors, setMinors] = useState<Record<string, PlayerDTO[]>>({});
+  const [chemistry, setChemistry] = useState<TeamChemistry | null>(null);
   const [activeTab, setActiveTab] = useState<'mlb' | 'minors'>('mlb');
 
   const fetchRoster = useCallback(async () => {
-    if (!isInitialized || !worker.isReady) return;
-    const data = await worker.getFullRoster(userTeamId);
+    if (!isInitialized || !workerReady) return;
+    const [data, chemistryData] = await Promise.all([
+      worker.getFullRoster(userTeamId),
+      worker.getTeamChemistry(userTeamId),
+    ]);
     if (data) {
       setMlbRoster(data.mlb as PlayerDTO[]);
       setMinors(data.minors as Record<string, PlayerDTO[]>);
     }
+    setChemistry((chemistryData ?? null) as TeamChemistry | null);
   }, [isInitialized, workerReady, userTeamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchRoster();
   }, [fetchRoster, day, season, phase]);
 
-  const hitters = mlbRoster.filter(p => !PITCHER_POSITIONS.has(p.position));
-  const pitchers = mlbRoster.filter(p => PITCHER_POSITIONS.has(p.position));
+  const hitters = mlbRoster.filter((player) => !PITCHER_POSITIONS.has(player.position));
+  const pitchers = mlbRoster.filter((player) => PITCHER_POSITIONS.has(player.position));
 
-  const MINOR_LEVELS = [
+  const minorLevels = [
     { key: 'AAA', label: 'AAA' },
     { key: 'AA', label: 'AA' },
     { key: 'A_PLUS', label: 'A+' },
@@ -85,9 +108,37 @@ export default function RosterPage() {
         </p>
       </div>
 
-      {/* Tab buttons */}
+      {chemistry && (
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="font-heading text-xs uppercase text-dynasty-muted">Clubhouse chemistry</div>
+              <div className="mt-1 flex items-end gap-3">
+                <div className={`font-data text-4xl font-bold ${chemistryTone(chemistry.tier)}`}>
+                  {chemistry.score}
+                </div>
+                <div className="pb-1 font-heading text-sm text-dynasty-muted">
+                  {chemistry.tier.toUpperCase()} | {chemistry.trend.toUpperCase()}
+                </div>
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-text">
+                {chemistry.summary}
+              </div>
+            </div>
+            <div className="grid gap-2 text-sm">
+              {chemistry.reasons.map((reason) => (
+                <div key={reason} className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-dynasty-muted">
+                  {reason}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={() => setActiveTab('mlb')}
           className={`rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
             activeTab === 'mlb'
@@ -98,6 +149,7 @@ export default function RosterPage() {
           MLB Roster ({mlbRoster.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('minors')}
           className={`rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
             activeTab === 'minors'
@@ -111,7 +163,6 @@ export default function RosterPage() {
 
       {activeTab === 'mlb' && (
         <div className="space-y-6">
-          {/* Hitters */}
           <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
             <div className="border-b border-dynasty-border px-4 py-3">
               <h2 className="font-heading text-sm font-semibold text-dynasty-text">
@@ -136,7 +187,7 @@ export default function RosterPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {hitters.map(player => (
+                  {hitters.map((player) => (
                     <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
                       <td className="px-4 py-2">
                         <Link
@@ -167,7 +218,6 @@ export default function RosterPage() {
             </div>
           </div>
 
-          {/* Pitchers */}
           <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
             <div className="border-b border-dynasty-border px-4 py-3">
               <h2 className="font-heading text-sm font-semibold text-dynasty-text">
@@ -190,7 +240,7 @@ export default function RosterPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pitchers.map(player => (
+                  {pitchers.map((player) => (
                     <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
                       <td className="px-4 py-2">
                         <Link
@@ -223,7 +273,7 @@ export default function RosterPage() {
 
       {activeTab === 'minors' && (
         <div className="space-y-6">
-          {MINOR_LEVELS.map(level => {
+          {minorLevels.map((level) => {
             const players = minors[level.key] ?? [];
             return (
               <div key={level.key} className="rounded-lg border border-dynasty-border bg-dynasty-surface">
@@ -244,7 +294,7 @@ export default function RosterPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {players.slice(0, 10).map(player => (
+                      {players.slice(0, 10).map((player) => (
                         <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
                           <td className="px-4 py-2 font-heading font-medium text-dynasty-text">
                             {player.firstName} {player.lastName}

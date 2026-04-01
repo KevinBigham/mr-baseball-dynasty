@@ -51,7 +51,6 @@ import type {
   StandingsEntry,
   PlayoffBracket,
   PlayerGameStats,
-  ScoutReport,
   DraftResult,
   TradeProposal,
   RosterState,
@@ -66,12 +65,25 @@ import {
   toPlayerDTO, processDayInjuriesAndNews, advanceOffseasonOnce,
 } from './sim.worker.helpers.js';
 import type { SimResultDTO, TeamStandingsDTO, PlayerDTO } from './sim.worker.helpers.js';
+import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
+import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
+import {
+  ensureNarrativeState,
+  ensureAwardHistoryForSeason,
+  getAwardHistory,
+  getPersonalityProfileForPlayer,
+  getRivalriesForTeam,
+  getSeasonHistory,
+  recordBreakoutNarratives,
+  recordSeasonHistory,
+  refreshNarrativeState,
+} from './sim.worker.narrative.js';
 
 // ---------------------------------------------------------------------------
 // Worker API
 // ---------------------------------------------------------------------------
 
-const api = {
+export const api = {
   ping() {
     return { pong: true as const, timestamp: Date.now() };
   },
@@ -104,7 +116,16 @@ const api = {
       serviceTime, scoutingStaffs, gmPersonalities,
       offseasonState: null, draftClass: null,
       freeAgencyMarket: null, news: [], rosterStates,
+      playerMorale: new Map(),
+      teamChemistry: new Map(),
+      ownerState: new Map(),
+      briefingQueue: [],
+      storyFlags: new Map(),
+      rivalries: new Map(),
+      awardHistory: [],
+      seasonHistory: [],
     });
+    ensureNarrativeState(requireState());
 
     return {
       success: true as const, season: 1, day: 1, phase: 'preseason' as const,
@@ -122,7 +143,12 @@ const api = {
       s.seasonState = newState;
       s.day = newState.currentDay;
       processDayInjuriesAndNews(s);
-      if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+      refreshNarrativeState(s, result.games);
+      if (result.seasonComplete) {
+        ensureAwardHistoryForSeason(s);
+        s.phase = 'playoffs';
+        s.day = 1;
+      }
       return { day: s.day, season: s.season, phase: s.phase,
         gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
     }
@@ -132,6 +158,8 @@ const api = {
         const seeds = determinePlayoffSeeds(s.seasonState.standings.getFullStandings());
         s.playoffBracket = simulatePlayoffs(s.rng, seeds, s.players);
       }
+      ensureAwardHistoryForSeason(s);
+      recordSeasonHistory(s);
       s.phase = 'offseason'; s.day = 1;
       return { day: 1, season: s.season, phase: 'offseason', gamesPlayed: 0, seasonComplete: true };
     }
@@ -139,7 +167,10 @@ const api = {
     if (s.phase === 'offseason') {
       advanceOffseasonOnce(s);
       if (s.offseasonState?.completed) {
-        s.players = developAllPlayers(s.rng.fork(), s.players);
+        const beforePlayers = s.players;
+        const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
+        recordBreakoutNarratives(s, beforePlayers, developedPlayers);
+        s.players = developedPlayers;
         const retired = determineRetirements(s.rng.fork(), s.players);
         s.players = s.players.filter(p => !retired.includes(p.id));
         s.season++; s.day = 1; s.phase = 'preseason';
@@ -149,6 +180,7 @@ const api = {
         s.schedule = generateSchedule(s.rng.fork());
         s.seasonState = createSeasonState(s.season, teamIds);
         for (const tid of teamIds) s.rosterStates.set(tid, buildRosterState(tid, s.players));
+        ensureNarrativeState(s);
         return { day: 1, season: s.season, phase: 'preseason', gamesPlayed: 0, seasonComplete: false };
       }
       return { day: s.day, season: s.season, phase: 'offseason', gamesPlayed: 0, seasonComplete: true };
@@ -163,7 +195,12 @@ const api = {
     const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
     s.seasonState = newState; s.day = newState.currentDay;
     processDayInjuriesAndNews(s);
-    if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+    refreshNarrativeState(s, result.games);
+    if (result.seasonComplete) {
+      ensureAwardHistoryForSeason(s);
+      s.phase = 'playoffs';
+      s.day = 1;
+    }
     return { day: s.day, season: s.season, phase: s.phase,
       gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
   },
@@ -174,7 +211,12 @@ const api = {
     const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
     s.seasonState = newState; s.day = newState.currentDay;
     processDayInjuriesAndNews(s);
-    if (result.seasonComplete) { s.phase = 'playoffs'; s.day = 1; }
+    refreshNarrativeState(s, result.games);
+    if (result.seasonComplete) {
+      ensureAwardHistoryForSeason(s);
+      s.phase = 'playoffs';
+      s.day = 1;
+    }
     return { day: s.day, season: s.season, phase: s.phase,
       gamesPlayed: result.games.length, seasonComplete: result.seasonComplete };
   },
@@ -183,6 +225,24 @@ const api = {
     if (!state) return null;
     return { season: state.season, day: state.day, phase: state.phase,
       userTeamId: state.userTeamId, playerCount: state.players.length };
+  },
+
+  exportSnapshot() {
+    return exportGameSnapshot(requireState());
+  },
+
+  importSnapshot(snapshot: unknown) {
+    setState(importGameSnapshot(snapshot));
+    const s = requireState();
+    ensureNarrativeState(s);
+    return {
+      success: true as const,
+      season: s.season,
+      day: s.day,
+      phase: s.phase,
+      playerCount: s.players.length,
+      userTeamId: s.userTeamId,
+    };
   },
 
   // -----------------------------------------------------------------------
@@ -288,13 +348,31 @@ const api = {
   // Scouting (Phase 2)
   // -----------------------------------------------------------------------
 
-  scoutPlayerReport(playerId: string): ScoutReport | null {
+  scoutPlayerReport(playerId: string) {
     const s = requireState();
     const player = s.players.find(p => p.id === playerId);
     if (!player) return null;
     const staff = s.scoutingStaffs.get(s.userTeamId);
     if (!staff || staff.length === 0) return null;
-    return scoutPlayer(s.rng.fork(), staff[0]!, player, timestamp());
+    const report = scoutPlayer(s.rng.fork(), staff[0]!, player, timestamp());
+    const team = getTeamById(player.teamId);
+    return {
+      playerId: report.playerId,
+      playerName: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      age: player.age,
+      teamName: team?.abbreviation ?? player.teamId.toUpperCase(),
+      isPitcher: player.pitcherAttributes != null,
+      grades: report.observedRatings,
+      confidence: report.confidence,
+      overall: report.overallGrade,
+      ceiling: report.ceiling,
+      floor: report.floor,
+      notes: report.notes,
+      scoutName: staff[0]!.name,
+      date: report.reportDate,
+      reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
+    };
   },
 
   getScoutingStaff() { return requireState().scoutingStaffs.get(requireState().userTeamId) ?? []; },
@@ -459,6 +537,29 @@ const api = {
 
   getNews(limit: number = 50) { return getUnreadNews(requireState().news).slice(0, limit); },
   markNewsRead(newsId: string) { const s = requireState(); s.news = markAsRead(s.news, newsId); },
+  getBriefing(limit: number = 5) { return requireState().briefingQueue.slice(0, limit); },
+  getTeamChemistry(teamId?: string) {
+    const s = requireState();
+    return s.teamChemistry.get(teamId ?? s.userTeamId) ?? null;
+  },
+  getOwnerState(teamId?: string) {
+    const s = requireState();
+    return s.ownerState.get(teamId ?? s.userTeamId) ?? null;
+  },
+  getPersonalityProfile(playerId: string) {
+    return getPersonalityProfileForPlayer(requireState(), playerId);
+  },
+  getAwardRaces() {
+    const s = requireState();
+    return calculateAwardRaces(s.players, s.seasonState.playerSeasonStats);
+  },
+  getRivalries(teamId?: string) {
+    const s = requireState();
+    return Array.from(getRivalriesForTeam(s, teamId ?? s.userTeamId).values())
+      .sort((a, b) => b.intensity - a.intensity);
+  },
+  getAwardHistory() { return getAwardHistory(requireState()); },
+  getSeasonHistory() { return getSeasonHistory(requireState()); },
 
   // -----------------------------------------------------------------------
   // Finance (Phase 2)

@@ -77,20 +77,68 @@ export {
 export type { StandingsEntry, AwardType, Award } from "./schemas/league.js";
 
 export {
+  NewsCategoryEnum,
   NewsPriorityEnum,
   NewsItemSchema,
   MomentTypeEnum,
   MomentSchema,
+  NarrativeTrendEnum,
+  ChemistryTierEnum,
+  PlayerMoraleSchema,
+  TeamChemistrySchema,
+  OwnerExpectationsSchema,
+  OwnerStateSchema,
+  BriefingCategoryEnum,
+  BriefingItemSchema,
+  RivalrySchema,
+  AwardHistoryEntrySchema,
+  SeasonHistoryEntrySchema,
 } from "./schemas/narrative.js";
 export type {
+  NewsCategory,
   NewsPriority,
   NewsItem,
   MomentType,
   Moment,
+  NarrativeTrend,
+  ChemistryTier,
+  PlayerMorale,
+  TeamChemistry,
+  OwnerExpectations,
+  OwnerState,
+  BriefingCategory,
+  BriefingItem,
+  Rivalry,
+  AwardHistoryEntry,
+  SeasonHistoryEntry,
 } from "./schemas/narrative.js";
 
-export { SaveMetaSchema, SaveSlotSchema } from "./schemas/save.js";
-export type { SaveMeta, SaveSlot } from "./schemas/save.js";
+export {
+  SaveMetaSchema,
+  SaveSlotSchema,
+  GameRNGStateSchema,
+  SimPhaseEnum,
+  SnapshotPlayerSchema,
+  ScheduledGameSchema,
+  StandingsRecordSchema,
+  PlayerStatEntrySchema,
+  SerializedSeasonStateSchema,
+  NarrativeSnapshotSchema,
+  GameSnapshotSchema,
+} from "./schemas/save.js";
+export type {
+  SaveMeta,
+  SaveSlot,
+  GameRNGState,
+  SimPhase,
+  SnapshotPlayer,
+  ScheduledGame,
+  StandingsRecord,
+  PlayerStatEntry,
+  SerializedSeasonState,
+  NarrativeSnapshot,
+  GameSnapshot,
+} from "./schemas/save.js";
 
 export {
   WorkerCommandEnum,

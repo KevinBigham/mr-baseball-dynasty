@@ -65,6 +65,11 @@ export function useWorker() {
   const simWeek = useCallback(async () => api.simWeek(), [api]);
   const simMonth = useCallback(async () => api.simMonth(), [api]);
   const getState = useCallback(async () => api.getState(), [api]);
+  const exportSnapshot = useCallback(async () => api.exportSnapshot(), [api]);
+  const importSnapshot = useCallback(
+    async (snapshot: unknown) => api.importSnapshot(snapshot),
+    [api],
+  );
 
   const getStandings = useCallback(async () => api.getStandings(), [api]);
 
@@ -89,6 +94,33 @@ export function useWorker() {
   );
 
   const getPlayoffBracket = useCallback(async () => api.getPlayoffBracket(), [api]);
+  const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
+  const scoutPlayerReport = useCallback(
+    async (playerId: string) => api.scoutPlayerReport(playerId),
+    [api],
+  );
+  const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
+  const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
+  const getTeamChemistry = useCallback(
+    async (teamId?: string) => api.getTeamChemistry(teamId),
+    [api],
+  );
+  const getOwnerState = useCallback(
+    async (teamId?: string) => api.getOwnerState(teamId),
+    [api],
+  );
+  const getPersonalityProfile = useCallback(
+    async (playerId: string) => api.getPersonalityProfile(playerId),
+    [api],
+  );
+  const getAwardRaces = useCallback(async () => api.getAwardRaces(), [api]);
+  const getRivalries = useCallback(
+    async (teamId?: string) => api.getRivalries(teamId),
+    [api],
+  );
+  const getAwardHistory = useCallback(async () => api.getAwardHistory(), [api]);
+  const getSeasonHistory = useCallback(async () => api.getSeasonHistory(), [api]);
 
   const searchPlayers = useCallback(
     async (query: string, limit?: number) => api.searchPlayers(query, limit),
@@ -97,8 +129,14 @@ export function useWorker() {
 
   return {
     ping, newGame, simDay, simWeek, simMonth, getState,
+    exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer,
-    getLeagueLeaders, getPlayoffBracket, searchPlayers,
+    getLeagueLeaders, getPlayoffBracket,
+    getScoutingStaff, scoutPlayerReport,
+    getNews, markNewsRead, getBriefing, getTeamChemistry, getOwnerState,
+    getPersonalityProfile, getAwardRaces, getRivalries,
+    getAwardHistory, getSeasonHistory,
+    searchPlayers,
     isReady,
   };
 }

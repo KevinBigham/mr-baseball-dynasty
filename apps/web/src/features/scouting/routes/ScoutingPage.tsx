@@ -1,11 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Search, Eye, Shield, Target, Users, FileText, ClipboardList } from 'lucide-react';
+import {
+  Search,
+  Eye,
+  Shield,
+  Target,
+  Users,
+  FileText,
+  ClipboardList,
+  Briefcase,
+} from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                             */
-/* ------------------------------------------------------------------ */
 
 interface Scout {
   id: string;
@@ -43,9 +48,18 @@ interface PlayerDTO {
   teamId: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  GradeBar                                                          */
-/* ------------------------------------------------------------------ */
+interface TeamChemistry {
+  score: number;
+  tier: string;
+  summary: string;
+}
+
+interface OwnerState {
+  hotSeat: boolean;
+  patience: number;
+  confidence: number;
+  summary: string;
+}
 
 function ScoutGradeBar({ label, grade, confidence }: { label: string; grade: number; confidence: number }) {
   const pct = ((grade - 20) / 60) * 100;
@@ -62,10 +76,6 @@ function ScoutGradeBar({ label, grade, confidence }: { label: string; grade: num
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Quality bar for scouts                                            */
-/* ------------------------------------------------------------------ */
-
 function QualityBar({ value }: { value: number }) {
   const color = value >= 70 ? 'bg-accent-success' : value >= 50 ? 'bg-accent-info' : value >= 30 ? 'bg-accent-warning' : 'bg-accent-danger';
   return (
@@ -78,13 +88,19 @@ function QualityBar({ value }: { value: number }) {
   );
 }
 
-const PITCHER_POS = new Set(['SP', 'RP', 'CL']);
-const HITTER_ATTRS = ['Contact', 'Power', 'Eye', 'Speed', 'Defense', 'Durability'];
-const PITCHER_ATTRS = ['Stuff', 'Control', 'Stamina', 'Velocity', 'Movement'];
+function chemistryTone(tier: string | undefined): string {
+  switch (tier) {
+    case 'electric': return 'text-accent-success';
+    case 'connected': return 'text-accent-info';
+    case 'steady': return 'text-dynasty-text';
+    case 'tense': return 'text-accent-warning';
+    case 'fractured': return 'text-accent-danger';
+    default: return 'text-dynasty-muted';
+  }
+}
 
-/* ------------------------------------------------------------------ */
-/*  Page                                                              */
-/* ------------------------------------------------------------------ */
+const hitterAttrs = ['Contact', 'Power', 'Eye', 'Speed', 'Defense', 'Durability'];
+const pitcherAttrs = ['Stuff', 'Control', 'Stamina', 'Velocity', 'Movement'];
 
 export default function ScoutingPage() {
   const worker = useWorker();
@@ -94,51 +110,59 @@ export default function ScoutingPage() {
   const [scouts, setScouts] = useState<Scout[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlayerDTO[]>([]);
-  const [selectedPlayer, setSelectedPlayer] = useState<PlayerDTO | null>(null);
   const [scoutReport, setScoutReport] = useState<ScoutReport | null>(null);
   const [recentReports, setRecentReports] = useState<ScoutReport[]>([]);
+  const [chemistry, setChemistry] = useState<TeamChemistry | null>(null);
+  const [ownerState, setOwnerState] = useState<OwnerState | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /* Fetch scouting staff */
   useEffect(() => {
-    if (!isInitialized || !worker.isReady) return;
+    if (!isInitialized || !workerReady) return;
     (async () => {
       try {
-        const staff = await (worker as any).getScoutingStaff();
-        if (Array.isArray(staff)) setScouts(staff);
-      } catch { /* method not yet wired */ }
+        const [staff, chemistryData, ownerData] = await Promise.all([
+          worker.getScoutingStaff(),
+          worker.getTeamChemistry(userTeamId),
+          worker.getOwnerState(userTeamId),
+        ]);
+        if (Array.isArray(staff)) setScouts(staff as Scout[]);
+        setChemistry((chemistryData ?? null) as TeamChemistry | null);
+        setOwnerState((ownerData ?? null) as OwnerState | null);
+      } catch (err) {
+        console.error('Failed to fetch scouting overview:', err);
+      }
     })();
-  }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isInitialized, workerReady, userTeamId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Search players */
   const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim() || !worker.isReady) return;
+    if (!searchQuery.trim() || !workerReady) return;
     try {
       const results = await worker.searchPlayers(searchQuery.trim(), 10);
       setSearchResults(results as PlayerDTO[]);
-    } catch { setSearchResults([]); }
+    } catch {
+      setSearchResults([]);
+    }
   }, [searchQuery, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Scout a player */
   const handleScout = useCallback(async (player: PlayerDTO) => {
-    setSelectedPlayer(player);
     setScoutReport(null);
     setLoading(true);
     try {
-      const report = await (worker as any).scoutPlayerReport(player.id);
+      const report = await worker.scoutPlayerReport(player.id);
       if (report) {
-        setScoutReport(report);
-        setRecentReports(prev => [report, ...prev].slice(0, 20));
+        setScoutReport(report as ScoutReport);
+        setRecentReports((prev) => [report as ScoutReport, ...prev].slice(0, 20));
       }
-    } catch { /* method not yet wired */ }
+    } catch (err) {
+      console.error('Failed to scout player:', err);
+    }
     setLoading(false);
   }, [workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const attrs = scoutReport?.isPitcher ? PITCHER_ATTRS : HITTER_ATTRS;
+  const attrs = scoutReport?.isPitcher ? pitcherAttrs : hitterAttrs;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Scouting</h1>
         <p className="mt-1 font-heading text-sm text-dynasty-muted">
@@ -146,7 +170,44 @@ export default function ScoutingPage() {
         </p>
       </div>
 
-      {/* Scouting Staff */}
+      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Briefcase className="h-4 w-4 text-accent-info" />
+          <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Front Office Context</h2>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+            <div className="font-heading text-[10px] uppercase text-dynasty-muted">Owner outlook</div>
+            <div className={`mt-1 font-data text-2xl font-bold ${ownerState?.hotSeat ? 'text-accent-danger' : 'text-dynasty-textBright'}`}>
+              {ownerState?.hotSeat ? 'HOT SEAT' : 'STABLE'}
+            </div>
+            <div className="mt-2 font-heading text-sm text-dynasty-text">
+              {ownerState?.summary ?? 'Owner narrative not available yet.'}
+            </div>
+            {ownerState && (
+              <div className="mt-3 flex gap-4 font-data text-xs text-dynasty-muted">
+                <span>Patience {ownerState.patience}</span>
+                <span>Confidence {ownerState.confidence}</span>
+              </div>
+            )}
+          </div>
+          <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+            <div className="font-heading text-[10px] uppercase text-dynasty-muted">Clubhouse read</div>
+            <div className={`mt-1 font-data text-2xl font-bold ${chemistryTone(chemistry?.tier)}`}>
+              {chemistry?.score ?? '--'}
+            </div>
+            <div className="mt-2 font-heading text-sm text-dynasty-text">
+              {chemistry?.summary ?? 'Chemistry data not available yet.'}
+            </div>
+            {chemistry && (
+              <div className="mt-3 font-data text-xs uppercase text-dynasty-muted">
+                {chemistry.tier} clubhouse
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
         <div className="mb-3 flex items-center gap-2">
           <Users className="h-4 w-4 text-accent-primary" />
@@ -158,13 +219,13 @@ export default function ScoutingPage() {
           </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {scouts.map(s => (
-              <div key={s.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
-                <p className="font-heading text-sm font-semibold text-dynasty-text">{s.name}</p>
-                <QualityBar value={s.quality} />
+            {scouts.map((scout) => (
+              <div key={scout.id} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <p className="font-heading text-sm font-semibold text-dynasty-text">{scout.name}</p>
+                <QualityBar value={scout.quality} />
                 <div className="mt-1 flex gap-3 font-data text-[10px] text-dynasty-muted">
-                  <span>{s.specialty}</span>
-                  <span className="text-accent-warning">{s.bias}</span>
+                  <span>{scout.specialty}</span>
+                  <span className="text-accent-warning">{scout.bias}</span>
                 </div>
               </div>
             ))}
@@ -172,50 +233,47 @@ export default function ScoutingPage() {
         )}
       </section>
 
-      {/* Scout a Player */}
       <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
         <div className="mb-3 flex items-center gap-2">
           <Eye className="h-4 w-4 text-accent-info" />
           <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Scout a Player</h2>
         </div>
 
-        {/* Search bar */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2 h-4 w-4 text-dynasty-muted" />
             <input
               type="text"
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && void handleSearch()}
               placeholder="Search player by name..."
               className="w-full rounded border border-dynasty-border bg-dynasty-elevated py-1.5 pl-9 pr-3 font-heading text-sm text-dynasty-text placeholder-dynasty-muted outline-none focus:border-accent-primary"
             />
           </div>
-          <button onClick={handleSearch} className="rounded bg-accent-primary px-4 py-1.5 font-heading text-xs font-semibold text-black hover:opacity-90">
+          <button type="button" onClick={() => { void handleSearch(); }} className="rounded bg-accent-primary px-4 py-1.5 font-heading text-xs font-semibold text-black hover:opacity-90">
             Search
           </button>
         </div>
 
-        {/* Results dropdown */}
         {searchResults.length > 0 && (
           <div className="mt-2 max-h-48 overflow-y-auto rounded border border-dynasty-border bg-dynasty-elevated">
-            {searchResults.map(p => (
+            {searchResults.map((player) => (
               <button
-                key={p.id}
-                onClick={() => { handleScout(p); setSearchResults([]); }}
+                key={player.id}
+                type="button"
+                onClick={() => { void handleScout(player); setSearchResults([]); }}
                 className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-dynasty-surface"
               >
                 <span className="font-heading text-sm text-dynasty-text">
-                  {p.firstName} {p.lastName}
+                  {player.firstName} {player.lastName}
                 </span>
-                <span className="font-data text-xs text-dynasty-muted">{p.position} / Age {p.age}</span>
+                <span className="font-data text-xs text-dynasty-muted">{player.position} / Age {player.age}</span>
               </button>
             ))}
           </div>
         )}
 
-        {/* Report */}
         {loading && (
           <div className="mt-4 flex items-center gap-2 py-6 text-center">
             <Target className="mx-auto h-5 w-5 animate-spin text-accent-primary" />
@@ -224,12 +282,11 @@ export default function ScoutingPage() {
 
         {scoutReport && !loading && (
           <div className="mt-4 space-y-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
-            {/* Player header */}
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="font-heading text-base font-bold text-dynasty-textBright">{scoutReport.playerName}</h3>
                 <p className="font-data text-xs text-dynasty-muted">
-                  {scoutReport.position} &middot; Age {scoutReport.age} &middot; {scoutReport.teamName}
+                  {scoutReport.position} | Age {scoutReport.age} | {scoutReport.teamName}
                 </p>
               </div>
               <div className="text-right">
@@ -238,9 +295,8 @@ export default function ScoutingPage() {
               </div>
             </div>
 
-            {/* Grade bars */}
             <div className="space-y-2">
-              {attrs.map(attr => (
+              {attrs.map((attr) => (
                 <ScoutGradeBar
                   key={attr}
                   label={attr}
@@ -250,7 +306,6 @@ export default function ScoutingPage() {
               ))}
             </div>
 
-            {/* Projections */}
             <div className="flex gap-6 border-t border-dynasty-border pt-3">
               <div>
                 <p className="font-heading text-[10px] text-dynasty-muted">Ceiling</p>
@@ -263,17 +318,16 @@ export default function ScoutingPage() {
               <div>
                 <p className="font-heading text-[10px] text-dynasty-muted">Reliability</p>
                 <div className="mt-0.5 flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map(i => (
-                    <Shield key={i} className={`h-3 w-3 ${i <= scoutReport.reliability ? 'text-accent-info' : 'text-dynasty-border'}`} />
+                  {[1, 2, 3, 4, 5].map((index) => (
+                    <Shield key={index} className={`h-3 w-3 ${index <= scoutReport.reliability ? 'text-accent-info' : 'text-dynasty-border'}`} />
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Notes */}
             {scoutReport.notes && (
               <div className="border-t border-dynasty-border pt-3">
-                <div className="flex items-center gap-1 mb-1">
+                <div className="mb-1 flex items-center gap-1">
                   <FileText className="h-3 w-3 text-dynasty-muted" />
                   <p className="font-heading text-[10px] text-dynasty-muted">Scout Notes ({scoutReport.scoutName})</p>
                 </div>
@@ -284,7 +338,6 @@ export default function ScoutingPage() {
         )}
       </section>
 
-      {/* Recent Reports */}
       <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList className="h-4 w-4 text-accent-warning" />
@@ -308,14 +361,14 @@ export default function ScoutingPage() {
                 </tr>
               </thead>
               <tbody>
-                {recentReports.map((r, i) => (
-                  <tr key={`${r.playerId}-${i}`} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/50">
-                    <td className="py-2 pr-4 font-heading text-sm text-dynasty-text">{r.playerName}</td>
-                    <td className="py-2 pr-4 font-data text-xs text-dynasty-muted">{r.position}</td>
-                    <td className="py-2 pr-4 text-right font-data text-sm text-dynasty-textBright">{r.overall}</td>
-                    <td className="py-2 pr-4 text-right font-data text-xs text-dynasty-muted">&plusmn;{r.confidence}</td>
-                    <td className="py-2 pr-4 font-heading text-xs text-dynasty-muted">{r.scoutName}</td>
-                    <td className="py-2 font-data text-xs text-dynasty-muted">{r.date}</td>
+                {recentReports.map((report, index) => (
+                  <tr key={`${report.playerId}-${index}`} className="border-b border-dynasty-border/50 hover:bg-dynasty-elevated/50">
+                    <td className="py-2 pr-4 font-heading text-sm text-dynasty-text">{report.playerName}</td>
+                    <td className="py-2 pr-4 font-data text-xs text-dynasty-muted">{report.position}</td>
+                    <td className="py-2 pr-4 text-right font-data text-sm text-dynasty-textBright">{report.overall}</td>
+                    <td className="py-2 pr-4 text-right font-data text-xs text-dynasty-muted">&plusmn;{report.confidence}</td>
+                    <td className="py-2 pr-4 font-heading text-xs text-dynasty-muted">{report.scoutName}</td>
+                    <td className="py-2 font-data text-xs text-dynasty-muted">{report.date}</td>
                   </tr>
                 ))}
               </tbody>

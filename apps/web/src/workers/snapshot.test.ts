@@ -1,0 +1,184 @@
+// @vitest-environment node
+
+import { describe, expect, it } from 'vitest';
+import {
+  GameRNG,
+  TEAMS,
+  assignGMPersonality,
+  buildRosterState,
+  createSeasonState,
+  generateLeaguePlayers,
+  generateSchedule,
+  generateScoutingStaff,
+  simulateDay,
+} from '@mbd/sim-core';
+import type {
+  BriefingItem,
+  GameSnapshot,
+  OwnerState,
+  PlayerMorale,
+  Rivalry,
+  TeamChemistry,
+} from '@mbd/contracts';
+import type { FullGameState } from './sim.worker.helpers';
+import { exportGameSnapshot, importGameSnapshot } from './snapshot';
+
+function createNarrativeSample(userTeamId: string) {
+  const playerMorale = new Map<string, PlayerMorale>();
+  const teamChemistry = new Map<string, TeamChemistry>();
+  const ownerState = new Map<string, OwnerState>();
+  const rivalries = new Map<string, Rivalry>();
+  const briefingQueue: BriefingItem[] = [];
+  const storyFlags = new Map<string, string[]>();
+
+  playerMorale.set('player-1', {
+    playerId: 'player-1',
+    score: 61,
+    trend: 'rising',
+    summary: 'Responding well to recent promotion.',
+    lastUpdated: 'S1D2',
+  });
+
+  teamChemistry.set(userTeamId, {
+    teamId: userTeamId,
+    score: 57,
+    tier: 'steady',
+    trend: 'rising',
+    summary: 'Clubhouse is stabilizing after a strong week.',
+    reasons: ['Winning streak', 'Healthy core'],
+  });
+
+  ownerState.set(userTeamId, {
+    teamId: userTeamId,
+    archetype: 'win_now',
+    patience: 48,
+    confidence: 55,
+    hotSeat: true,
+    summary: 'Owner expects immediate contention.',
+    expectations: {
+      winsTarget: 88,
+      playoffTarget: true,
+      payrollTarget: 210_000_000,
+    },
+  });
+
+  rivalries.set(`${userTeamId}:bos`, {
+    id: `${userTeamId}:bos`,
+    teamA: userTeamId,
+    teamB: 'bos',
+    intensity: 63,
+    summary: 'Division race tension is building.',
+    reasons: ['Recent series split', 'Playoff position battle'],
+  });
+
+  briefingQueue.push({
+    id: 'brief-1',
+    priority: 2,
+    category: 'owner',
+    headline: 'Ownership is watching the payroll closely.',
+    body: 'A strong month could cool the hot seat quickly.',
+    relatedTeamIds: [userTeamId],
+    relatedPlayerIds: [],
+    timestamp: 'S1D2',
+    acknowledged: false,
+  });
+
+  storyFlags.set(userTeamId, ['owner_hot_seat', 'wild_card_race']);
+
+  return {
+    playerMorale,
+    teamChemistry,
+    ownerState,
+    briefingQueue,
+    storyFlags,
+    rivalries,
+    awardHistory: [],
+    seasonHistory: [],
+  };
+}
+
+function createState(): FullGameState {
+  const rng = new GameRNG(42);
+  const teamIds = TEAMS.map((team) => team.id);
+  const players = generateLeaguePlayers(rng.fork(), teamIds);
+  const schedule = generateSchedule(rng.fork());
+  const seasonState = createSeasonState(1, teamIds);
+  const dayOne = simulateDay(rng.fork(), seasonState, schedule, players);
+
+  const serviceTime = new Map<string, number>();
+  const scoutingStaffs = new Map();
+  const gmPersonalities = new Map();
+  const rosterStates = new Map();
+
+  for (const teamId of teamIds) {
+    scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
+    gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
+    rosterStates.set(teamId, buildRosterState(teamId, players));
+  }
+
+  for (const player of players) {
+    if (player.rosterStatus === 'MLB') {
+      serviceTime.set(player.id, 1);
+    }
+  }
+
+  return {
+    rng,
+    season: 1,
+    day: dayOne.newState.currentDay,
+    phase: 'regular',
+    players,
+    schedule,
+    seasonState: dayOne.newState,
+    userTeamId: 'nyy',
+    playoffBracket: null,
+    injuries: new Map(),
+    serviceTime,
+    scoutingStaffs,
+    gmPersonalities,
+    offseasonState: null,
+    draftClass: null,
+    freeAgencyMarket: null,
+    news: [],
+    rosterStates,
+    ...createNarrativeSample('nyy'),
+  };
+}
+
+describe('snapshot helpers', () => {
+  it('round-trips full game state without losing deterministic future state', () => {
+    const original = createState();
+
+    const snapshot = exportGameSnapshot(original);
+    const restored = importGameSnapshot(snapshot);
+
+    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.day).toBe(original.day);
+    expect(snapshot.narrative.playerMorale).toHaveLength(1);
+    expect(snapshot.narrative.teamChemistry).toHaveLength(1);
+    expect(snapshot.narrative.ownerState).toHaveLength(1);
+    expect(snapshot.narrative.briefingQueue).toHaveLength(1);
+    expect(snapshot.narrative.storyFlags).toHaveLength(1);
+    expect(snapshot.narrative.rivalries).toHaveLength(1);
+
+    expect(restored.userTeamId).toBe(original.userTeamId);
+    expect(restored.day).toBe(original.day);
+    expect(restored.seasonState.currentDay).toBe(original.seasonState.currentDay);
+    expect(restored.rng.nextInt(0, 10_000)).toBe(original.rng.nextInt(0, 10_000));
+    expect(restored.teamChemistry.get('nyy')?.score).toBe(57);
+    expect(restored.ownerState.get('nyy')?.hotSeat).toBe(true);
+    expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
+    expect(restored.storyFlags.get('nyy')).toContain('owner_hot_seat');
+    expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
+  });
+
+  it('rejects unsupported snapshot schema versions', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const badSnapshot = {
+      ...snapshot,
+      schemaVersion: 999,
+    } as unknown as GameSnapshot;
+
+    expect(() => importGameSnapshot(badSnapshot)).toThrow(/schema/i);
+  });
+});

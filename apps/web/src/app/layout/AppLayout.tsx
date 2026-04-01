@@ -6,18 +6,37 @@ import { SimControls } from './SimControls';
 import { CommandPalette } from './CommandPalette';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
 
 export function AppLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { setSimulating, updateFromSim, initializeGame, isInitialized } = useGameStore();
   const initialized = useRef(false);
 
   // Auto-initialize a new game when the worker is ready
   useEffect(() => {
-    if (worker.isReady && !initialized.current) {
-      initialized.current = true;
-      worker.newGame(Date.now(), 'nyy').then((result) => {
+    if (!workerReady || initialized.current) return;
+
+    initialized.current = true;
+
+    (async () => {
+      try {
+        const latestSave = await loadMostRecentSnapshot();
+        if (latestSave?.snapshot) {
+          const result = await worker.importSnapshot(latestSave.snapshot);
+          initializeGame({
+            season: result.season,
+            day: result.day,
+            phase: result.phase,
+            playerCount: result.playerCount,
+            userTeamId: result.userTeamId,
+          });
+          return;
+        }
+
+        const result = await worker.newGame(Date.now(), 'nyy');
         initializeGame({
           season: result.season,
           day: result.day,
@@ -25,11 +44,11 @@ export function AppLayout() {
           playerCount: result.playerCount,
           userTeamId: 'nyy',
         });
-      }).catch((err: unknown) => {
+      } catch (err: unknown) {
         console.error('Failed to initialize game:', err);
-      });
-    }
-  }, [worker.isReady, worker, initializeGame]);
+      }
+    })();
+  }, [workerReady, initializeGame]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Global keyboard shortcut for Cmd+K / Ctrl+K
   const handleKeyDown = useCallback(
@@ -44,7 +63,7 @@ export function AppLayout() {
 
   const handleSim = useCallback(
     async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
-      if (!worker.isReady || !isInitialized) return;
+      if (!workerReady || !isInitialized) return;
       setSimulating(true);
       try {
         const result = await simFn();
@@ -55,7 +74,7 @@ export function AppLayout() {
         setSimulating(false);
       }
     },
-    [worker.isReady, isInitialized, setSimulating, updateFromSim]
+    [workerReady, isInitialized, setSimulating, updateFromSim]
   );
 
   return (

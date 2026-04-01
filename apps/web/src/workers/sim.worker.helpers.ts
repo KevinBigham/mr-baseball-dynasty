@@ -17,6 +17,7 @@ import {
   advanceOffseasonDay,
   autoResolveTenderNonTender,
 } from '@mbd/sim-core';
+import { applyMoraleEvent } from '../../../../packages/sim-core/src/league/narrativeState';
 import type {
   GeneratedPlayer,
   ScheduledGame,
@@ -32,6 +33,15 @@ import type {
   NewsItem,
   GMPersonality,
 } from '@mbd/sim-core';
+import type {
+  AwardHistoryEntry,
+  BriefingItem,
+  OwnerState,
+  PlayerMorale,
+  Rivalry,
+  SeasonHistoryEntry,
+  TeamChemistry,
+} from '@mbd/contracts';
 
 // ---------------------------------------------------------------------------
 // Full game state
@@ -57,6 +67,14 @@ export interface FullGameState {
   freeAgencyMarket: FreeAgencyMarket | null;
   news: NewsItem[];
   rosterStates: Map<string, RosterState>;
+  playerMorale: Map<string, PlayerMorale>;
+  teamChemistry: Map<string, TeamChemistry>;
+  ownerState: Map<string, OwnerState>;
+  briefingQueue: BriefingItem[];
+  storyFlags: Map<string, string[]>;
+  rivalries: Map<string, Rivalry>;
+  awardHistory: AwardHistoryEntry[];
+  seasonHistory: SeasonHistoryEntry[];
 }
 
 export let state: FullGameState | null = null;
@@ -186,6 +204,15 @@ export function processDayInjuriesAndNews(s: FullGameState): void {
       s.injuries.set(pid, injury);
       const player = s.players.find(p => p.id === pid);
       if (player) {
+        const currentMorale = s.playerMorale.get(pid);
+        if (currentMorale) {
+          s.playerMorale.set(pid, applyMoraleEvent(player, currentMorale, {
+            type: 'injury',
+            impact: -14,
+            summary: describeInjury(injury),
+            timestamp: timestamp(),
+          }));
+        }
         const newsItems = generateNews(s.rng.fork(), {
           type: 'injury', season: s.season, day: s.day, data: {
             playerId: pid, playerName: `${player.firstName} ${player.lastName}`,

@@ -43,6 +43,12 @@ export type {
   DevPhase,
   GeneratedPlayer,
 } from './player/index.js';
+export {
+  detectProspectBreakouts,
+} from './player/index.js';
+export type {
+  BreakoutEvent,
+} from './player/index.js';
 
 // League
 export {
@@ -63,6 +69,27 @@ export type {
   TeamRecord,
   StandingsEntry,
   ScheduledGame,
+} from './league/index.js';
+export {
+  getPersonalityArchetype,
+  createInitialPlayerMorale,
+  applyMoraleEvent,
+  calculateTeamChemistry,
+  createOwnerState,
+  evaluateOwnerState,
+  buildFrontOfficeBriefing,
+  calculateAwardRaces,
+  finalizeAwardResults,
+  upsertRivalry,
+  deriveRivalriesFromStandings,
+} from './league/index.js';
+export type {
+  PersonalityArchetype,
+  MoraleEvent,
+  OwnerEvaluationContext,
+  BriefingContext,
+  AwardRaceEntry,
+  AwardRaces,
 } from './league/index.js';
 
 // Sim

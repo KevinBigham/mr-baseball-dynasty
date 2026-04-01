@@ -27,3 +27,33 @@ export {
 export type {
   ScheduledGame,
 } from './schedule.js';
+
+export {
+  getPersonalityArchetype,
+  createInitialPlayerMorale,
+  applyMoraleEvent,
+  calculateTeamChemistry,
+  createOwnerState,
+  evaluateOwnerState,
+  buildFrontOfficeBriefing,
+} from './narrativeState.js';
+export type {
+  PersonalityArchetype,
+  MoraleEvent,
+  OwnerEvaluationContext,
+  BriefingContext,
+} from './narrativeState.js';
+
+export {
+  calculateAwardRaces,
+  finalizeAwardResults,
+} from './awards.js';
+export type {
+  AwardRaceEntry,
+  AwardRaces,
+} from './awards.js';
+
+export {
+  upsertRivalry,
+  deriveRivalriesFromStandings,
+} from './rivalries.js';

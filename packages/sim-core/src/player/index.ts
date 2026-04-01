@@ -60,3 +60,10 @@ export type {
   InjurySeverity,
   Injury,
 } from './injury.js';
+
+export {
+  detectProspectBreakouts,
+} from './breakouts.js';
+export type {
+  BreakoutEvent,
+} from './breakouts.js';
