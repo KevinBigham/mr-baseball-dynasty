@@ -125,6 +125,10 @@ export function useWorker() {
   );
   const getAwardHistory = useCallback(async () => api.getAwardHistory(), [api]);
   const getSeasonHistory = useCallback(async () => api.getSeasonHistory(), [api]);
+  const resolveHistoryDisplayNames = useCallback(
+    async (playerIds: string[], teamIds: string[]) => api.resolveHistoryDisplayNames(playerIds, teamIds),
+    [api],
+  );
 
   const searchPlayers = useCallback(
     async (query: string, limit?: number) => api.searchPlayers(query, limit),
@@ -139,7 +143,7 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport,
     getNews, markNewsRead, getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
-    getAwardHistory, getSeasonHistory,
+    getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,
     searchPlayers,
     isReady,
   };

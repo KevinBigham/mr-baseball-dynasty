@@ -38,7 +38,6 @@ import {
   promotePlayer,
   demotePlayer,
   dfaPlayer,
-  skipCurrentPhase,
   determineRetirements,
   createFreeAgencyMarket,
   getTopFreeAgents,
@@ -62,7 +61,7 @@ import type {
 import {
   state, setState,
   requireState, timestamp, getTeamPlayers,
-  toPlayerDTO, processDayInjuriesAndNews, advanceOffseasonOnce,
+  toPlayerDTO, processDayInjuriesAndNews, advanceOffseasonOnce, skipOffseasonPhaseWithAI,
 } from './sim.worker.helpers.js';
 import type { SimResultDTO, TeamStandingsDTO, PlayerDTO } from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
@@ -70,15 +69,18 @@ import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/aw
 import {
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
+  finalizeSeasonHistoryRetirements,
   getAwardHistory,
   getPersonalityProfileForPlayer,
   getRivalriesForTeam,
+  resolveHistoryDisplayNames,
   getSeasonHistory,
   recordBreakoutNarratives,
   recordSeasonHistory,
   refreshNarrativeState,
 } from './sim.worker.narrative.js';
 import {
+  applyAISigningConsequences,
   applyPostseasonConsequences,
   applyRetirementConsequences,
   applySigningConsequences,
@@ -173,7 +175,17 @@ export const api = {
     }
 
     if (s.phase === 'offseason') {
-      advanceOffseasonOnce(s);
+      const offseasonProgress = advanceOffseasonOnce(s);
+      for (const signing of offseasonProgress.aiSignings) {
+        applyAISigningConsequences(
+          s,
+          signing.playerId,
+          signing.teamId,
+          signing.annualSalary,
+          signing.years,
+          signing.marketValue,
+        );
+      }
       if (s.offseasonState?.completed) {
         const beforePlayers = s.players;
         const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
@@ -181,6 +193,7 @@ export const api = {
         s.players = developedPlayers;
         const retired = determineRetirements(s.rng.fork(), s.players);
         applyRetirementConsequences(s, retired);
+        finalizeSeasonHistoryRetirements(s, retired);
         s.players = s.players.filter(p => !retired.includes(p.id));
         s.season++; s.day = 1; s.phase = 'preseason';
         s.playoffBracket = null; s.offseasonState = null;
@@ -563,13 +576,33 @@ export const api = {
 
   advanceOffseason(): OffseasonState | null {
     const s = requireState();
-    advanceOffseasonOnce(s);
+    const progress = advanceOffseasonOnce(s);
+    for (const signing of progress.aiSignings) {
+      applyAISigningConsequences(
+        s,
+        signing.playerId,
+        signing.teamId,
+        signing.annualSalary,
+        signing.years,
+        signing.marketValue,
+      );
+    }
     return s.offseasonState;
   },
 
   skipOffseasonPhase(): OffseasonState | null {
     const s = requireState();
-    if (s.offseasonState) s.offseasonState = skipCurrentPhase(s.offseasonState);
+    const progress = skipOffseasonPhaseWithAI(s);
+    for (const signing of progress.aiSignings) {
+      applyAISigningConsequences(
+        s,
+        signing.playerId,
+        signing.teamId,
+        signing.annualSalary,
+        signing.years,
+        signing.marketValue,
+      );
+    }
     return s.offseasonState;
   },
 
@@ -603,6 +636,9 @@ export const api = {
   },
   getAwardHistory() { return getAwardHistory(requireState()); },
   getSeasonHistory() { return getSeasonHistory(requireState()); },
+  resolveHistoryDisplayNames(playerIds: string[], teamIds: string[]) {
+    return resolveHistoryDisplayNames(requireState(), playerIds, teamIds);
+  },
 
   // -----------------------------------------------------------------------
   // Finance (Phase 2)

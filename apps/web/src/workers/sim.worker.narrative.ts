@@ -1,14 +1,17 @@
 import type {
   AwardHistoryEntry,
   BriefingItem,
+  BlockbusterTradeSummary,
   Rivalry,
+  SeasonStatLeader,
   SeasonHistoryEntry,
 } from '@mbd/contracts';
 import {
   calculateTeamPayroll,
   getTeamBudget,
 } from '../../../../packages/sim-core/src/finance/contracts';
-import { calculateAwardRaces, finalizeAwardResults } from '../../../../packages/sim-core/src/league/awards';
+import { finalizeAwardResults } from '../../../../packages/sim-core/src/league/awards';
+import { getTeamById, TEAMS } from '../../../../packages/sim-core/src/league/teams';
 import {
   applyMoraleEvent,
   buildFrontOfficeBriefing,
@@ -19,8 +22,9 @@ import {
   getPersonalityArchetype,
 } from '../../../../packages/sim-core/src/league/narrativeState';
 import { deriveRivalriesFromStandings } from '../../../../packages/sim-core/src/league/rivalries';
-import { TEAMS } from '../../../../packages/sim-core/src/league/teams';
 import { getUnreadNews } from '../../../../packages/sim-core/src/narrative/newsFeed';
+import { toDisplayRating } from '../../../../packages/sim-core/src/player/attributes';
+import type { GeneratedPlayer, PlayerGameStats } from '@mbd/sim-core';
 import { detectProspectBreakouts } from '../../../../packages/sim-core/src/player/breakouts';
 import type { FullGameState } from './sim.worker.helpers';
 import { getTeamPlayers, timestamp } from './sim.worker.helpers';
@@ -36,6 +40,11 @@ export interface PersonalityProfileDTO {
     competitiveness: number;
   };
   summary: string;
+}
+
+export interface HistoryDisplayNamesDTO {
+  players: Record<string, string>;
+  teams: Record<string, string>;
 }
 
 function dedupeBriefing(items: BriefingItem[]): BriefingItem[] {
@@ -67,6 +76,166 @@ function setStoryFlag(state: FullGameState, key: string, flag: string) {
   if (!existing.includes(flag)) {
     state.storyFlags.set(key, [...existing, flag]);
   }
+}
+
+function parseSeasonFromTimestamp(value: string): number | null {
+  const match = /^S(\d+)D\d+$/.exec(value);
+  return match ? Number(match[1]) : null;
+}
+
+function teamLabel(teamId: string | null): string {
+  if (!teamId) return 'Unknown team';
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+function playerLabel(player: GeneratedPlayer): string {
+  return `${player.firstName} ${player.lastName}`;
+}
+
+function uniqueStrings(values: string[], limit?: number): string[] {
+  const deduped = values.filter((value, index) => value.length > 0 && values.indexOf(value) === index);
+  return typeof limit === 'number' ? deduped.slice(0, limit) : deduped;
+}
+
+function createLeaderEntry(
+  player: GeneratedPlayer,
+  value: string,
+  summary: string,
+): SeasonStatLeader {
+  return {
+    playerId: player.id,
+    teamId: player.teamId,
+    value,
+    summary,
+  };
+}
+
+function topHitterLeaders(
+  state: FullGameState,
+  scorer: (stats: PlayerGameStats) => number,
+  valueFormatter: (stats: PlayerGameStats) => string,
+  summaryFormatter: (player: GeneratedPlayer, stats: PlayerGameStats) => string,
+): SeasonStatLeader[] {
+  return Array.from(state.seasonState.playerSeasonStats.entries())
+    .map(([playerId, stats]) => ({ player: state.players.find((candidate) => candidate.id === playerId), stats }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } =>
+      entry.player != null && entry.stats.ab > 0 && entry.player.pitcherAttributes == null,
+    )
+    .sort((left, right) => scorer(right.stats) - scorer(left.stats))
+    .slice(0, 3)
+    .map(({ player, stats }) => createLeaderEntry(player, valueFormatter(stats), summaryFormatter(player, stats)));
+}
+
+function topPitcherLeaders(
+  state: FullGameState,
+  scorer: (stats: PlayerGameStats) => number,
+  valueFormatter: (stats: PlayerGameStats) => string,
+  summaryFormatter: (player: GeneratedPlayer, stats: PlayerGameStats) => string,
+  ascending: boolean = false,
+): SeasonStatLeader[] {
+  return Array.from(state.seasonState.playerSeasonStats.entries())
+    .map(([playerId, stats]) => ({ player: state.players.find((candidate) => candidate.id === playerId), stats }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } =>
+      entry.player != null && entry.stats.ip > 0 && entry.player.pitcherAttributes != null,
+    )
+    .sort((left, right) => {
+      const diff = scorer(right.stats) - scorer(left.stats);
+      return ascending ? -diff : diff;
+    })
+    .slice(0, 3)
+    .map(({ player, stats }) => createLeaderEntry(player, valueFormatter(stats), summaryFormatter(player, stats)));
+}
+
+function deriveStatLeaders(state: FullGameState): SeasonHistoryEntry['statLeaders'] {
+  return {
+    hr: topHitterLeaders(
+      state,
+      (stats) => stats.hr,
+      (stats) => String(stats.hr),
+      (player, stats) => `${playerLabel(player)} launched ${stats.hr} home runs.`,
+    ),
+    rbi: topHitterLeaders(
+      state,
+      (stats) => stats.rbi,
+      (stats) => String(stats.rbi),
+      (player, stats) => `${playerLabel(player)} drove in ${stats.rbi} runs.`,
+    ),
+    avg: topHitterLeaders(
+      state,
+      (stats) => stats.hits / Math.max(1, stats.ab),
+      (stats) => (stats.hits / Math.max(1, stats.ab)).toFixed(3).replace(/^0/, ''),
+      (player, stats) => `${playerLabel(player)} hit ${(stats.hits / Math.max(1, stats.ab)).toFixed(3).replace(/^0/, '')}.`,
+    ),
+    era: topPitcherLeaders(
+      state,
+      (stats) => (stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9,
+      (stats) => ((stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9).toFixed(2),
+      (player, stats) => `${playerLabel(player)} posted a ${((stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9).toFixed(2)} ERA.`,
+      true,
+    ),
+    k: topPitcherLeaders(
+      state,
+      (stats) => stats.strikeouts,
+      (stats) => String(stats.strikeouts),
+      (player, stats) => `${playerLabel(player)} punched out ${stats.strikeouts} hitters.`,
+    ),
+    w: topPitcherLeaders(
+      state,
+      (stats) => stats.wins,
+      (stats) => String(stats.wins),
+      (player, stats) => `${playerLabel(player)} finished with ${stats.wins} wins.`,
+    ),
+  };
+}
+
+function deriveBlockbusterTrades(state: FullGameState): BlockbusterTradeSummary[] {
+  return state.news
+    .filter((item) => item.category === 'trade' && parseSeasonFromTimestamp(item.timestamp) === state.season)
+    .filter((item) =>
+      item.relatedPlayerIds.some((playerId) => {
+        const player = state.players.find((candidate) => candidate.id === playerId);
+        return player != null && toDisplayRating(player.overallRating) >= 65;
+      }),
+    )
+    .slice(0, 3)
+    .map((item) => ({
+      headline: item.headline,
+      summary: item.body,
+      playerIds: item.relatedPlayerIds,
+      teamIds: item.relatedTeamIds,
+    }));
+}
+
+function deriveUserPlayoffResult(state: FullGameState): string {
+  if (!state.playoffBracket) return 'Missed playoffs';
+  if (state.playoffBracket.champion === state.userTeamId) return 'Champion';
+  const userLoss = state.playoffBracket.series.find((series) => series.loserId === state.userTeamId);
+  if (!userLoss) return 'Missed playoffs';
+  switch (userLoss.round) {
+    case 'WORLD_SERIES':
+      return 'World Series runner-up';
+    case 'CHAMPIONSHIP_SERIES':
+      return 'Championship Series exit';
+    case 'DIVISION_SERIES':
+      return 'Division Series exit';
+    default:
+      return 'Wild Card exit';
+  }
+}
+
+function buildSeasonSummary(
+  championTeamId: string | null,
+  runnerUpTeamId: string | null,
+  worldSeriesRecord: string | null,
+): string {
+  if (!championTeamId) {
+    return 'Season closed without a recorded champion.';
+  }
+  if (runnerUpTeamId && worldSeriesRecord) {
+    return `${teamLabel(championTeamId)} defeated ${teamLabel(runnerUpTeamId)} in the World Series (${worldSeriesRecord}).`;
+  }
+  return `${teamLabel(championTeamId)} finished the story on top.`;
 }
 
 export function rebuildBriefing(state: FullGameState) {
@@ -190,16 +359,15 @@ export function refreshNarrativeState(
 
 export function ensureAwardHistoryForSeason(state: FullGameState) {
   if (state.awardHistory.some((entry) => entry.season === state.season)) return;
-  const races = calculateAwardRaces(state.players, state.seasonState.playerSeasonStats);
-  const winners = finalizeAwardResults(state.season, races, state.players);
+  const winners = finalizeAwardResults(state.season, state.players, state.seasonState.playerSeasonStats);
   state.awardHistory.push(...winners);
   state.briefingQueue = dedupeBriefing([
     ...state.briefingQueue,
     ...winners.map((winner) => ({
-      id: `award-${winner.season}-${winner.award}`,
+      id: `award-${winner.season}-${winner.league}-${winner.award}`,
       priority: 2 as const,
       category: 'award' as const,
-      headline: `${winner.award} winner recorded.`,
+      headline: `${winner.league} ${winner.award} winner recorded.`,
       body: winner.summary,
       relatedTeamIds: [winner.teamId],
       relatedPlayerIds: [winner.playerId],
@@ -210,25 +378,76 @@ export function ensureAwardHistoryForSeason(state: FullGameState) {
 }
 
 export function recordSeasonHistory(state: FullGameState, consequenceMoments: string[] = []) {
-  if (state.seasonHistory.some((entry) => entry.season === state.season)) return;
-
   const awards = state.awardHistory.filter((entry) => entry.season === state.season);
-  const summary = state.playoffBracket?.champion
-    ? `${state.playoffBracket.champion.toUpperCase()} finished the story on top.`
-    : 'Season closed without a recorded champion.';
-  const keyMoments = [...consequenceMoments, ...state.news.slice(0, 5).map((item) => item.headline)]
-    .filter((moment, index, moments) => moments.indexOf(moment) === index)
-    .slice(0, 5);
+  const worldSeries = state.playoffBracket?.series.find((series) => series.round === 'WORLD_SERIES') ?? null;
+  const championTeamId = state.playoffBracket?.champion ?? null;
+  const runnerUpTeamId = worldSeries?.loserId ?? null;
+  const worldSeriesRecord = worldSeries ? `${worldSeries.winnerWins}-${worldSeries.loserWins}` : null;
+  const userRecord = state.seasonState.standings.getRecord(state.userTeamId);
+  const userStorylines = uniqueStrings([
+    ...consequenceMoments,
+    ...state.news
+      .filter((item) => item.relatedTeamIds.includes(state.userTeamId) && parseSeasonFromTimestamp(item.timestamp) === state.season)
+      .map((item) => item.headline),
+  ], 4);
+  const keyMoments = uniqueStrings([
+    ...consequenceMoments,
+    ...state.news
+      .filter((item) => parseSeasonFromTimestamp(item.timestamp) === state.season)
+      .map((item) => item.headline),
+  ], 6);
 
   const entry: SeasonHistoryEntry = {
     season: state.season,
-    championTeamId: state.playoffBracket?.champion ?? null,
-    summary,
+    championTeamId,
+    runnerUpTeamId,
+    worldSeriesRecord,
+    summary: buildSeasonSummary(championTeamId, runnerUpTeamId, worldSeriesRecord),
     awards,
     keyMoments,
+    statLeaders: deriveStatLeaders(state),
+    notableRetirements: state.seasonHistory.find((candidate) => candidate.season === state.season)?.notableRetirements ?? [],
+    blockbusterTrades: deriveBlockbusterTrades(state),
+    userSeason: {
+      teamId: state.userTeamId,
+      record: `${userRecord?.wins ?? 0}-${userRecord?.losses ?? 0}`,
+      playoffResult: deriveUserPlayoffResult(state),
+      storylines: userStorylines,
+    },
   };
 
+  const existingIndex = state.seasonHistory.findIndex((candidate) => candidate.season === state.season);
+  if (existingIndex >= 0) {
+    state.seasonHistory.splice(existingIndex, 1, entry);
+    return;
+  }
+
   state.seasonHistory.push(entry);
+}
+
+export function finalizeSeasonHistoryRetirements(state: FullGameState, retiredPlayerIds: string[]) {
+  if (retiredPlayerIds.length === 0) return;
+
+  const entry = state.seasonHistory.find((candidate) => candidate.season === state.season);
+  if (!entry) return;
+
+  const notableRetirements = retiredPlayerIds
+    .map((playerId) => state.players.find((candidate) => candidate.id === playerId))
+    .filter((player): player is GeneratedPlayer => player != null)
+    .filter((player) => (state.serviceTime.get(player.id) ?? 0) >= 10 || toDisplayRating(player.overallRating) >= 70)
+    .map((player) => ({
+      playerId: player.id,
+      teamId: player.teamId,
+      seasonsPlayed: state.serviceTime.get(player.id) ?? 0,
+      overallRating: toDisplayRating(player.overallRating),
+      summary: `${playerLabel(player)} retired after ${state.serviceTime.get(player.id) ?? 0} seasons with ${toDisplayRating(player.overallRating)} overall talent.`,
+    }));
+
+  entry.notableRetirements = notableRetirements;
+  entry.keyMoments = uniqueStrings([
+    ...entry.keyMoments,
+    ...notableRetirements.map((retirement) => retirement.summary),
+  ], 6);
 }
 
 export function recordBreakoutNarratives(
@@ -303,4 +522,24 @@ export function getAwardHistory(state: FullGameState): AwardHistoryEntry[] {
 
 export function getSeasonHistory(state: FullGameState): SeasonHistoryEntry[] {
   return [...state.seasonHistory].sort((a, b) => b.season - a.season);
+}
+
+export function resolveHistoryDisplayNames(
+  state: FullGameState,
+  playerIds: string[],
+  teamIds: string[],
+): HistoryDisplayNamesDTO {
+  const players = Object.fromEntries(
+    uniqueStrings(playerIds)
+      .map((playerId) => {
+        const player = state.players.find((candidate) => candidate.id === playerId);
+        return player ? [playerId, playerLabel(player)] : [playerId, playerId];
+      }),
+  );
+  const teams = Object.fromEntries(
+    uniqueStrings(teamIds)
+      .map((teamId) => [teamId, teamLabel(teamId)]),
+  );
+
+  return { players, teams };
 }

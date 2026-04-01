@@ -1,7 +1,11 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOffseasonState, evaluatePlayerTradeValue } from '@mbd/sim-core';
+import {
+  createOffseasonState,
+  evaluatePlayerTradeValue,
+  type PlayerGameStats,
+} from '@mbd/sim-core';
 
 vi.mock('comlink', () => ({
   expose: () => {},
@@ -9,6 +13,31 @@ vi.mock('comlink', () => ({
 
 import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
+
+function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
+  return {
+    playerId: 'player',
+    teamId: 'nyy',
+    pa: 0,
+    ab: 0,
+    hits: 0,
+    doubles: 0,
+    triples: 0,
+    hr: 0,
+    rbi: 0,
+    bb: 0,
+    k: 0,
+    runs: 0,
+    ip: 0,
+    earnedRuns: 0,
+    strikeouts: 0,
+    walks: 0,
+    hitsAllowed: 0,
+    wins: 0,
+    losses: 0,
+    ...overrides,
+  };
+}
 
 describe('sim worker narrative APIs', () => {
   afterEach(() => {
@@ -44,6 +73,17 @@ describe('sim worker narrative APIs', () => {
     expect(Array.isArray(awardRaces.mvp)).toBe(true);
     expect(Array.isArray(awardRaces.cyYoung)).toBe(true);
     expect(Array.isArray(awardRaces.roy)).toBe(true);
+  });
+
+  it('resolves history display names from live worker state', () => {
+    api.newGame(457, 'nyy');
+
+    const player = api.getTeamRoster('nyy')[0]!;
+    const names = api.resolveHistoryDisplayNames([player.id], ['nyy', 'bos']);
+
+    expect(names.players[player.id]).toBe(`${player.firstName} ${player.lastName}`);
+    expect(names.teams.nyy).toBe('New York Yankees');
+    expect(names.teams.bos).toBe('Boston Red Sox');
   });
 
   it('restores narrative state through snapshot import', () => {
@@ -182,6 +222,237 @@ describe('sim worker narrative APIs', () => {
 
     expect(retirementNews).toBeTruthy();
     expect(retirementBriefing).toBeTruthy();
+  });
+
+  it('records AI tender decisions once and removes non-tendered players from team control', () => {
+    api.newGame(333, 'nyy');
+    const state = requireState();
+    const [cutCandidate, keepCandidate] = state.players
+      .filter((player) => player.teamId === 'bos' && player.rosterStatus === 'MLB')
+      .slice(0, 2);
+
+    expect(cutCandidate).toBeTruthy();
+    expect(keepCandidate).toBeTruthy();
+
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 7,
+      totalDay: 10,
+    };
+
+    state.serviceTime.set(cutCandidate!.id, 4);
+    state.serviceTime.set(keepCandidate!.id, 4);
+    cutCandidate!.overallRating = 120;
+    cutCandidate!.contract.annualSalary = 20;
+    keepCandidate!.overallRating = 320;
+    keepCandidate!.contract.annualSalary = 2;
+
+    const afterEntry = api.advanceOffseason();
+    expect(afterEntry?.currentPhase).toBe('tender_nontender');
+
+    const nonTendered = requireState().offseasonState?.phaseResults.nonTenderedPlayers ?? [];
+    const tendered = requireState().offseasonState?.phaseResults.tenderedPlayers ?? [];
+    expect(nonTendered).toContain(cutCandidate!.id);
+    expect(tendered).toContain(keepCandidate!.id);
+
+    const releasedPlayer = requireState().players.find((player) => player.id === cutCandidate!.id);
+    expect(releasedPlayer?.teamId).toBe('');
+    expect(releasedPlayer?.rosterStatus).toBe('INTERNATIONAL');
+    expect(releasedPlayer?.contract.years).toBe(0);
+    expect(requireState().rosterStates.get('bos')?.mlbRoster).not.toContain(cutCandidate!.id);
+    expect(requireState().rosterStates.get('bos')?.fortyManRoster).not.toContain(cutCandidate!.id);
+
+    api.advanceOffseason();
+    expect(requireState().offseasonState?.phaseResults.nonTenderedPlayers).toEqual(nonTendered);
+    expect(requireState().offseasonState?.phaseResults.tenderedPlayers).toEqual(tendered);
+  });
+
+  it('fast-forwards AI free agency, records rival signings, and emits press coverage', () => {
+    api.newGame(334, 'nyy');
+    const state = requireState();
+    const target = state.players.find(
+      (player) => player.teamId === 'oak' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    state.phase = 'offseason';
+    state.news = [];
+    state.briefingQueue = [];
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'free_agency',
+      phaseDay: 1,
+      totalDay: 16,
+    };
+
+    for (const player of state.players) {
+      player.contract.years = 2;
+      player.contract.annualSalary = player.teamId === 'bos' ? 0.5 : 200;
+    }
+
+    target.teamId = '';
+    target.contract.years = 0;
+    target.contract.annualSalary = 0.5;
+    target.age = 27;
+    target.overallRating = 430;
+    target.hitterAttributes = {
+      contact: 420,
+      power: 430,
+      eye: 390,
+      speed: 250,
+      defense: 300,
+      durability: 360,
+    };
+
+    const afterSkip = api.skipOffseasonPhase();
+    const signing = requireState().offseasonState?.phaseResults.freeAgentSignings.find(
+      (entry) => entry.playerId === target.id,
+    );
+
+    expect(afterSkip?.currentPhase).toBe('draft');
+    expect(requireState().freeAgencyMarket?.day).toBe(60);
+    expect(signing?.teamId).toBe('bos');
+    expect(requireState().players.find((player) => player.id === target.id)?.teamId).toBe('bos');
+
+    const signingNews = api.getNews(25).find(
+      (item) => item.category === 'signing' && item.relatedPlayerIds.includes(target.id),
+    );
+    const signingBriefing = api.getBriefing(25).find(
+      (item) => item.category === 'news' && item.relatedPlayerIds.includes(target.id),
+    );
+    expect(signingNews).toBeTruthy();
+    expect(signingBriefing).toBeTruthy();
+  });
+
+  it('records rich season recaps and finalizes retirements into the same history entry', () => {
+    api.newGame(335, 'nyy');
+    const state = requireState();
+    const alMvp = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const alRbi = state.players.find(
+      (player) => player.teamId === 'tb' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const alAvg = state.players.find(
+      (player) => player.teamId === 'tor' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const nlMvp = state.players.find(
+      (player) => player.teamId === 'lad' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const nlHr = state.players.find(
+      (player) => player.teamId === 'atl' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const nlAvg = state.players.find(
+      (player) => player.teamId === 'phi' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const alCy = state.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const alK = state.players.find(
+      (player) => player.teamId === 'cle' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const alW = state.players.find(
+      (player) => player.teamId === 'sea' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const nlCy = state.players.find(
+      (player) => player.teamId === 'sd' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const nlK = state.players.find(
+      (player) => player.teamId === 'mil' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const nlW = state.players.find(
+      (player) => player.teamId === 'sf' && player.rosterStatus === 'MLB' && player.pitcherAttributes != null,
+    )!;
+    const alRoy = state.players.find(
+      (player) => player.teamId === 'bal' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+    const nlRoy = state.players.find(
+      (player) => player.teamId === 'nym' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    alRoy.age = 22;
+    nlRoy.age = 22;
+    alMvp.overallRating = 430;
+
+    state.phase = 'playoffs';
+    state.news = [{
+      id: 'trade-blockbuster',
+      headline: 'Deadline blockbuster reshaped the race',
+      body: 'A franchise-caliber player moved in a pennant-race swing.',
+      priority: 1,
+      category: 'trade',
+      timestamp: 'S1D120',
+      relatedPlayerIds: [alMvp.id],
+      relatedTeamIds: ['nyy', 'lad'],
+      read: false,
+    }];
+    state.briefingQueue = [];
+    state.seasonHistory = [];
+    state.playoffBracket = {
+      seeds: [
+        { teamId: 'nyy', seed: 1, wins: 99, losses: 63 },
+        { teamId: 'lad', seed: 2, wins: 98, losses: 64 },
+      ],
+      series: [
+        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+      ],
+      champion: 'nyy',
+    };
+    state.seasonState.playerSeasonStats.clear();
+    for (const [playerId, stats] of new Map([
+      [alMvp.id, createPlayerStats({ playerId: alMvp.id, teamId: 'nyy', pa: 680, ab: 600, hits: 198, hr: 44, rbi: 131, bb: 70, runs: 118 })],
+      [alRbi.id, createPlayerStats({ playerId: alRbi.id, teamId: 'tb', pa: 650, ab: 590, hits: 177, hr: 35, rbi: 122, bb: 58, runs: 99 })],
+      [alAvg.id, createPlayerStats({ playerId: alAvg.id, teamId: 'tor', pa: 620, ab: 540, hits: 189, hr: 18, rbi: 84, bb: 63, runs: 95 })],
+      [nlMvp.id, createPlayerStats({ playerId: nlMvp.id, teamId: 'lad', pa: 670, ab: 595, hits: 191, hr: 39, rbi: 121, bb: 72, runs: 117 })],
+      [nlHr.id, createPlayerStats({ playerId: nlHr.id, teamId: 'atl', pa: 640, ab: 580, hits: 171, hr: 41, rbi: 111, bb: 60, runs: 101 })],
+      [nlAvg.id, createPlayerStats({ playerId: nlAvg.id, teamId: 'phi', pa: 610, ab: 530, hits: 183, hr: 21, rbi: 76, bb: 64, runs: 92 })],
+      [alCy.id, createPlayerStats({ playerId: alCy.id, teamId: 'bos', ip: 650, earnedRuns: 68, strikeouts: 236, walks: 47, hitsAllowed: 144, wins: 18, losses: 6 })],
+      [alK.id, createPlayerStats({ playerId: alK.id, teamId: 'cle', ip: 620, earnedRuns: 73, strikeouts: 251, walks: 54, hitsAllowed: 150, wins: 16, losses: 7 })],
+      [alW.id, createPlayerStats({ playerId: alW.id, teamId: 'sea', ip: 640, earnedRuns: 79, strikeouts: 218, walks: 52, hitsAllowed: 156, wins: 20, losses: 5 })],
+      [nlCy.id, createPlayerStats({ playerId: nlCy.id, teamId: 'sd', ip: 660, earnedRuns: 66, strikeouts: 244, walks: 45, hitsAllowed: 140, wins: 19, losses: 4 })],
+      [nlK.id, createPlayerStats({ playerId: nlK.id, teamId: 'mil', ip: 625, earnedRuns: 71, strikeouts: 246, walks: 50, hitsAllowed: 148, wins: 17, losses: 6 })],
+      [nlW.id, createPlayerStats({ playerId: nlW.id, teamId: 'sf', ip: 635, earnedRuns: 74, strikeouts: 221, walks: 55, hitsAllowed: 152, wins: 21, losses: 5 })],
+      [alRoy.id, createPlayerStats({ playerId: alRoy.id, teamId: 'bal', pa: 570, ab: 510, hits: 158, hr: 24, rbi: 82, bb: 48, runs: 77 })],
+      [nlRoy.id, createPlayerStats({ playerId: nlRoy.id, teamId: 'nym', pa: 560, ab: 500, hits: 152, hr: 20, rbi: 74, bb: 45, runs: 71 })],
+    ])) {
+      state.seasonState.playerSeasonStats.set(playerId, stats);
+    }
+
+    api.simDay();
+
+    const recap = api.getSeasonHistory()[0]!;
+    expect(recap.championTeamId).toBe('nyy');
+    expect(recap.runnerUpTeamId).toBe('lad');
+    expect(recap.worldSeriesRecord).toBe('4-2');
+    expect(recap.awards).toHaveLength(6);
+    expect(recap.statLeaders.hr.length).toBe(3);
+    expect(recap.statLeaders.w[0]?.playerId).toBe(nlW.id);
+    expect(recap.blockbusterTrades[0]?.headline).toBe('Deadline blockbuster reshaped the race');
+    expect(recap.userSeason?.teamId).toBe('nyy');
+    expect(recap.userSeason?.playoffResult).toContain('Champion');
+
+    for (const veteran of state.players.filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB').slice(0, 4)) {
+      veteran.age = 45;
+      veteran.overallRating = 390;
+      state.serviceTime.set(veteran.id, 12);
+      if (veteran.pitcherAttributes) {
+        veteran.pitcherAttributes.stamina = 40;
+      } else {
+        veteran.hitterAttributes.durability = 40;
+      }
+    }
+
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      completed: true,
+    };
+
+    api.simDay();
+
+    const finalized = api.getSeasonHistory().find((entry) => entry.season === 1)!;
+    expect(finalized.notableRetirements.length).toBeGreaterThan(0);
+    expect(finalized.notableRetirements[0]?.seasonsPlayed).toBeGreaterThanOrEqual(10);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

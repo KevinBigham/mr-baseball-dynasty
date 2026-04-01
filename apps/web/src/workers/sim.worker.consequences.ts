@@ -7,6 +7,7 @@ import {
   type ConsequenceBundle,
   type UserPostseasonOutcome,
 } from '../../../../packages/sim-core/src/narrative/consequences';
+import { getTeamById } from '../../../../packages/sim-core/src/league/teams';
 import {
   applyMoraleEvent,
   applyOwnerDecisionDelta,
@@ -132,6 +133,50 @@ export function applySigningConsequences(
   });
 
   applyConsequenceBundle(state, bundle);
+}
+
+export function applyAISigningConsequences(
+  state: FullGameState,
+  playerId: string,
+  teamId: string,
+  annualSalary: number,
+  years: number,
+  marketValue: number,
+) {
+  if (teamId === state.userTeamId) return;
+
+  const userDivision = getTeamById(state.userTeamId)?.division;
+  const signingDivision = getTeamById(teamId)?.division;
+  if (!userDivision || !signingDivision || userDivision !== signingDivision) return;
+
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) return;
+
+  const bundle = buildSigningConsequenceBundle({
+    rng: state.rng.fork(),
+    season: state.season,
+    day: state.day,
+    userTeamId: teamId,
+    player,
+    annualSalary,
+    years,
+    marketValue,
+    payrollAfterSigning: calculateTeamPayroll(teamId, getTeamPlayers(teamId)).totalPayroll,
+    payrollTarget: getTeamBudget(teamId),
+    remainingUserPlayers: getTeamPlayers(teamId).filter(
+      (candidate) => candidate.rosterStatus === 'MLB' && candidate.id !== playerId,
+    ),
+  });
+
+  if (bundle.newsItems.length > 0) {
+    state.news = deduplicateNews([...bundle.newsItems, ...state.news]);
+  }
+
+  if (bundle.briefingItems.length > 0) {
+    state.briefingQueue = [...bundle.briefingItems, ...state.briefingQueue];
+  }
+
+  rebuildBriefing(state);
 }
 
 function deriveUserPostseasonOutcome(state: FullGameState): UserPostseasonOutcome {
