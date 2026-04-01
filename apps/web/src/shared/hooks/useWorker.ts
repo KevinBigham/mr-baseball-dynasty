@@ -16,7 +16,6 @@ export function useWorker() {
     const wrapped = Comlink.wrap<WorkerApi>(worker);
     workerRef.current = wrapped;
 
-    // Verify the worker is alive
     wrapped
       .ping()
       .then(() => setIsReady(true))
@@ -45,8 +44,8 @@ export function useWorker() {
   }, [getApi]);
 
   const newGame = useCallback(
-    async (seed: number) => {
-      return getApi().newGame(seed);
+    async (seed: number, userTeamId?: string) => {
+      return getApi().newGame(seed, userTeamId);
     },
     [getApi]
   );
@@ -67,5 +66,38 @@ export function useWorker() {
     return getApi().getState();
   }, [getApi]);
 
-  return { ping, newGame, simDay, simWeek, simMonth, getState, isReady };
+  const getStandings = useCallback(async () => {
+    return getApi().getStandings();
+  }, [getApi]);
+
+  const getTeamRoster = useCallback(async (teamId: string) => {
+    return getApi().getTeamRoster(teamId);
+  }, [getApi]);
+
+  const getFullRoster = useCallback(async (teamId: string) => {
+    return getApi().getFullRoster(teamId);
+  }, [getApi]);
+
+  const getPlayer = useCallback(async (playerId: string) => {
+    return getApi().getPlayer(playerId);
+  }, [getApi]);
+
+  const getLeagueLeaders = useCallback(async (stat: string, limit?: number) => {
+    return getApi().getLeagueLeaders(stat, limit);
+  }, [getApi]);
+
+  const getPlayoffBracket = useCallback(async () => {
+    return getApi().getPlayoffBracket();
+  }, [getApi]);
+
+  const searchPlayers = useCallback(async (query: string, limit?: number) => {
+    return getApi().searchPlayers(query, limit);
+  }, [getApi]);
+
+  return {
+    ping, newGame, simDay, simWeek, simMonth, getState,
+    getStandings, getTeamRoster, getFullRoster, getPlayer,
+    getLeagueLeaders, getPlayoffBracket, searchPlayers,
+    isReady,
+  };
 }

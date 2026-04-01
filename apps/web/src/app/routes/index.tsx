@@ -12,6 +12,9 @@ const RosterPage = lazy(
 const PlayersPage = lazy(
   () => import('@/features/players/routes/PlayersPage')
 );
+const PlayerProfilePage = lazy(
+  () => import('@/features/players/routes/PlayerProfilePage')
+);
 const ScoutingPage = lazy(
   () => import('@/features/scouting/routes/ScoutingPage')
 );
@@ -55,9 +58,12 @@ export function AppRoutes() {
           <Route index element={<DashboardPage />} />
           <Route path="roster" element={<RosterPage />} />
           <Route path="players" element={<PlayersPage />} />
+          <Route path="players/:playerId" element={<PlayerProfilePage />} />
           <Route path="scouting" element={<ScoutingPage />} />
           <Route path="draft" element={<DraftPage />} />
           <Route path="trade" element={<TradePage />} />
+          <Route path="standings" element={<StandingsPage />} />
+          <Route path="leaders" element={<LeadersPage />} />
           <Route path="league">
             <Route path="standings" element={<StandingsPage />} />
             <Route path="leaders" element={<LeadersPage />} />
