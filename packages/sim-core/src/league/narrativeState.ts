@@ -225,6 +225,24 @@ export function evaluateOwnerState(
   };
 }
 
+export function applyOwnerDecisionDelta(
+  owner: OwnerState,
+  delta: number,
+  summary: string,
+): OwnerState {
+  const patience = clampScore(owner.patience + delta);
+  const confidence = clampScore(owner.confidence + delta);
+  const hotSeat = patience < 45 || confidence < 45;
+
+  return {
+    ...owner,
+    patience,
+    confidence,
+    hotSeat,
+    summary,
+  };
+}
+
 export function buildFrontOfficeBriefing(context: BriefingContext): BriefingItem[] {
   const ownerItem: BriefingItem = {
     id: `${context.teamId}-owner-summary`,

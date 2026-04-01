@@ -35,6 +35,7 @@ export {
   calculateTeamChemistry,
   createOwnerState,
   evaluateOwnerState,
+  applyOwnerDecisionDelta,
   buildFrontOfficeBriefing,
 } from './narrativeState.js';
 export type {

@@ -78,6 +78,12 @@ import {
   recordSeasonHistory,
   refreshNarrativeState,
 } from './sim.worker.narrative.js';
+import {
+  applyPostseasonConsequences,
+  applyRetirementConsequences,
+  applySigningConsequences,
+  applyTradeConsequences,
+} from './sim.worker.consequences.js';
 
 // ---------------------------------------------------------------------------
 // Worker API
@@ -159,7 +165,8 @@ export const api = {
         s.playoffBracket = simulatePlayoffs(s.rng, seeds, s.players);
       }
       ensureAwardHistoryForSeason(s);
-      recordSeasonHistory(s);
+      const seasonMoments = applyPostseasonConsequences(s);
+      recordSeasonHistory(s, seasonMoments);
       s.phase = 'offseason'; s.day = 1;
       return { day: 1, season: s.season, phase: 'offseason', gamesPlayed: 0, seasonComplete: true };
     }
@@ -172,6 +179,7 @@ export const api = {
         recordBreakoutNarratives(s, beforePlayers, developedPlayers);
         s.players = developedPlayers;
         const retired = determineRetirements(s.rng.fork(), s.players);
+        applyRetirementConsequences(s, retired);
         s.players = s.players.filter(p => !retired.includes(p.id));
         s.season++; s.day = 1; s.phase = 'preseason';
         s.playoffBracket = null; s.offseasonState = null;
@@ -435,15 +443,18 @@ export const api = {
     const s = requireState();
     const gm = s.gmPersonalities.get(toTeamId);
     if (!gm) return { decision: 'rejected', reason: 'Unknown team' };
+    const preTradeUserPlayers = getTeamPlayers(s.userTeamId);
+    const preTradePartnerPlayers = getTeamPlayers(toTeamId);
     const proposal: TradeProposal = { id: generateTradeId(s.rng.fork()),
       fromTeamId: s.userTeamId, toTeamId, playersOffered: offered,
       playersRequested: requested, status: 'proposed', reason: '' };
     const result = evaluateTradeProposal(
-      s.rng.fork(), proposal, getTeamPlayers(s.userTeamId), getTeamPlayers(toTeamId), gm, false);
+      s.rng.fork(), proposal, preTradeUserPlayers, preTradePartnerPlayers, gm, false);
     if (result.decision === 'accepted') {
       executeTrade(proposal, s.players);
       s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
       s.rosterStates.set(toTeamId, buildRosterState(toTeamId, s.players));
+      applyTradeConsequences(s, offered, requested, toTeamId, preTradeUserPlayers, preTradePartnerPlayers);
     }
     return { decision: result.decision, reason: result.reason, counter: result.counter ?? undefined };
   },
@@ -507,10 +518,40 @@ export const api = {
   makeContractOffer(playerId: string, years: number, salary: number) {
     const s = requireState();
     if (!s.freeAgencyMarket) s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
+    const freeAgent = s.freeAgencyMarket.freeAgents.find((candidate) => candidate.player.id === playerId);
     const offer: ContractOffer = { teamId: s.userTeamId, playerId, years, annualSalary: salary,
       totalValue: years * salary, noTradeClause: false, playerOption: false,
       teamOption: false, signingBonus: 0 };
-    return makeUserOffer(s.freeAgencyMarket, offer);
+    const result = makeUserOffer(s.freeAgencyMarket, offer);
+    if (!result.accepted || !freeAgent) return result;
+
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    if (!player) return result;
+
+    const previousTeamId = player.teamId;
+    player.teamId = s.userTeamId;
+    player.contract = {
+      years,
+      annualSalary: salary,
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+    };
+
+    s.freeAgencyMarket.freeAgents = s.freeAgencyMarket.freeAgents.filter(
+      (candidate) => candidate.player.id !== playerId,
+    );
+    s.freeAgencyMarket.signedPlayers.push({
+      ...freeAgent,
+      player,
+      signedWith: s.userTeamId,
+      contract: offer,
+    });
+
+    s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+    s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
+    return result;
   },
 
   // -----------------------------------------------------------------------

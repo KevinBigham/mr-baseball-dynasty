@@ -881,3 +881,25 @@ export function generateSeasonRecap(
 
   return items;
 }
+
+export function generateRetirementNews(
+  rng: GameRNG,
+  player: GeneratedPlayer,
+  season: number,
+  day: number,
+  teamName?: string,
+): NewsItem {
+  const club = teamName ?? player.teamId.toUpperCase();
+
+  return {
+    id: generateNewsId(rng),
+    headline: `${player.firstName} ${player.lastName} calls it a career.`,
+    body: `${player.firstName} ${player.lastName} has retired from baseball after closing out his run with ${club}.`,
+    priority: 2,
+    category: 'roster_move',
+    timestamp: formatTimestamp(season, day),
+    relatedPlayerIds: [player.id],
+    relatedTeamIds: [player.teamId],
+    read: false,
+  };
+}

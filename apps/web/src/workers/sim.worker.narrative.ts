@@ -46,7 +46,20 @@ function dedupeBriefing(items: BriefingItem[]): BriefingItem[] {
     seen.add(item.id);
     deduped.push(item);
   }
-  return deduped.sort((a, b) => a.priority - b.priority);
+
+  const parseTimestamp = (value: string): number => {
+    if (value === 'NOW') return Number.MAX_SAFE_INTEGER;
+    const match = /^S(\d+)D(\d+)$/.exec(value);
+    if (!match) return 0;
+    return Number(match[1]) * 1000 + Number(match[2]);
+  };
+
+  return deduped
+    .sort((left, right) => {
+      if (left.priority !== right.priority) return left.priority - right.priority;
+      return parseTimestamp(right.timestamp) - parseTimestamp(left.timestamp);
+    })
+    .slice(0, 25);
 }
 
 function setStoryFlag(state: FullGameState, key: string, flag: string) {
@@ -56,13 +69,13 @@ function setStoryFlag(state: FullGameState, key: string, flag: string) {
   }
 }
 
-function rebuildBriefing(state: FullGameState) {
+export function rebuildBriefing(state: FullGameState) {
   const ownerState = state.ownerState.get(state.userTeamId);
   const chemistry = state.teamChemistry.get(state.userTeamId);
   if (!ownerState || !chemistry) return;
 
   const persistentItems = state.briefingQueue.filter(
-    (item) => item.category === 'breakout' || item.category === 'award',
+    (item) => item.category === 'breakout' || item.category === 'award' || item.category === 'news',
   );
 
   state.briefingQueue = dedupeBriefing([
@@ -196,20 +209,23 @@ export function ensureAwardHistoryForSeason(state: FullGameState) {
   ]);
 }
 
-export function recordSeasonHistory(state: FullGameState) {
+export function recordSeasonHistory(state: FullGameState, consequenceMoments: string[] = []) {
   if (state.seasonHistory.some((entry) => entry.season === state.season)) return;
 
   const awards = state.awardHistory.filter((entry) => entry.season === state.season);
   const summary = state.playoffBracket?.champion
     ? `${state.playoffBracket.champion.toUpperCase()} finished the story on top.`
     : 'Season closed without a recorded champion.';
+  const keyMoments = [...consequenceMoments, ...state.news.slice(0, 5).map((item) => item.headline)]
+    .filter((moment, index, moments) => moments.indexOf(moment) === index)
+    .slice(0, 5);
 
   const entry: SeasonHistoryEntry = {
     season: state.season,
     championTeamId: state.playoffBracket?.champion ?? null,
     summary,
     awards,
-    keyMoments: state.news.slice(0, 5).map((item) => item.headline),
+    keyMoments,
   };
 
   state.seasonHistory.push(entry);

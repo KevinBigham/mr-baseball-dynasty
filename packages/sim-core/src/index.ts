@@ -77,6 +77,7 @@ export {
   calculateTeamChemistry,
   createOwnerState,
   evaluateOwnerState,
+  applyOwnerDecisionDelta,
   buildFrontOfficeBriefing,
   calculateAwardRaces,
   finalizeAwardResults,
@@ -297,6 +298,11 @@ export {
   markAsRead,
   deduplicateNews,
   generateSeasonRecap,
+  generateRetirementNews,
+  buildTradeConsequenceBundle,
+  buildSigningConsequenceBundle,
+  buildPostseasonConsequenceBundle,
+  buildRetirementConsequenceBundle,
 } from './narrative/index.js';
 export type {
   NewsPriority,
@@ -305,4 +311,12 @@ export type {
   MomentType,
   Moment,
   GameEvent,
+  OwnerDecisionDelta,
+  PlayerMoraleDelta,
+  ConsequenceBundle,
+  TradeConsequenceContext,
+  SigningConsequenceContext,
+  PostseasonConsequenceContext,
+  RetirementConsequenceContext,
+  UserPostseasonOutcome,
 } from './narrative/index.js';
