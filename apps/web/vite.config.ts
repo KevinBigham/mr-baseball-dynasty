@@ -12,6 +12,9 @@ export default defineConfig({
       '@mbd/sim-core': path.resolve(__dirname, '../../packages/sim-core/src/index.ts'),
       '@mbd/sim-worker': path.resolve(__dirname, '../../packages/sim-worker/src/index.ts'),
       '@mbd/ui': path.resolve(__dirname, '../../packages/ui/src/index.ts'),
+      // Deduplicate React — prevent multiple instances in monorepo
+      'react': path.resolve(__dirname, 'node_modules/react'),
+      'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
     },
   },
   worker: {

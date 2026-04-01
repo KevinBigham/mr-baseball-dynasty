@@ -1,98 +1,99 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
 import type { WorkerApi } from '@/workers/sim.worker';
 
+// ---------------------------------------------------------------------------
+// Singleton worker — shared across all components
+// ---------------------------------------------------------------------------
+
+let singletonApi: Comlink.Remote<WorkerApi> | null = null;
+let singletonWorker: Worker | null = null;
+let ready = false;
+const listeners = new Set<() => void>();
+
+function notifyListeners() {
+  for (const l of listeners) l();
+}
+
+function getOrCreateWorker(): Comlink.Remote<WorkerApi> {
+  if (singletonApi) return singletonApi;
+
+  singletonWorker = new Worker(
+    new URL('../../workers/sim.worker.ts', import.meta.url),
+    { type: 'module' },
+  );
+  singletonApi = Comlink.wrap<WorkerApi>(singletonWorker);
+
+  singletonApi
+    .ping()
+    .then(() => {
+      ready = true;
+      notifyListeners();
+    })
+    .catch((err: unknown) => {
+      console.error('Worker ping failed:', err);
+    });
+
+  return singletonApi;
+}
+
+function subscribe(cb: () => void) {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+function getSnapshot() {
+  return ready;
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useWorker() {
-  const workerRef = useRef<Comlink.Remote<WorkerApi> | null>(null);
-  const rawWorkerRef = useRef<Worker | null>(null);
-  const [isReady, setIsReady] = useState(false);
+  const api = useMemo(() => getOrCreateWorker(), []);
+  const isReady = useSyncExternalStore(subscribe, getSnapshot);
 
-  useEffect(() => {
-    const worker = new Worker(
-      new URL('../../workers/sim.worker.ts', import.meta.url),
-      { type: 'module' }
-    );
-    rawWorkerRef.current = worker;
-    const wrapped = Comlink.wrap<WorkerApi>(worker);
-    workerRef.current = wrapped;
-
-    wrapped
-      .ping()
-      .then(() => setIsReady(true))
-      .catch((err: unknown) => {
-        console.error('Worker ping failed:', err);
-        setIsReady(false);
-      });
-
-    return () => {
-      worker.terminate();
-      workerRef.current = null;
-      rawWorkerRef.current = null;
-      setIsReady(false);
-    };
-  }, []);
-
-  const getApi = useCallback((): Comlink.Remote<WorkerApi> => {
-    if (!workerRef.current) {
-      throw new Error('Worker not initialized');
-    }
-    return workerRef.current;
-  }, []);
-
-  const ping = useCallback(async () => {
-    return getApi().ping();
-  }, [getApi]);
+  const ping = useCallback(async () => api.ping(), [api]);
 
   const newGame = useCallback(
-    async (seed: number, userTeamId?: string) => {
-      return getApi().newGame(seed, userTeamId);
-    },
-    [getApi]
+    async (seed: number, userTeamId?: string) => api.newGame(seed, userTeamId),
+    [api],
   );
 
-  const simDay = useCallback(async () => {
-    return getApi().simDay();
-  }, [getApi]);
+  const simDay = useCallback(async () => api.simDay(), [api]);
+  const simWeek = useCallback(async () => api.simWeek(), [api]);
+  const simMonth = useCallback(async () => api.simMonth(), [api]);
+  const getState = useCallback(async () => api.getState(), [api]);
 
-  const simWeek = useCallback(async () => {
-    return getApi().simWeek();
-  }, [getApi]);
+  const getStandings = useCallback(async () => api.getStandings(), [api]);
 
-  const simMonth = useCallback(async () => {
-    return getApi().simMonth();
-  }, [getApi]);
+  const getTeamRoster = useCallback(
+    async (teamId: string) => api.getTeamRoster(teamId),
+    [api],
+  );
 
-  const getState = useCallback(async () => {
-    return getApi().getState();
-  }, [getApi]);
+  const getFullRoster = useCallback(
+    async (teamId: string) => api.getFullRoster(teamId),
+    [api],
+  );
 
-  const getStandings = useCallback(async () => {
-    return getApi().getStandings();
-  }, [getApi]);
+  const getPlayer = useCallback(
+    async (playerId: string) => api.getPlayer(playerId),
+    [api],
+  );
 
-  const getTeamRoster = useCallback(async (teamId: string) => {
-    return getApi().getTeamRoster(teamId);
-  }, [getApi]);
+  const getLeagueLeaders = useCallback(
+    async (stat: string, limit?: number) => api.getLeagueLeaders(stat, limit),
+    [api],
+  );
 
-  const getFullRoster = useCallback(async (teamId: string) => {
-    return getApi().getFullRoster(teamId);
-  }, [getApi]);
+  const getPlayoffBracket = useCallback(async () => api.getPlayoffBracket(), [api]);
 
-  const getPlayer = useCallback(async (playerId: string) => {
-    return getApi().getPlayer(playerId);
-  }, [getApi]);
-
-  const getLeagueLeaders = useCallback(async (stat: string, limit?: number) => {
-    return getApi().getLeagueLeaders(stat, limit);
-  }, [getApi]);
-
-  const getPlayoffBracket = useCallback(async () => {
-    return getApi().getPlayoffBracket();
-  }, [getApi]);
-
-  const searchPlayers = useCallback(async (query: string, limit?: number) => {
-    return getApi().searchPlayers(query, limit);
-  }, [getApi]);
+  const searchPlayers = useCallback(
+    async (query: string, limit?: number) => api.searchPlayers(query, limit),
+    [api],
+  );
 
   return {
     ping, newGame, simDay, simWeek, simMonth, getState,

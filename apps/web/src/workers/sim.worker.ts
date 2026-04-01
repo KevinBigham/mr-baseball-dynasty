@@ -202,7 +202,7 @@ const api = {
     if (state.phase === 'preseason') {
       state.phase = 'regular';
       state.day = 1;
-      return { day: 1, season: state.season, phase: 'regular', gamesPlayed: 0, seasonComplete: false };
+      // Fall through to simulate the first day of the regular season
     }
 
     if (state.phase === 'regular') {
