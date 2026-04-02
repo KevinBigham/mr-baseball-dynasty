@@ -31,6 +31,11 @@ function addStoryFlag(state: FullGameState, flag: string) {
   }
 }
 
+function teamLabel(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
 function applyConsequenceBundle(state: FullGameState, bundle: ConsequenceBundle) {
   if (bundle.newsItems.length > 0) {
     state.news = deduplicateNews([...bundle.newsItems, ...state.news]);
@@ -63,6 +68,51 @@ function applyConsequenceBundle(state: FullGameState, bundle: ConsequenceBundle)
   for (const flag of bundle.storyFlags) {
     addStoryFlag(state, flag);
   }
+
+  state.teamChemistry.set(
+    state.userTeamId,
+    calculateTeamChemistry(state.userTeamId, state.players, state.playerMorale),
+  );
+  rebuildBriefing(state);
+}
+
+export function applySeriesOutcomeConsequences(
+  state: FullGameState,
+  winnerId: string,
+  loserId: string,
+) {
+  if (winnerId !== state.userTeamId && loserId !== state.userTeamId) {
+    return;
+  }
+
+  const userAdvanced = winnerId === state.userTeamId;
+  const opponentId = userAdvanced ? loserId : winnerId;
+  const summary = userAdvanced
+    ? `${teamLabel(state.userTeamId)} advanced past ${teamLabel(opponentId)}.`
+    : `${teamLabel(state.userTeamId)} was knocked out by ${teamLabel(opponentId)}.`;
+  const impact = userAdvanced ? 6 : -7;
+
+  for (const player of getTeamPlayers(state.userTeamId)) {
+    if (player.rosterStatus !== 'MLB') continue;
+    const current = state.playerMorale.get(player.id) ?? createInitialPlayerMorale(player, `S${state.season}D${state.day}`);
+    state.playerMorale.set(player.id, applyMoraleEvent(player, current, {
+      type: userAdvanced ? 'win' : 'loss',
+      impact,
+      summary,
+      timestamp: `S${state.season}D${state.day}`,
+    }));
+  }
+
+  const currentOwner = state.ownerState.get(state.userTeamId)
+    ?? createOwnerState(state.userTeamId, getTeamBudget(state.userTeamId));
+  state.ownerState.set(
+    state.userTeamId,
+    applyOwnerDecisionDelta(
+      currentOwner,
+      userAdvanced ? 5 : -8,
+      userAdvanced ? `Ownership loved the series win over ${teamLabel(opponentId)}.` : summary,
+    ),
+  );
 
   state.teamChemistry.set(
     state.userTeamId,

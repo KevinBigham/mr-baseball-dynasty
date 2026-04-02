@@ -40,11 +40,23 @@ export type {
 export {
   buildPlayoffPreview,
   determinePlayoffSeeds,
+  initializePlayoffBracket,
+  simPlayoffGame,
+  simNextPlayoffGame,
+  simPlayoffSeries,
+  simPlayoffRound,
+  advancePlayoffRound,
+  isPlayoffComplete,
   simulateSeries,
   simulatePlayoffs,
 } from './playoffSimulator.js';
 export type {
+  LeagueId,
   PlayoffSeed,
+  PlayoffKeyPerformer,
+  PlayoffGameResult,
+  PlayoffSeriesState,
+  CompletedRoundResult,
   PlayoffPreviewSeries,
   PlayoffPreviewTeamSlot,
   SeriesResult,

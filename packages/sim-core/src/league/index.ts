@@ -58,3 +58,22 @@ export {
   upsertRivalry,
   deriveRivalriesFromStandings,
 } from './rivalries.js';
+
+export {
+  evaluateHOFCandidate,
+  processHOFInductions,
+  calculateDynastyScore,
+} from './hallOfFame.js';
+export type {
+  CareerBattingTotals,
+  CareerPitchingTotals,
+  CareerStatsLedger,
+  HallOfFameCandidate,
+  HallOfFameEvaluation,
+  HallOfFameEntry,
+  HallOfFameBallotEntry,
+  ProcessHOFInductionsArgs,
+  ProcessHOFInductionsResult,
+  FranchiseTimelineEntry,
+  DynastyScoreSummary,
+} from './hallOfFame.js';

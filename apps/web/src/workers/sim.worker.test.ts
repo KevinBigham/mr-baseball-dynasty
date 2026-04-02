@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AwardHistoryEntry } from '@mbd/contracts';
 import {
   createOffseasonState,
   evaluatePlayerTradeValue,
@@ -256,13 +257,50 @@ describe('sim worker narrative APIs', () => {
     state.seasonHistory = [];
     state.playoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 101, losses: 61 },
-        { teamId: 'bos', seed: 2, wins: 95, losses: 67 },
+        { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+        { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
       ],
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: [
+        {
+          id: 'WS-1',
+          round: 'WORLD_SERIES',
+          league: 'MLB',
+          bestOf: 7,
+          higherSeed: { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          games: [],
+          higherSeedWins: 4,
+          lowerSeedWins: 2,
+          leaderSummary: 'NYY won 4-2',
+          status: 'complete',
+          winnerId: 'nyy',
+          loserId: 'lad',
+        },
+      ],
+      completedRounds: [{
+        round: 'WORLD_SERIES',
+        series: [{
+          id: 'WS-1',
+          round: 'WORLD_SERIES',
+          league: 'MLB',
+          bestOf: 7,
+          higherSeed: { teamId: 'nyy', seed: 1, wins: 101, losses: 61, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          games: [],
+          higherSeedWins: 4,
+          lowerSeedWins: 2,
+          leaderSummary: 'NYY won 4-2',
+          status: 'complete',
+          winnerId: 'nyy',
+          loserId: 'lad',
+        }],
+      }],
       series: [
-        { winnerId: 'nyy', loserId: 'bos', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
+        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
       ],
       champion: 'nyy',
+      runnerUp: 'lad',
     };
     const beforeOwner = api.getOwnerState('nyy');
 
@@ -519,13 +557,50 @@ describe('sim worker narrative APIs', () => {
     state.seasonHistory = [];
     state.playoffBracket = {
       seeds: [
-        { teamId: 'nyy', seed: 1, wins: 99, losses: 63 },
-        { teamId: 'lad', seed: 2, wins: 98, losses: 64 },
+        { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+        { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
       ],
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: [
+        {
+          id: 'WS-1',
+          round: 'WORLD_SERIES',
+          league: 'MLB',
+          bestOf: 7,
+          higherSeed: { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          games: [],
+          higherSeedWins: 4,
+          lowerSeedWins: 2,
+          leaderSummary: 'NYY won 4-2',
+          status: 'complete',
+          winnerId: 'nyy',
+          loserId: 'lad',
+        },
+      ],
+      completedRounds: [{
+        round: 'WORLD_SERIES',
+        series: [{
+          id: 'WS-1',
+          round: 'WORLD_SERIES',
+          league: 'MLB',
+          bestOf: 7,
+          higherSeed: { teamId: 'nyy', seed: 1, wins: 99, losses: 63, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lad', seed: 1, wins: 98, losses: 64, league: 'NL', divisionWinner: true },
+          games: [],
+          higherSeedWins: 4,
+          lowerSeedWins: 2,
+          leaderSummary: 'NYY won 4-2',
+          status: 'complete',
+          winnerId: 'nyy',
+          loserId: 'lad',
+        }],
+      }],
       series: [
         { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 2, games: [], round: 'WORLD_SERIES' },
       ],
       champion: 'nyy',
+      runnerUp: 'lad',
     };
     state.seasonState.playerSeasonStats.clear();
     for (const [playerId, stats] of new Map([
@@ -802,7 +877,7 @@ describe('sim worker narrative APIs', () => {
     expect(result.phase).toBe('playoffs');
     expect(requireState().playoffBracket).toBeNull();
     expect(flow.status).toBe('regular_season_complete');
-    expect(flow.action).toBe('proceed_to_playoffs');
+    expect(flow.action).toBe('watch_playoffs');
   });
 
   it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
@@ -820,7 +895,7 @@ describe('sim worker narrative APIs', () => {
     expect(preview.phase).toBe('playoffs');
     expect(requireState().playoffBracket?.champion).toBeNull();
     expect(flow.status).toBe('playoff_preview');
-    expect(flow.action).toBe('sim_playoffs');
+    expect(flow.action).toBe('watch_playoffs');
 
     const completed = api.simDay();
     flow = api.getSeasonFlowState() as { status: string; action: string | null };
@@ -852,6 +927,158 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().season).toBe(2);
     expect(requireState().playoffBracket).toBeNull();
     expect(requireState().offseasonState).toBeNull();
+  });
+
+  it('supports interactive playoff progression through game, series, round, and remaining-bracket APIs', () => {
+    api.newGame(512, 'nyy');
+    const state = requireState();
+    state.phase = 'playoffs';
+    state.day = 1;
+    state.playoffBracket = null;
+
+    const preview = api.simDay();
+    expect(preview.phase).toBe('playoffs');
+    expect(requireState().playoffBracket?.currentRound).toBe('WILD_CARD');
+    expect(requireState().playoffBracket?.champion).toBeNull();
+
+    const afterGame = (api as typeof api & { simPlayoffGame: () => { phase: string } }).simPlayoffGame();
+    expect(afterGame.phase).toBe('playoffs');
+    expect(requireState().playoffBracket?.currentRoundSeries[0]?.games.length).toBe(1);
+
+    (api as typeof api & { simPlayoffSeries: () => { phase: string } }).simPlayoffSeries();
+    expect(requireState().playoffBracket?.series.length).toBeGreaterThanOrEqual(1);
+
+    (api as typeof api & { simPlayoffRound: () => { phase: string } }).simPlayoffRound();
+    expect(requireState().playoffBracket?.currentRound).toBe('DIVISION_SERIES');
+
+    (api as typeof api & { simRemainingPlayoffs: () => { phase: string } }).simRemainingPlayoffs();
+    expect(requireState().playoffBracket?.champion).toBeTruthy();
+  });
+
+  it('processes hall of fame inductions and updates the franchise timeline across rollover', () => {
+    api.newGame(513, 'nyy');
+    const state = requireState();
+    const icon = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+    )!;
+
+    icon.firstName = 'Derek';
+    icon.lastName = 'Monroe';
+    icon.age = 45;
+    icon.overallRating = 550;
+    icon.hitterAttributes.durability = 40;
+    state.serviceTime.set(icon.id, 12);
+    state.awardHistory.push({
+      season: state.season,
+      award: 'MVP',
+      league: 'AL',
+      playerId: icon.id,
+      teamId: 'nyy',
+      summary: `${icon.firstName} ${icon.lastName} won AL MVP.`,
+    } satisfies AwardHistoryEntry);
+    state.seasonState.playerSeasonStats.set(icon.id, createPlayerStats({
+      playerId: icon.id,
+      teamId: 'nyy',
+      pa: 780,
+      ab: 680,
+      hits: 320,
+      hr: 105,
+      rbi: 180,
+      bb: 95,
+      runs: 140,
+    }));
+
+    state.phase = 'playoffs';
+    state.playoffBracket = {
+      seeds: [
+        { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+        { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+      ],
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: [{
+        id: 'WS-1',
+        round: 'WORLD_SERIES',
+        league: 'MLB',
+        bestOf: 7,
+        higherSeed: { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+        lowerSeed: { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+        games: [],
+        higherSeedWins: 4,
+        lowerSeedWins: 1,
+        leaderSummary: 'NYY won 4-1',
+        status: 'complete',
+        winnerId: 'nyy',
+        loserId: 'lad',
+      }],
+      completedRounds: [{
+        round: 'WORLD_SERIES',
+        series: [{
+          id: 'WS-1',
+          round: 'WORLD_SERIES',
+          league: 'MLB',
+          bestOf: 7,
+          higherSeed: { teamId: 'nyy', seed: 1, wins: 103, losses: 59, league: 'AL', divisionWinner: true },
+          lowerSeed: { teamId: 'lad', seed: 1, wins: 97, losses: 65, league: 'NL', divisionWinner: true },
+          games: [],
+          higherSeedWins: 4,
+          lowerSeedWins: 1,
+          leaderSummary: 'NYY won 4-1',
+          status: 'complete',
+          winnerId: 'nyy',
+          loserId: 'lad',
+        }],
+      }],
+      series: [
+        { winnerId: 'nyy', loserId: 'lad', winnerWins: 4, loserWins: 1, games: [], round: 'WORLD_SERIES' },
+      ],
+      champion: 'nyy',
+      runnerUp: 'lad',
+    };
+
+    api.simDay();
+    api.proceedToOffseason();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      completed: true,
+    };
+
+    state.hallOfFameBallot = [{
+      playerId: icon.id,
+      playerName: `${icon.firstName} ${icon.lastName}`,
+      position: icon.position,
+      careerStats: {
+        playerId: icon.id,
+        playerName: `${icon.firstName} ${icon.lastName}`,
+        position: icon.position,
+        seasonsPlayed: 13,
+        teamIds: ['nyy'],
+        peakOverall: 80,
+        championshipRings: 1,
+        allStarSelections: 0,
+        batting: {
+          hits: 320,
+          hr: 105,
+          rbi: 180,
+        },
+        pitching: null,
+      },
+      score: 78,
+      enteredBallotSeason: state.season,
+      inductionSeason: state.season + 1,
+    }];
+    api.startNextSeason();
+
+    const hallOfFame = (api as typeof api & { getHallOfFame: () => Array<{ playerId: string }> }).getHallOfFame();
+    const timeline = (api as typeof api & { getFranchiseTimeline: () => Array<{ championship: boolean; playoffResult: string; dynastyScore: number }> }).getFranchiseTimeline();
+    const dynasty = (api as typeof api & { getDynastyScore: () => { score: number; grade: string } | null }).getDynastyScore();
+
+    expect(hallOfFame.some((entry) => entry.playerId === icon.id)).toBe(true);
+    expect(timeline[0]?.championship).toBe(true);
+    expect(timeline[0]?.playoffResult).toContain('Champion');
+    expect(timeline[0]?.dynastyScore).toBeGreaterThan(0);
+    expect(dynasty?.grade).not.toBe('F');
+    expect(requireState().careerStats.find((entry) => entry.playerId === icon.id)?.seasonsPlayed).toBeGreaterThanOrEqual(13);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

@@ -146,6 +146,10 @@ function createState(): FullGameState {
       pendingOffers: [],
       tradeHistory: [],
     },
+    hallOfFame: [],
+    hallOfFameBallot: [],
+    franchiseTimeline: [],
+    careerStats: [],
   };
 }
 
@@ -156,7 +160,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(4);
+    expect(snapshot.schemaVersion).toBe(5);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -178,7 +182,7 @@ describe('snapshot helpers', () => {
     expect(restored.tradeState.tradeHistory).toEqual([]);
   });
 
-  it('migrates v2 snapshots into the v4 narrative, stat, and trade shape', () => {
+  it('migrates v2 snapshots into the v5 narrative, stat, trade, and legacy shape', () => {
     const snapshot = exportGameSnapshot(createState());
     const v2Snapshot = {
       ...snapshot,
@@ -239,11 +243,13 @@ describe('snapshot helpers', () => {
     expect(restored.awardHistory[0]?.league).toBe('MLB');
     expect(restored.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(restored.seasonHistory[0]?.statLeaders.hr).toEqual([]);
+    expect(restored.hallOfFame).toEqual([]);
+    expect(restored.franchiseTimeline).toEqual([]);
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
   });
 
-  it('migrates v3 snapshots into the v4 trade state shape', () => {
+  it('migrates v3 snapshots into the v5 trade and legacy state shape', () => {
     const snapshot = exportGameSnapshot(createState());
     const v3Snapshot = {
       ...snapshot,
@@ -254,6 +260,32 @@ describe('snapshot helpers', () => {
 
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
+    expect(restored.hallOfFameBallot).toEqual([]);
+  });
+
+  it('migrates v4 snapshots into the v5 legacy state shape', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const v4Snapshot = {
+      ...snapshot,
+      schemaVersion: 4,
+      narrative: {
+        playerMorale: [],
+        teamChemistry: [],
+        ownerState: [],
+        briefingQueue: [],
+        storyFlags: [],
+        rivalries: [],
+        awardHistory: [],
+        seasonHistory: [],
+      },
+    } as unknown as GameSnapshot;
+
+    const restored = importGameSnapshot(v4Snapshot);
+
+    expect(restored.hallOfFame).toEqual([]);
+    expect(restored.hallOfFameBallot).toEqual([]);
+    expect(restored.franchiseTimeline).toEqual([]);
+    expect(restored.careerStats).toEqual([]);
   });
 
   it('rejects unsupported snapshot schema versions', () => {

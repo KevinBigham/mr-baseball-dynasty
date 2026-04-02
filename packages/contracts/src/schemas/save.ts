@@ -11,6 +11,10 @@ import {
 import {
   AwardHistoryEntrySchema,
   BriefingItemSchema,
+  CareerStatsLedgerSchema,
+  FranchiseTimelineEntrySchema,
+  HallOfFameBallotEntrySchema,
+  HallOfFameEntrySchema,
   NewsItemSchema,
   OwnerStateSchema,
   PlayerMoraleSchema,
@@ -173,6 +177,10 @@ export const NarrativeSnapshotSchema = z.object({
   storyFlags: z.array(StoryFlagEntrySchema),
   rivalries: z.array(RivalryEntrySchema),
   awardHistory: z.array(AwardHistoryEntrySchema),
+  hallOfFame: z.array(HallOfFameEntrySchema),
+  hallOfFameBallot: z.array(HallOfFameBallotEntrySchema),
+  franchiseTimeline: z.array(FranchiseTimelineEntrySchema),
+  careerStats: z.array(CareerStatsLedgerSchema),
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 export type NarrativeSnapshot = z.infer<typeof NarrativeSnapshotSchema>;
@@ -204,7 +212,18 @@ const LegacyNarrativeSnapshotSchema = z.object({
   seasonHistory: z.array(LegacySeasonHistoryEntrySchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 4;
+const NarrativeSnapshotV4Schema = z.object({
+  playerMorale: z.array(PlayerMoraleEntrySchema),
+  teamChemistry: z.array(TeamChemistryEntrySchema),
+  ownerState: z.array(OwnerStateEntrySchema),
+  briefingQueue: z.array(BriefingItemSchema),
+  storyFlags: z.array(StoryFlagEntrySchema),
+  rivalries: z.array(RivalryEntrySchema),
+  awardHistory: z.array(AwardHistoryEntrySchema),
+  seasonHistory: z.array(SeasonHistoryEntrySchema),
+});
+
+export const CURRENT_GAME_SNAPSHOT_VERSION = 5;
 
 export const GameSnapshotSchema = z.object({
   schemaVersion: z.literal(CURRENT_GAME_SNAPSHOT_VERSION),
@@ -230,6 +249,31 @@ export const GameSnapshotSchema = z.object({
   tradeState: TradeStateSchema,
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV4Schema = z.object({
+  schemaVersion: z.literal(4),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  narrative: NarrativeSnapshotV4Schema,
+  tradeState: TradeStateSchema,
+});
+export type GameSnapshotV4 = z.infer<typeof GameSnapshotV4Schema>;
 
 export const GameSnapshotV3Schema = z.object({
   schemaVersion: z.literal(3),
@@ -308,6 +352,15 @@ function createEmptyTradeState() {
   };
 }
 
+function createEmptyLegacyState() {
+  return {
+    hallOfFame: [],
+    hallOfFameBallot: [],
+    franchiseTimeline: [],
+    careerStats: [],
+  };
+}
+
 export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
@@ -322,6 +375,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
         ...entry,
         league: "MLB" as const,
       })),
+      ...createEmptyLegacyState(),
       seasonHistory: snapshot.narrative.seasonHistory.map((entry) => ({
         ...entry,
         awards: entry.awards.map((award) => ({
@@ -344,7 +398,22 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      ...createEmptyLegacyState(),
+    },
     tradeState: createEmptyTradeState(),
+  });
+}
+
+function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    narrative: {
+      ...snapshot.narrative,
+      ...createEmptyLegacyState(),
+    },
   });
 }
 
@@ -365,6 +434,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 4
+  ) {
+    return migrateGameSnapshotV4(GameSnapshotV4Schema.parse(snapshotLike));
   }
 
   return GameSnapshotSchema.parse(snapshotLike);

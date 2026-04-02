@@ -168,6 +168,78 @@ export const AwardHistoryEntrySchema = z.object({
 });
 export type AwardHistoryEntry = z.infer<typeof AwardHistoryEntrySchema>;
 
+export const CareerBattingTotalsSchema = z.object({
+  hits: z.number().int().min(0),
+  hr: z.number().int().min(0),
+  rbi: z.number().int().min(0),
+});
+export type CareerBattingTotals = z.infer<typeof CareerBattingTotalsSchema>;
+
+export const CareerPitchingTotalsSchema = z.object({
+  wins: z.number().int().min(0),
+  strikeouts: z.number().int().min(0),
+  inningsPitched: z.number().min(0),
+  earnedRuns: z.number().int().min(0),
+});
+export type CareerPitchingTotals = z.infer<typeof CareerPitchingTotalsSchema>;
+
+export const CareerStatsLedgerSchema = z.object({
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  position: z.string().min(1),
+  seasonsPlayed: z.number().int().min(0),
+  teamIds: z.array(z.string()),
+  peakOverall: z.number().int().min(0).max(100),
+  championshipRings: z.number().int().min(0),
+  allStarSelections: z.number().int().min(0),
+  batting: CareerBattingTotalsSchema.nullable(),
+  pitching: CareerPitchingTotalsSchema.nullable(),
+});
+export type CareerStatsLedger = z.infer<typeof CareerStatsLedgerSchema>;
+
+export const HallOfFameEntrySchema = z.object({
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  position: z.string().min(1),
+  careerStats: CareerStatsLedgerSchema,
+  awards: z.array(z.string()),
+  seasonsPlayed: z.number().int().min(0),
+  teamIds: z.array(z.string()),
+  inductionSeason: z.number().int().min(1),
+  score: z.number().int().min(0),
+  inductionType: z.enum(["first_ballot", "ballot"]),
+  summary: z.string(),
+});
+export type HallOfFameEntry = z.infer<typeof HallOfFameEntrySchema>;
+
+export const HallOfFameBallotEntrySchema = z.object({
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  position: z.string().min(1),
+  careerStats: CareerStatsLedgerSchema,
+  score: z.number().int().min(0),
+  enteredBallotSeason: z.number().int().min(1),
+  inductionSeason: z.number().int().min(1),
+});
+export type HallOfFameBallotEntry = z.infer<typeof HallOfFameBallotEntrySchema>;
+
+export const FranchiseTimelineEntrySchema = z.object({
+  season: z.number().int().min(1),
+  teamId: z.string(),
+  record: z.string().min(1),
+  winTotal: z.number().int().min(0),
+  playoffResult: z.string().min(1),
+  championship: z.boolean(),
+  worldSeriesAppearance: z.boolean(),
+  playoffAppearance: z.boolean(),
+  divisionTitle: z.boolean(),
+  awardWinnerCount: z.number().int().min(0),
+  keyAcquisitions: z.array(z.string()),
+  keyDepartures: z.array(z.string()),
+  dynastyScore: z.number().int(),
+});
+export type FranchiseTimelineEntry = z.infer<typeof FranchiseTimelineEntrySchema>;
+
 export const SeasonStatLeaderSchema = z.object({
   playerId: z.string(),
   teamId: z.string(),

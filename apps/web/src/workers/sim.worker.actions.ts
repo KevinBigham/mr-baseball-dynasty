@@ -15,19 +15,27 @@ import {
   generateLeaguePlayers,
   generateSchedule,
   generateScoutingStaff,
+  getTeamById,
+  initializePlayoffBracket,
+  isPlayoffComplete,
   markAsRead,
   makeUserOffer,
   promotePlayer,
   recordRetirements,
   simulateDay,
   simulateMonth,
-  simulatePlayoffs,
+  simNextPlayoffGame,
+  simPlayoffRound as simPlayoffBracketRound,
+  simPlayoffSeries as simPlayoffBracketSeries,
   simulateWeek,
   generateTradeId,
   createFreeAgencyMarket,
 } from '@mbd/sim-core';
 import type {
   ContractOffer,
+  PlayoffBracket,
+  PlayoffGameResult,
+  PlayoffSeriesState,
   TradeProposal,
 } from '@mbd/sim-core';
 import {
@@ -69,9 +77,16 @@ import {
   applyAISigningConsequences,
   applyPostseasonConsequences,
   applyRetirementConsequences,
+  applySeriesOutcomeConsequences,
   applySigningConsequences,
   applyTradeConsequences,
 } from './sim.worker.consequences.js';
+import {
+  accrueCareerStatsForSeason,
+  enrichFranchiseTimelineWithDepartures,
+  processHallOfFameForRetirements,
+  upsertFranchiseTimelineEntry,
+} from './sim.worker.legacy.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -95,6 +110,232 @@ function applyAISigningProgress(
   }
 }
 
+function teamLabel(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
+
+function teamAbbreviation(teamId: string): string {
+  return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
+}
+
+function ordinal(value: number): string {
+  const mod100 = value % 100;
+  if (mod100 >= 11 && mod100 <= 13) {
+    return `${value}th`;
+  }
+  switch (value % 10) {
+    case 1:
+      return `${value}st`;
+    case 2:
+      return `${value}nd`;
+    case 3:
+      return `${value}rd`;
+    default:
+      return `${value}th`;
+  }
+}
+
+function roundLabel(round: PlayoffSeriesState['round']): string {
+  switch (round) {
+    case 'WILD_CARD':
+      return 'Wild Card Series';
+    case 'DIVISION_SERIES':
+      return 'Division Series';
+    case 'CHAMPIONSHIP_SERIES':
+      return 'Championship Series';
+    case 'WORLD_SERIES':
+      return 'World Series';
+  }
+}
+
+function uniqueSeriesFromBracket(bracket: PlayoffBracket): PlayoffSeriesState[] {
+  const seriesById = new Map<string, PlayoffSeriesState>();
+  for (const series of bracket.completedRounds.flatMap((round) => round.series)) {
+    seriesById.set(series.id, series);
+  }
+  for (const series of bracket.currentRoundSeries) {
+    seriesById.set(series.id, series);
+  }
+  return Array.from(seriesById.values()).sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function countBracketGames(bracket: PlayoffBracket): number {
+  return uniqueSeriesFromBracket(bracket).reduce((total, series) => total + series.games.length, 0);
+}
+
+function addPlayoffCoverage(
+  s: FullGameState,
+  id: string,
+  headline: string,
+  body: string,
+  relatedTeamIds: string[],
+  relatedPlayerIds: string[],
+  priority: 1 | 2 = 2,
+) {
+  if (!s.news.some((item) => item.id === id)) {
+    s.news.unshift({
+      id,
+      headline,
+      body,
+      priority,
+      category: 'playoff',
+      timestamp: timestamp(),
+      relatedPlayerIds,
+      relatedTeamIds,
+      read: false,
+    });
+  }
+
+  const briefingId = `brief-${id}`;
+  if (!s.briefingQueue.some((item) => item.id === briefingId)) {
+    s.briefingQueue.unshift({
+      id: briefingId,
+      priority,
+      category: 'news',
+      headline,
+      body,
+      relatedTeamIds,
+      relatedPlayerIds,
+      timestamp: timestamp(),
+      acknowledged: false,
+    });
+  }
+}
+
+function buildPlayoffGameCoverage(game: PlayoffGameResult, series: PlayoffSeriesState) {
+  const winnerScore = game.winnerId === game.homeTeamId ? game.homeScore : game.awayScore;
+  const loserScore = game.loserId === game.homeTeamId ? game.homeScore : game.awayScore;
+  const winnerAbbr = teamAbbreviation(game.winnerId);
+  const loserAbbr = teamAbbreviation(game.loserId);
+
+  let headline = `${winnerAbbr} take Game ${game.gameNumber}, ${winnerScore}-${loserScore}`;
+  if (game.innings > 9 && game.winnerId === game.homeTeamId) {
+    headline = `${winnerAbbr} walk it off in the ${ordinal(game.innings)} to win Game ${game.gameNumber}`;
+  } else if (loserScore === 0) {
+    headline = `${winnerAbbr} blank ${loserAbbr} ${winnerScore}-${loserScore} in Game ${game.gameNumber}`;
+  }
+
+  const performerSummary = game.keyPerformers.length > 0
+    ? game.keyPerformers.map((performer) => `${performer.playerName} (${performer.statLine})`).join('; ')
+    : 'No signature lines were recorded.';
+
+  return {
+    headline,
+    body: `${teamLabel(game.winnerId)} beat ${teamLabel(game.loserId)} in ${roundLabel(series.round)} Game ${game.gameNumber}. ${performerSummary}`,
+    relatedTeamIds: [game.winnerId, game.loserId],
+    relatedPlayerIds: game.keyPerformers.map((performer) => performer.playerId),
+  };
+}
+
+function buildSeriesCoverage(series: PlayoffSeriesState) {
+  const winnerId = series.winnerId ?? series.higherSeed.teamId;
+  const loserId = series.loserId ?? series.lowerSeed.teamId;
+  const winnerAbbr = teamAbbreviation(winnerId);
+  const loserAbbr = teamAbbreviation(loserId);
+  const lastGame = series.games[series.games.length - 1] ?? null;
+  const clincherLine = lastGame
+    ? `The clincher finished ${lastGame.winnerId === lastGame.homeTeamId ? lastGame.homeScore : lastGame.awayScore}-${lastGame.loserId === lastGame.homeTeamId ? lastGame.homeScore : lastGame.awayScore}.`
+    : 'The series ended without a recorded box score.';
+
+  return {
+    headline: `${winnerAbbr} eliminate ${loserAbbr} ${Math.max(series.higherSeedWins, series.lowerSeedWins)}-${Math.min(series.higherSeedWins, series.lowerSeedWins)}`,
+    body: `${teamLabel(winnerId)} closed out the ${roundLabel(series.round)} against ${teamLabel(loserId)}. ${clincherLine}`,
+    relatedTeamIds: [winnerId, loserId],
+    relatedPlayerIds: lastGame?.keyPerformers.map((performer) => performer.playerId) ?? [],
+  };
+}
+
+function recordPlayoffProgressCoverage(
+  s: FullGameState,
+  before: PlayoffBracket,
+  after: PlayoffBracket,
+) {
+  const beforeSeries = new Map(uniqueSeriesFromBracket(before).map((series) => [series.id, series]));
+
+  for (const series of uniqueSeriesFromBracket(after)) {
+    const previousSeries = beforeSeries.get(series.id);
+    const previousGameCount = previousSeries?.games.length ?? 0;
+    const newGames = series.games.slice(previousGameCount);
+
+    for (const game of newGames) {
+      const coverage = buildPlayoffGameCoverage(game, series);
+      addPlayoffCoverage(
+        s,
+        `playoff-game-${s.season}-${series.id}-${game.gameNumber}`,
+        coverage.headline,
+        coverage.body,
+        coverage.relatedTeamIds,
+        coverage.relatedPlayerIds,
+        game.innings > 9 || Math.min(game.homeScore, game.awayScore) === 0 ? 1 : 2,
+      );
+    }
+
+    if (series.status === 'complete' && previousSeries?.status !== 'complete') {
+      const coverage = buildSeriesCoverage(series);
+      addPlayoffCoverage(
+        s,
+        `playoff-series-${s.season}-${series.id}`,
+        coverage.headline,
+        coverage.body,
+        coverage.relatedTeamIds,
+        coverage.relatedPlayerIds,
+        1,
+      );
+      applySeriesOutcomeConsequences(s, series.winnerId ?? series.higherSeed.teamId, series.loserId ?? series.lowerSeed.teamId);
+    }
+  }
+
+  if (before.currentRound !== after.currentRound && !after.champion) {
+    const roundTeams = after.currentRoundSeries.flatMap((series) => [series.higherSeed.teamId, series.lowerSeed.teamId]);
+    addPlayoffCoverage(
+      s,
+      `playoff-round-${s.season}-${after.currentRound}`,
+      `${roundLabel(after.currentRound)} field is set`,
+      `The postseason moves on to the ${roundLabel(after.currentRound)}.`,
+      Array.from(new Set(roundTeams)),
+      [],
+    );
+  }
+}
+
+function finalizePlayoffRunIfNeeded(s: FullGameState) {
+  if (!s.playoffBracket?.champion) {
+    return;
+  }
+
+  const alreadyRecorded = s.seasonHistory.some((entry) => entry.season === s.season);
+  if (alreadyRecorded) {
+    return;
+  }
+
+  ensureAwardHistoryForSeason(s);
+  const seasonMoments = applyPostseasonConsequences(s);
+  recordSeasonHistory(s, seasonMoments);
+  upsertFranchiseTimelineEntry(s);
+  clearPendingTradeOffers(s);
+}
+
+function ensurePlayoffBracket(s: FullGameState): boolean {
+  if (s.playoffBracket) {
+    return false;
+  }
+
+  s.playoffBracket = initializePlayoffBracket(s.seasonState.standings.getFullStandings(), s.rng.fork());
+  return true;
+}
+
+function playoffResult(s: FullGameState, gamesPlayed: number): SimResultDTO {
+  return {
+    day: s.day,
+    season: s.season,
+    phase: s.phase,
+    gamesPlayed,
+    seasonComplete: s.phase !== 'regular',
+    flowStateChanged: true,
+  };
+}
+
 function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
   if (seasonComplete) {
     ensureAwardHistoryForSeason(s);
@@ -110,6 +351,7 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
     phase: s.phase,
     gamesPlayed,
     seasonComplete,
+    flowStateChanged: true,
   };
 }
 
@@ -146,12 +388,16 @@ function simMonthInternal(): SimResultDTO {
 }
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
+  accrueCareerStatsForSeason(s);
+
   const beforePlayers = s.players;
   const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
   recordBreakoutNarratives(s, beforePlayers, developedPlayers);
   s.players = developedPlayers;
 
   const retired = determineRetirements(s.rng.fork(), s.players);
+  processHallOfFameForRetirements(s, retired);
+  enrichFranchiseTimelineWithDepartures(s, retired);
   if (s.offseasonState) {
     s.offseasonState = recordRetirements(
       s.offseasonState,
@@ -194,6 +440,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
     phase: 'preseason',
     gamesPlayed: 0,
     seasonComplete: false,
+    flowStateChanged: true,
   };
 }
 
@@ -216,52 +463,25 @@ function simDayInternal(): SimResultDTO {
   }
 
   if (s.phase === 'playoffs') {
-    if (!s.playoffBracket) {
-      const seeds = determinePlayoffSeeds(s.seasonState.standings.getFullStandings());
-      s.playoffBracket = {
-        seeds,
-        series: [],
-        champion: null,
-      };
-      return {
-        day: s.day,
-        season: s.season,
-        phase: 'playoffs',
-        gamesPlayed: 0,
-        seasonComplete: true,
-      };
+    if (ensurePlayoffBracket(s)) {
+      return playoffResult(s, 0);
     }
 
-    if (s.playoffBracket.champion) {
-      const alreadyRecorded = s.seasonHistory.some((entry) => entry.season === s.season);
-      if (!alreadyRecorded) {
-        ensureAwardHistoryForSeason(s);
-        const seasonMoments = applyPostseasonConsequences(s);
-        recordSeasonHistory(s, seasonMoments);
-        clearPendingTradeOffers(s);
-      }
-
-      return {
-        day: s.day,
-        season: s.season,
-        phase: 'playoffs',
-        gamesPlayed: 0,
-        seasonComplete: true,
-      };
+    if (s.playoffBracket?.champion) {
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, 0);
     }
 
-    s.playoffBracket = simulatePlayoffs(s.rng, s.playoffBracket.seeds, s.players);
-    ensureAwardHistoryForSeason(s);
-    const seasonMoments = applyPostseasonConsequences(s);
-    recordSeasonHistory(s, seasonMoments);
-    clearPendingTradeOffers(s);
-    return {
-      day: s.day,
-      season: s.season,
-      phase: 'playoffs',
-      gamesPlayed: 0,
-      seasonComplete: true,
-    };
+    const before = s.playoffBracket!;
+    const gamesBefore = countBracketGames(before);
+    let working = before;
+    while (!isPlayoffComplete(working)) {
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+    }
+    s.playoffBracket = working;
+    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+    finalizePlayoffRunIfNeeded(s);
+    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
   }
 
   if (s.phase === 'offseason') {
@@ -293,6 +513,7 @@ function simDayInternal(): SimResultDTO {
     phase: s.phase,
     gamesPlayed: 0,
     seasonComplete: false,
+    flowStateChanged: true,
   };
 }
 
@@ -346,6 +567,10 @@ export const actionApi = {
       storyFlags: new Map(),
       rivalries: new Map(),
       awardHistory: [],
+      hallOfFame: [],
+      hallOfFameBallot: [],
+      franchiseTimeline: [],
+      careerStats: [],
       seasonHistory: [],
       tradeState: createEmptyTradeState(),
     });
@@ -359,6 +584,7 @@ export const actionApi = {
       playerCount: players.length,
       teamCount: teamIds.length,
       gamesScheduled: schedule.length,
+      flowStateChanged: true as const,
     };
   },
 
@@ -392,6 +618,94 @@ export const actionApi = {
     return result;
   },
 
+  simPlayoffGame(): SimResultDTO {
+    const s = requireState();
+    if (s.phase !== 'playoffs') {
+      return playoffResult(s, 0);
+    }
+
+    ensurePlayoffBracket(s);
+
+    if (!s.playoffBracket || isPlayoffComplete(s.playoffBracket)) {
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, 0);
+    }
+
+    const before = s.playoffBracket;
+    const gamesBefore = countBracketGames(before);
+    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork());
+    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+    finalizePlayoffRunIfNeeded(s);
+    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
+  },
+
+  simPlayoffSeries(): SimResultDTO {
+    const s = requireState();
+    if (s.phase !== 'playoffs') {
+      return playoffResult(s, 0);
+    }
+
+    ensurePlayoffBracket(s);
+
+    if (!s.playoffBracket || isPlayoffComplete(s.playoffBracket)) {
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, 0);
+    }
+
+    const before = s.playoffBracket;
+    const gamesBefore = countBracketGames(before);
+    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork());
+    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+    finalizePlayoffRunIfNeeded(s);
+    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
+  },
+
+  simPlayoffRound(): SimResultDTO {
+    const s = requireState();
+    if (s.phase !== 'playoffs') {
+      return playoffResult(s, 0);
+    }
+
+    ensurePlayoffBracket(s);
+
+    if (!s.playoffBracket || isPlayoffComplete(s.playoffBracket)) {
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, 0);
+    }
+
+    const before = s.playoffBracket;
+    const gamesBefore = countBracketGames(before);
+    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork());
+    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+    finalizePlayoffRunIfNeeded(s);
+    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
+  },
+
+  simRemainingPlayoffs(): SimResultDTO {
+    const s = requireState();
+    if (s.phase !== 'playoffs') {
+      return playoffResult(s, 0);
+    }
+
+    ensurePlayoffBracket(s);
+
+    if (!s.playoffBracket || isPlayoffComplete(s.playoffBracket)) {
+      finalizePlayoffRunIfNeeded(s);
+      return playoffResult(s, 0);
+    }
+
+    const before = s.playoffBracket;
+    const gamesBefore = countBracketGames(before);
+    let working = before;
+    while (!isPlayoffComplete(working)) {
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+    }
+    s.playoffBracket = working;
+    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
+    finalizePlayoffRunIfNeeded(s);
+    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
+  },
+
   proceedToOffseason(): SimResultDTO {
     const s = requireState();
     if (s.phase === 'playoffs' && s.playoffBracket?.champion) {
@@ -405,6 +719,7 @@ export const actionApi = {
       phase: s.phase,
       gamesPlayed: 0,
       seasonComplete: s.phase !== 'regular',
+      flowStateChanged: true,
     };
   },
 
@@ -420,6 +735,7 @@ export const actionApi = {
       phase: s.phase,
       gamesPlayed: 0,
       seasonComplete: s.phase !== 'regular',
+      flowStateChanged: true,
     };
   },
 
@@ -438,20 +754,30 @@ export const actionApi = {
       phase: s.phase,
       playerCount: s.players.length,
       userTeamId: s.userTeamId,
+      flowStateChanged: true as const,
     };
   },
 
   startDraft() {
     const s = requireState();
-    return startDraftSession(s, generateDraftClass(s.rng.fork(), s.season));
+    return {
+      ...startDraftSession(s, generateDraftClass(s.rng.fork(), s.season)),
+      flowStateChanged: true,
+    };
   },
 
   makeDraftPick(prospectId: string) {
-    return makeUserDraftSelection(requireState(), prospectId);
+    return {
+      ...makeUserDraftSelection(requireState(), prospectId),
+      flowStateChanged: true,
+    };
   },
 
   simulateRemainingDraft() {
-    return simulateRemainingDraftSession(requireState());
+    return {
+      ...simulateRemainingDraftSession(requireState()),
+      flowStateChanged: true,
+    };
   },
 
   proposeTrade(offered: string[], requested: string[], toTeamId: string) {
@@ -613,14 +939,16 @@ export const actionApi = {
     const s = requireState();
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
-    return buildOffseasonStateView(s);
+    const view = buildOffseasonStateView(s);
+    return view ? { ...view, flowStateChanged: true } : null;
   },
 
   skipOffseasonPhase(): OffseasonStateView | null {
     const s = requireState();
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
-    return buildOffseasonStateView(s);
+    const view = buildOffseasonStateView(s);
+    return view ? { ...view, flowStateChanged: true } : null;
   },
 
   markNewsRead(newsId: string) {

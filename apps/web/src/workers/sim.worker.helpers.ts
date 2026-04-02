@@ -8,6 +8,7 @@ import {
   DRAFT_ROUNDS,
   aiSelectPick,
   buildPlayoffPreview,
+  determinePlayoffSeeds,
   determineDraftOrder,
   generateDraftClass,
   getTeamById,
@@ -62,6 +63,10 @@ import type {
 import type {
   AwardHistoryEntry,
   BriefingItem,
+  CareerStatsLedger,
+  FranchiseTimelineEntry,
+  HallOfFameBallotEntry,
+  HallOfFameEntry,
   OwnerState,
   PlayerMorale,
   Rivalry,
@@ -101,6 +106,10 @@ export interface FullGameState {
   storyFlags: Map<string, string[]>;
   rivalries: Map<string, Rivalry>;
   awardHistory: AwardHistoryEntry[];
+  hallOfFame: HallOfFameEntry[];
+  hallOfFameBallot: HallOfFameBallotEntry[];
+  franchiseTimeline: FranchiseTimelineEntry[];
+  careerStats: CareerStatsLedger[];
   seasonHistory: SeasonHistoryEntry[];
   tradeState: TradeState;
 }
@@ -163,6 +172,7 @@ export interface SimResultDTO {
   phase: string;
   gamesPlayed: number;
   seasonComplete: boolean;
+  flowStateChanged?: boolean;
 }
 
 export interface OffseasonProgressResult {
@@ -192,6 +202,7 @@ export interface OffseasonTransactionGroup {
 
 export interface OffseasonStateView extends OffseasonState {
   transactionGroups: OffseasonTransactionGroup[];
+  flowStateChanged?: boolean;
 }
 
 export type DraftRoomStatus = 'available' | 'in_progress' | 'complete';
@@ -284,6 +295,14 @@ export interface SeasonFlowChampionSummary {
   seriesRecord: string;
 }
 
+export interface SeasonFlowSeasonSummary {
+  record: string;
+  divisionFinish: string;
+  playoffStatus: string;
+  teamLeaders: string[];
+  awardFavorites: string[];
+}
+
 export interface SeasonFlowOffseasonSummary {
   nextSeason: number;
   moves: string[];
@@ -296,11 +315,14 @@ export interface SeasonFlowStateView {
   detailLabel: string;
   progress: number;
   canUseRegularSimControls: boolean;
-  action: 'proceed_to_playoffs' | 'sim_playoffs' | 'proceed_to_offseason' | 'start_next_season' | null;
+  action: 'proceed_to_playoffs' | 'sim_playoffs' | 'watch_playoffs' | 'skip_to_offseason' | 'proceed_to_offseason' | 'start_next_season' | null;
   actionLabel: string | null;
+  secondaryAction: 'watch_playoffs' | 'skip_to_offseason' | null;
+  secondaryActionLabel: string | null;
   daysUntilTradeDeadline: number | null;
   standingsSnapshot: SeasonFlowStanding[];
   playoffPreview: SeasonFlowPreviewSeries[];
+  seasonSummary: SeasonFlowSeasonSummary | null;
   championSummary: SeasonFlowChampionSummary | null;
   offseasonSummary: SeasonFlowOffseasonSummary | null;
 }
@@ -347,6 +369,7 @@ export interface DraftRoomView {
     picksRemaining: number;
   };
   userDraftClass: DraftClassSummary | null;
+  flowStateChanged?: boolean;
 }
 
 export interface DraftActionResult {
@@ -354,6 +377,7 @@ export interface DraftActionResult {
   draft: DraftRoomView | null;
   newPicks: DraftRoomPick[];
   error?: string;
+  flowStateChanged?: boolean;
 }
 
 export interface DraftSessionState extends DraftClass {
@@ -1110,9 +1134,91 @@ function clampProgress(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function ordinalPlace(value: number): string {
+  if (value % 100 >= 11 && value % 100 <= 13) {
+    return `${value}th`;
+  }
+
+  switch (value % 10) {
+    case 1:
+      return `${value}st`;
+    case 2:
+      return `${value}nd`;
+    case 3:
+      return `${value}rd`;
+    default:
+      return `${value}th`;
+  }
+}
+
+function buildSeasonSummaryView(s: FullGameState): SeasonFlowSeasonSummary | null {
+  const team = getTeamById(s.userTeamId);
+  const record = s.seasonState.standings.getRecord(s.userTeamId);
+  if (!team || !record) {
+    return null;
+  }
+
+  const fullStandings = s.seasonState.standings.getFullStandings();
+  const divisionStandings = fullStandings[team.division] ?? [];
+  const divisionFinish = Math.max(1, divisionStandings.findIndex((entry) => entry.teamId === s.userTeamId) + 1);
+  const playoffSeed = determinePlayoffSeeds(fullStandings).find((entry) => entry.teamId === s.userTeamId);
+  const userPlayers = s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB');
+  const hitterLeaders = userPlayers
+    .filter((player) => player.pitcherAttributes == null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null && entry.stats.pa > 0)
+    .sort((left, right) => (right.stats.hr * 6 + right.stats.rbi * 2 + right.stats.hits) - (left.stats.hr * 6 + left.stats.rbi * 2 + left.stats.hits))
+    .slice(0, 2)
+    .map(({ player, stats }) => `${player.firstName} ${player.lastName}: ${stats.hr} HR, ${stats.rbi} RBI`);
+  const pitcherLeader = userPlayers
+    .filter((player) => player.pitcherAttributes != null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null && entry.stats.ip > 0)
+    .sort((left, right) => ((left.stats.earnedRuns / Math.max(1, left.stats.ip / 3)) * 9) - ((right.stats.earnedRuns / Math.max(1, right.stats.ip / 3)) * 9))
+    .slice(0, 1)
+    .map(({ player, stats }) => `${player.firstName} ${player.lastName}: ${((stats.earnedRuns / Math.max(1, stats.ip / 3)) * 9).toFixed(2)} ERA`);
+  const awardHitters = s.players
+    .filter((player) => player.rosterStatus === 'MLB' && player.pitcherAttributes == null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null && entry.stats.pa > 0)
+    .sort((left, right) => (right.stats.hr * 6 + right.stats.rbi * 2 + right.stats.hits) - (left.stats.hr * 6 + left.stats.rbi * 2 + left.stats.hits))
+    .slice(0, 1)
+    .map(({ player }) => `MVP pace: ${player.firstName} ${player.lastName}`);
+  const awardPitchers = s.players
+    .filter((player) => player.rosterStatus === 'MLB' && player.pitcherAttributes != null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null && entry.stats.ip > 0)
+    .sort((left, right) => ((left.stats.earnedRuns / Math.max(1, left.stats.ip / 3)) * 9) - ((right.stats.earnedRuns / Math.max(1, right.stats.ip / 3)) * 9))
+    .slice(0, 1)
+    .map(({ player }) => `Cy Young pace: ${player.firstName} ${player.lastName}`);
+
+  return {
+    record: `${record.wins}-${record.losses}`,
+    divisionFinish: `${ordinalPlace(divisionFinish)} in ${team.division.replace('_', ' ')}`,
+    playoffStatus: playoffSeed
+      ? `${teamLabel(s.userTeamId)} clinched the No. ${playoffSeed.seed} seed in the ${playoffSeed.league}.`
+      : `${teamLabel(s.userTeamId)} missed the postseason cut.`,
+    teamLeaders: [...hitterLeaders, ...pitcherLeader].slice(0, 3),
+    awardFavorites: [...awardHitters, ...awardPitchers],
+  };
+}
+
 export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView {
   const standingsSnapshot = buildStandingsSnapshot(s);
   const userRecord = standingsSnapshot.find((entry) => entry.teamId === s.userTeamId);
+  const seasonSummary = buildSeasonSummaryView(s);
   const playoffPreview = s.playoffBracket
     ? buildPlayoffPreview(s.playoffBracket.seeds).map((series) => ({
       id: series.id,
@@ -1133,9 +1239,12 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
       canUseRegularSimControls: true,
       action: null,
       actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: null,
       standingsSnapshot,
       playoffPreview: [],
+      seasonSummary: null,
       championSummary: null,
       offseasonSummary: null,
     };
@@ -1151,15 +1260,19 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
       canUseRegularSimControls: true,
       action: null,
       actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: Math.max(0, 120 - s.day),
       standingsSnapshot,
       playoffPreview: [],
+      seasonSummary: null,
       championSummary: null,
       offseasonSummary: null,
     };
   }
 
   if (s.phase === 'playoffs' && !s.playoffBracket) {
+    const madePlayoffs = determinePlayoffSeeds(s.seasonState.standings.getFullStandings()).some((entry) => entry.teamId === s.userTeamId);
     return {
       status: 'regular_season_complete',
       season: s.season,
@@ -1169,11 +1282,14 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
         : 'The regular season has ended.',
       progress: 1,
       canUseRegularSimControls: false,
-      action: 'proceed_to_playoffs',
-      actionLabel: 'Proceed to Playoffs',
+      action: 'watch_playoffs',
+      actionLabel: madePlayoffs ? 'Go to Playoffs' : 'Watch Playoffs',
+      secondaryAction: madePlayoffs ? null : 'skip_to_offseason',
+      secondaryActionLabel: madePlayoffs ? null : 'Skip to Offseason',
       daysUntilTradeDeadline: null,
       standingsSnapshot: standingsSnapshot.slice(0, 6),
       playoffPreview: [],
+      seasonSummary,
       championSummary: null,
       offseasonSummary: null,
     };
@@ -1187,11 +1303,14 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
       detailLabel: 'Bracket is set. Twelve teams remain.',
       progress: 0,
       canUseRegularSimControls: false,
-      action: 'sim_playoffs',
-      actionLabel: 'Sim Playoffs',
+      action: 'watch_playoffs',
+      actionLabel: 'Open Playoffs',
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: null,
       standingsSnapshot: standingsSnapshot.slice(0, 6),
       playoffPreview,
+      seasonSummary,
       championSummary: null,
       offseasonSummary: null,
     };
@@ -1210,9 +1329,12 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
       canUseRegularSimControls: false,
       action: 'proceed_to_offseason',
       actionLabel: 'Proceed to Offseason',
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: null,
       standingsSnapshot: standingsSnapshot.slice(0, 6),
       playoffPreview,
+      seasonSummary,
       championSummary,
       offseasonSummary: null,
     };
@@ -1228,9 +1350,12 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
       canUseRegularSimControls: false,
       action: 'start_next_season',
       actionLabel: `Start Season ${s.season + 1}`,
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: null,
       standingsSnapshot,
       playoffPreview: [],
+      seasonSummary: null,
       championSummary: null,
       offseasonSummary: buildOffseasonSummary(s),
     };
@@ -1250,9 +1375,12 @@ export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView 
     canUseRegularSimControls: false,
     action: null,
     actionLabel: null,
+    secondaryAction: null,
+    secondaryActionLabel: null,
     daysUntilTradeDeadline: null,
     standingsSnapshot,
     playoffPreview: [],
+    seasonSummary: null,
     championSummary: null,
     offseasonSummary: null,
   };

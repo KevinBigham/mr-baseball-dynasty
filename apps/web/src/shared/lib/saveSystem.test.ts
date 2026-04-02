@@ -9,7 +9,7 @@ import {
 
 function createSnapshot(): GameSnapshot {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
@@ -43,6 +43,10 @@ function createSnapshot(): GameSnapshot {
       storyFlags: [],
       rivalries: [],
       awardHistory: [],
+      hallOfFame: [],
+      hallOfFameBallot: [],
+      franchiseTimeline: [],
+      careerStats: [],
       seasonHistory: [
         {
           season: 2,
@@ -74,7 +78,7 @@ function createSnapshot(): GameSnapshot {
 }
 
 describe('saveSystem helpers', () => {
-  it('builds a v4 save record from a canonical snapshot', () => {
+  it('builds a v5 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -84,10 +88,10 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(4);
+    expect(record.schemaVersion).toBe(5);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(4);
+    expect(record.snapshot?.schemaVersion).toBe(5);
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
     expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
     expect(record.legacyState).toBeNull();
@@ -112,7 +116,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v4 on load', () => {
+  it('migrates v2 snapshots to v5 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -195,17 +199,19 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(4);
-    expect(normalized.snapshot?.schemaVersion).toBe(4);
+    expect(normalized.schemaVersion).toBe(5);
+    expect(normalized.snapshot?.schemaVersion).toBe(5);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
     expect(normalized.snapshot?.narrative.awardHistory[0]?.league).toBe('MLB');
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.statLeaders.w).toEqual([]);
+    expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
+    expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);
     expect(normalized.snapshot?.tradeState.pendingOffers).toEqual([]);
   });
 
-  it('migrates v3 snapshots to v4 on load', () => {
+  it('migrates v3 snapshots to v5 on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -219,8 +225,40 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(4);
-    expect(normalized.snapshot?.schemaVersion).toBe(4);
+    expect(normalized.schemaVersion).toBe(5);
+    expect(normalized.snapshot?.schemaVersion).toBe(5);
     expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
+  });
+
+  it('migrates v4 snapshots to v5 on load', () => {
+    const snapshot = createSnapshot();
+    const normalized = normalizeLoadedSaveRecord({
+      id: 'save-slot-6',
+      slotNumber: 6,
+      name: 'Phase 4 Save',
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+      snapshot: {
+        ...snapshot,
+        schemaVersion: 4,
+        narrative: {
+          playerMorale: [],
+          teamChemistry: [],
+          ownerState: [],
+          briefingQueue: [],
+          storyFlags: [],
+          rivalries: [],
+          awardHistory: [],
+          seasonHistory: [],
+        },
+      },
+    } as any);
+
+    expect(normalized.schemaVersion).toBe(5);
+    expect(normalized.snapshot?.schemaVersion).toBe(5);
+    expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
+    expect(normalized.snapshot?.narrative.hallOfFameBallot).toEqual([]);
+    expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);
+    expect(normalized.snapshot?.narrative.careerStats).toEqual([]);
   });
 });

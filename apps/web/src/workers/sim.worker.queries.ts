@@ -33,6 +33,7 @@ import {
 } from './sim.worker.helpers.js';
 import type { PlayerDTO, TeamStandingsDTO } from './sim.worker.helpers.js';
 import { buildPressRoomFeed } from './sim.worker.pressRoom.js';
+import { getDynastyScoreSummary } from './sim.worker.legacy.js';
 import {
   getAwardHistory,
   getPersonalityProfileForPlayer,
@@ -44,6 +45,206 @@ import {
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
+
+function pctFromRecord(wins: number, losses: number): number {
+  const total = wins + losses;
+  return total > 0 ? wins / total : 0;
+}
+
+function calculateOps(stats: PlayerGameStats): number {
+  if (stats.pa === 0) {
+    return 0;
+  }
+
+  const singles = stats.hits - stats.doubles - stats.triples - stats.hr;
+  const onBase = (stats.hits + stats.bb) / Math.max(1, stats.ab + stats.bb);
+  const slugging = (singles + (stats.doubles * 2) + (stats.triples * 3) + (stats.hr * 4)) / Math.max(1, stats.ab);
+  return onBase + slugging;
+}
+
+function calculateEra(stats: PlayerGameStats): number {
+  if (stats.ip === 0) {
+    return 99;
+  }
+  return (stats.earnedRuns / (stats.ip / 3)) * 9;
+}
+
+function buildDashboardSummary(s: NonNullable<typeof state>) {
+  const fullStandings = s.seasonState.standings.getFullStandings();
+  const userDivision = getTeamById(s.userTeamId)?.division ?? 'AL_EAST';
+  const userLeaguePrefix = userDivision.startsWith('AL') ? 'AL' : 'NL';
+  const divisionStandings = Object.values(fullStandings)
+    .find((entries) => entries.some((entry) => entry.teamId === s.userTeamId)) ?? [];
+  const rawUserStanding = divisionStandings.find((entry) => entry.teamId === s.userTeamId) ?? null;
+  const divisionView = divisionStandings.map((entry, index) => {
+    const team = getTeamById(entry.teamId);
+    return {
+      teamId: entry.teamId,
+      teamName: team ? `${team.city} ${team.name}` : entry.teamId.toUpperCase(),
+      abbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+      wins: entry.wins,
+      losses: entry.losses,
+      pct: entry.pct.toFixed(3).replace(/^0/, ''),
+      gamesBack: entry.gamesBack,
+      streak: entry.streak,
+      runDifferential: entry.runDifferential,
+      divisionRank: index + 1,
+    };
+  });
+
+  const userStanding = divisionView.find((entry) => entry.teamId === s.userTeamId) ?? null;
+  const ownerState = s.ownerState.get(s.userTeamId) ?? null;
+  const chemistry = s.teamChemistry.get(s.userTeamId) ?? null;
+  const dynasty = getDynastyScoreSummary(s);
+  const userRecord = s.seasonState.standings.getRecord(s.userTeamId);
+  const seasonPct = pctFromRecord(userRecord?.wins ?? 0, userRecord?.losses ?? 0);
+  const last10Wins = rawUserStanding?.last10Wins ?? 0;
+  const last10Losses = rawUserStanding?.last10Losses ?? 0;
+  const last10Pct = pctFromRecord(last10Wins, last10Losses);
+  const seasonRunDiffPerGame = (userStanding?.runDifferential ?? 0) / Math.max(1, (userStanding?.wins ?? 0) + (userStanding?.losses ?? 0));
+  const estimatedLast30RunDiffPerGame = seasonRunDiffPerGame * (1 + ((last10Pct - seasonPct) * 2));
+  const leagueStandings = Object.values(fullStandings)
+    .flatMap((entries) => entries)
+    .filter((entry) => getTeamById(entry.teamId)?.division.startsWith(userLeaguePrefix))
+    .sort((left, right) => {
+      if (right.wins !== left.wins) return right.wins - left.wins;
+      return left.losses - right.losses;
+    });
+  const projectedWins = Math.round(seasonPct * 162);
+  const playoffCutoff = leagueStandings[5]?.wins ?? 84;
+  const playoffProbability = Math.max(5, Math.min(95, Math.round(50 + ((projectedWins - playoffCutoff) * 6) + ((userStanding?.divisionRank === 1 ? 8 : 0)))));
+
+  const mlbPlayers = s.players.filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB');
+  const hitters = mlbPlayers
+    .filter((player) => player.pitcherAttributes == null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null)
+    .sort((left, right) => calculateOps(right.stats) - calculateOps(left.stats))
+    .slice(0, 2)
+    .map(({ player, stats }) => ({
+      playerId: player.id,
+      name: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      label: `${calculateOps(stats).toFixed(3)} OPS`,
+      sparklineValues: [
+        Number((stats.hits / Math.max(1, stats.ab)).toFixed(3)),
+        Number((((stats.hits + stats.bb) / Math.max(1, stats.ab + stats.bb)).toFixed(3))),
+        Number(calculateOps(stats).toFixed(3)),
+      ],
+      statLine: `${stats.hits} H · ${stats.hr} HR · ${stats.rbi} RBI`,
+    }));
+  const pitchers = mlbPlayers
+    .filter((player) => player.pitcherAttributes != null)
+    .map((player) => ({
+      player,
+      stats: s.seasonState.playerSeasonStats.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null && entry.stats.ip > 0)
+    .sort((left, right) => calculateEra(left.stats) - calculateEra(right.stats))
+    .slice(0, 1)
+    .map(({ player, stats }) => ({
+      playerId: player.id,
+      name: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      label: `${calculateEra(stats).toFixed(2)} ERA`,
+      sparklineValues: [
+        Number(calculateEra(stats).toFixed(2)),
+        Number(((stats.strikeouts / Math.max(1, stats.ip / 3)) * 9).toFixed(1)),
+        stats.wins,
+      ],
+      statLine: `${stats.wins} W · ${stats.strikeouts} K`,
+    }));
+
+  const injuredPlayers = Array.from(s.injuries.entries())
+    .map(([playerId, injury]) => ({
+      playerId,
+      player: s.players.find((candidate) => candidate.id === playerId),
+      daysRemaining: injury.daysRemaining,
+    }))
+    .filter((entry) => entry.player?.teamId === s.userTeamId)
+    .sort((left, right) => left.daysRemaining - right.daysRemaining);
+
+  const finances = {
+    payroll: calculateTeamPayroll(s.userTeamId, getTeamPlayers(s.userTeamId)).totalPayroll,
+    budget: getTeamBudget(s.userTeamId),
+  };
+
+  const expiringContracts = mlbPlayers
+    .filter((player) => player.contract.years <= 1)
+    .sort((left, right) => right.overallRating - left.overallRating)
+    .slice(0, 4)
+    .map((player) => ({
+      playerId: player.id,
+      name: `${player.firstName} ${player.lastName}`,
+      position: player.position,
+      salary: player.contract.annualSalary,
+    }));
+
+  const topProspect = s.players
+    .filter((player) => player.teamId === s.userTeamId && player.rosterStatus !== 'MLB')
+    .sort((left, right) => right.overallRating - left.overallRating)[0];
+
+  const pressRoomFeed = buildPressRoomFeed(s, 12);
+  const briefingCount = pressRoomFeed.filter((entry) => entry.source === 'briefing').length;
+
+  return {
+    franchise: {
+      teamName: teamNameFromId(s.userTeamId),
+      abbreviation: getTeamById(s.userTeamId)?.abbreviation ?? s.userTeamId.toUpperCase(),
+      season: s.season,
+      record: userStanding ? `${userStanding.wins}-${userStanding.losses}` : '0-0',
+      division: userDivision,
+      divisionRank: userStanding?.divisionRank ?? 1,
+      dynasty,
+      owner: ownerState,
+      chemistry,
+    },
+    momentum: {
+      last10: `${last10Wins}-${last10Losses}`,
+      streak: userStanding?.streak ?? 'W0',
+      runDifferential: userStanding?.runDifferential ?? 0,
+      seasonRunDiffPerGame: Number(seasonRunDiffPerGame.toFixed(2)),
+      last30RunDiffPerGame: Number(estimatedLast30RunDiffPerGame.toFixed(2)),
+      playoffProbability,
+    },
+    roster: {
+      topPerformers: [...hitters, ...pitchers],
+      injuredCount: injuredPlayers.length,
+      nextReturnDays: injuredPlayers[0]?.daysRemaining ?? null,
+      payroll: finances.payroll,
+      budget: finances.budget,
+      luxuryTax: calculateLuxuryTax(finances.payroll),
+    },
+    intel: {
+      tradeInboxCount: s.tradeState.pendingOffers.length,
+      expiringContracts,
+      topProspect: topProspect
+        ? {
+          playerId: topProspect.id,
+          name: `${topProspect.firstName} ${topProspect.lastName}`,
+          position: topProspect.position,
+          readiness: topProspect.overallRating,
+          level: topProspect.rosterStatus,
+        }
+        : null,
+    },
+    divisionStandings: divisionView,
+    pressRoom: {
+      feed: pressRoomFeed,
+      latest: pressRoomFeed[0] ?? null,
+      briefingCount,
+      newsCount: pressRoomFeed.length - briefingCount,
+    },
+  };
+}
+
+function teamNameFromId(teamId: string): string {
+  const team = getTeamById(teamId);
+  return team ? `${team.city} ${team.name}` : teamId.toUpperCase();
+}
 
 export const queryApi = {
   getState() {
@@ -167,6 +368,27 @@ export const queryApi = {
 
   getPlayoffBracket(): PlayoffBracket | null {
     return state?.playoffBracket ?? null;
+  },
+
+  getHallOfFame() {
+    return [...(state?.hallOfFame ?? [])].sort((left, right) => {
+      if (right.inductionSeason !== left.inductionSeason) {
+        return right.inductionSeason - left.inductionSeason;
+      }
+      return left.playerName.localeCompare(right.playerName);
+    });
+  },
+
+  getFranchiseTimeline() {
+    return [...(state?.franchiseTimeline ?? [])].sort((left, right) => right.season - left.season);
+  },
+
+  getDynastyScore() {
+    return state ? getDynastyScoreSummary(state) : null;
+  },
+
+  getDashboardSummary() {
+    return state ? buildDashboardSummary(state) : null;
   },
 
   getSeasonFlowState() {

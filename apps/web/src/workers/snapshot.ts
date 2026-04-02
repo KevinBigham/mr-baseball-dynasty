@@ -1,7 +1,11 @@
 import {
   type AwardHistoryEntry,
   type BriefingItem,
+  type CareerStatsLedger,
+  type FranchiseTimelineEntry,
   type GameSnapshot,
+  type HallOfFameBallotEntry,
+  type HallOfFameEntry,
   type OwnerState,
   type PlayerMorale,
   type Rivalry,
@@ -77,6 +81,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     'schemaVersion' in snapshot &&
     snapshot.schemaVersion !== 2 &&
     snapshot.schemaVersion !== 3 &&
+    snapshot.schemaVersion !== 4 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -118,6 +123,10 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       storyFlags: toEntries(state.storyFlags),
       rivalries: toEntries(state.rivalries),
       awardHistory: state.awardHistory,
+      hallOfFame: state.hallOfFame,
+      hallOfFameBallot: state.hallOfFameBallot,
+      franchiseTimeline: state.franchiseTimeline,
+      careerStats: state.careerStats,
       seasonHistory: state.seasonHistory,
     },
     tradeState: state.tradeState,
@@ -164,6 +173,10 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     storyFlags: fromEntries(snapshot.narrative.storyFlags),
     rivalries: fromEntries(snapshot.narrative.rivalries as [string, Rivalry][]),
     awardHistory: snapshot.narrative.awardHistory as AwardHistoryEntry[],
+    hallOfFame: snapshot.narrative.hallOfFame as HallOfFameEntry[],
+    hallOfFameBallot: snapshot.narrative.hallOfFameBallot as HallOfFameBallotEntry[],
+    franchiseTimeline: snapshot.narrative.franchiseTimeline as FranchiseTimelineEntry[],
+    careerStats: snapshot.narrative.careerStats as CareerStatsLedger[],
     seasonHistory: snapshot.narrative.seasonHistory as SeasonHistoryEntry[],
     tradeState: snapshot.tradeState ?? createEmptyTradeState(),
   };

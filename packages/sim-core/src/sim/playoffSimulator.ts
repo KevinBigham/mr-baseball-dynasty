@@ -1,25 +1,45 @@
 /**
  * @module playoffSimulator
- * Postseason bracket simulation: seeding, series play, championship.
- * Supports best-of-5 (Division Series) and best-of-7 (CS + World Series).
+ * Interactive postseason bracket simulation with per-series state.
  */
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
-import type { StandingsEntry } from '../league/standings.js';
-import type { GameBoxScore, GameTeam } from './gameSimulator.js';
-import { simulateGame } from './gameSimulator.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
+import type { StandingsEntry } from '../league/standings.js';
+import { getTeamById } from '../league/teams.js';
+import type { GameBoxScore, GameTeam, PlayerGameStats } from './gameSimulator.js';
+import { simulateGame } from './gameSimulator.js';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+export type LeagueId = 'AL' | 'NL';
 
 export interface PlayoffSeed {
   readonly teamId: string;
   readonly seed: number;
   readonly wins: number;
   readonly losses: number;
+  readonly league: LeagueId;
+  readonly divisionWinner: boolean;
+}
+
+export interface PlayoffKeyPerformer {
+  readonly playerId: string;
+  readonly playerName: string;
+  readonly teamId: string;
+  readonly statLine: string;
+}
+
+export interface PlayoffGameResult {
+  readonly gameNumber: number;
+  readonly winnerId: string;
+  readonly loserId: string;
+  readonly homeTeamId: string;
+  readonly awayTeamId: string;
+  readonly homeScore: number;
+  readonly awayScore: number;
+  readonly innings: number;
+  readonly keyPerformers: PlayoffKeyPerformer[];
+  readonly boxScore: GameBoxScore;
 }
 
 export interface SeriesResult {
@@ -31,12 +51,41 @@ export interface SeriesResult {
   readonly round: PlayoffRound;
 }
 
-export type PlayoffRound = 'WILD_CARD' | 'DIVISION_SERIES' | 'CHAMPIONSHIP_SERIES' | 'WORLD_SERIES';
+export type PlayoffRound =
+  | 'WILD_CARD'
+  | 'DIVISION_SERIES'
+  | 'CHAMPIONSHIP_SERIES'
+  | 'WORLD_SERIES';
+
+export interface PlayoffSeriesState {
+  readonly id: string;
+  readonly round: PlayoffRound;
+  readonly league: LeagueId | 'MLB';
+  readonly bestOf: 3 | 5 | 7;
+  readonly higherSeed: PlayoffSeed;
+  readonly lowerSeed: PlayoffSeed;
+  readonly games: PlayoffGameResult[];
+  readonly higherSeedWins: number;
+  readonly lowerSeedWins: number;
+  readonly leaderSummary: string;
+  readonly status: 'in_progress' | 'complete';
+  readonly winnerId: string | null;
+  readonly loserId: string | null;
+}
+
+export interface CompletedRoundResult {
+  readonly round: PlayoffRound;
+  readonly series: PlayoffSeriesState[];
+}
 
 export interface PlayoffBracket {
   readonly seeds: PlayoffSeed[];
+  readonly currentRound: PlayoffRound;
+  readonly currentRoundSeries: PlayoffSeriesState[];
+  readonly completedRounds: CompletedRoundResult[];
   readonly series: SeriesResult[];
   readonly champion: string | null;
+  readonly runnerUp: string | null;
 }
 
 export interface PlayoffPreviewTeamSlot {
@@ -48,9 +97,53 @@ export interface PlayoffPreviewTeamSlot {
 export interface PlayoffPreviewSeries {
   readonly id: string;
   readonly round: PlayoffRound;
-  readonly bestOf: 5 | 7;
+  readonly bestOf: 3 | 5 | 7;
   readonly home: PlayoffPreviewTeamSlot;
   readonly away: PlayoffPreviewTeamSlot;
+}
+
+const LEAGUES: readonly LeagueId[] = ['AL', 'NL'];
+
+function leagueFromDivision(division: string): LeagueId {
+  return division.startsWith('AL') ? 'AL' : 'NL';
+}
+
+function standingsSort(left: StandingsEntry, right: StandingsEntry): number {
+  if (right.pct !== left.pct) return right.pct - left.pct;
+  if (right.wins !== left.wins) return right.wins - left.wins;
+  if (left.losses !== right.losses) return left.losses - right.losses;
+  return left.teamId.localeCompare(right.teamId);
+}
+
+function seriesSort(left: PlayoffSeriesState, right: PlayoffSeriesState): number {
+  return left.id.localeCompare(right.id);
+}
+
+function compareSeeds(left: PlayoffSeed, right: PlayoffSeed): number {
+  if (left.seed !== right.seed) return left.seed - right.seed;
+  if (right.wins !== left.wins) return right.wins - left.wins;
+  if (left.losses !== right.losses) return left.losses - right.losses;
+  return left.teamId.localeCompare(right.teamId);
+}
+
+function sortForHomeField(left: PlayoffSeed, right: PlayoffSeed): number {
+  if (right.wins !== left.wins) return right.wins - left.wins;
+  if (left.losses !== right.losses) return left.losses - right.losses;
+  return compareSeeds(left, right);
+}
+
+function getWinsNeeded(bestOf: 3 | 5 | 7): number {
+  return Math.ceil(bestOf / 2);
+}
+
+function getHomePattern(bestOf: 3 | 5 | 7): readonly 1[] | readonly (1 | 2)[] {
+  if (bestOf === 3) {
+    return [1, 1, 1];
+  }
+  if (bestOf === 5) {
+    return [1, 1, 2, 2, 1];
+  }
+  return [1, 1, 2, 2, 2, 1, 1];
 }
 
 function slotFromSeed(seed: PlayoffSeed | undefined): PlayoffPreviewTeamSlot {
@@ -69,300 +162,613 @@ function placeholderSlot(placeholder: string): PlayoffPreviewTeamSlot {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Seeding
-// ---------------------------------------------------------------------------
-
-/**
- * Determine playoff seeds from league standings.
- * 12 teams: 6 division winners + 6 wild cards (3 per league).
- */
-export function determinePlayoffSeeds(
-  standings: Record<string, StandingsEntry[]>,
-): PlayoffSeed[] {
-  const seeds: PlayoffSeed[] = [];
-  const divisionWinners: StandingsEntry[] = [];
-  const wildCardPool: StandingsEntry[] = [];
-
-  for (const [, divStandings] of Object.entries(standings)) {
-    if (divStandings.length === 0) continue;
-    divisionWinners.push(divStandings[0]!);
-    for (let i = 1; i < divStandings.length; i++) {
-      wildCardPool.push(divStandings[i]!);
-    }
-  }
-
-  // Sort division winners by record
-  divisionWinners.sort((a, b) => b.pct - a.pct);
-
-  // Top 3 AL + top 3 NL division winners get seeds 1-3 in each league
-  // For simplicity, seed all division winners then top wild cards
-  let seedNum = 1;
-  for (const dw of divisionWinners) {
-    seeds.push({ teamId: dw.teamId, seed: seedNum++, wins: dw.wins, losses: dw.losses });
-  }
-
-  // Wild cards: top 6 non-division-winners by record
-  wildCardPool.sort((a, b) => b.pct - a.pct);
-  for (let i = 0; i < Math.min(6, wildCardPool.length); i++) {
-    const wc = wildCardPool[i]!;
-    seeds.push({ teamId: wc.teamId, seed: seedNum++, wins: wc.wins, losses: wc.losses });
-  }
-
-  return seeds;
+function teamAbbreviation(teamId: string | null): string {
+  if (!teamId) return 'TBD';
+  return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
 }
 
-export function buildPlayoffPreview(seeds: PlayoffSeed[]): PlayoffPreviewSeries[] {
-  if (seeds.length < 8) {
-    return [];
-  }
-
-  return [
-    {
-      id: 'wc-1',
-      round: 'WILD_CARD',
-      bestOf: 5,
-      home: slotFromSeed(seeds[4]),
-      away: slotFromSeed(seeds[11] ?? seeds[seeds.length - 1]),
-    },
-    {
-      id: 'wc-2',
-      round: 'WILD_CARD',
-      bestOf: 5,
-      home: slotFromSeed(seeds[5]),
-      away: slotFromSeed(seeds[10] ?? seeds[seeds.length - 1]),
-    },
-    {
-      id: 'wc-3',
-      round: 'WILD_CARD',
-      bestOf: 5,
-      home: slotFromSeed(seeds[6]),
-      away: slotFromSeed(seeds[9] ?? seeds[seeds.length - 1]),
-    },
-    {
-      id: 'wc-4',
-      round: 'WILD_CARD',
-      bestOf: 5,
-      home: slotFromSeed(seeds[7]),
-      away: slotFromSeed(seeds[8]),
-    },
-    {
-      id: 'ds-1',
-      round: 'DIVISION_SERIES',
-      bestOf: 5,
-      home: slotFromSeed(seeds[0]),
-      away: placeholderSlot('Winner of 8 vs 9'),
-    },
-    {
-      id: 'ds-2',
-      round: 'DIVISION_SERIES',
-      bestOf: 5,
-      home: slotFromSeed(seeds[1]),
-      away: placeholderSlot('Winner of 7 vs 10'),
-    },
-    {
-      id: 'ds-3',
-      round: 'DIVISION_SERIES',
-      bestOf: 5,
-      home: slotFromSeed(seeds[2]),
-      away: placeholderSlot('Winner of 6 vs 11'),
-    },
-    {
-      id: 'ds-4',
-      round: 'DIVISION_SERIES',
-      bestOf: 5,
-      home: slotFromSeed(seeds[3]),
-      away: placeholderSlot('Winner of 5 vs 12'),
-    },
-    {
-      id: 'cs-1',
-      round: 'CHAMPIONSHIP_SERIES',
-      bestOf: 7,
-      home: placeholderSlot('Winner of DS 1'),
-      away: placeholderSlot('Winner of DS 2'),
-    },
-    {
-      id: 'cs-2',
-      round: 'CHAMPIONSHIP_SERIES',
-      bestOf: 7,
-      home: placeholderSlot('Winner of DS 3'),
-      away: placeholderSlot('Winner of DS 4'),
-    },
-    {
-      id: 'ws-1',
-      round: 'WORLD_SERIES',
-      bestOf: 7,
-      home: placeholderSlot('Winner of CS 1'),
-      away: placeholderSlot('Winner of CS 2'),
-    },
-  ];
+function winnerSeed(series: PlayoffSeriesState): PlayoffSeed {
+  if (series.winnerId === series.higherSeed.teamId) return series.higherSeed;
+  return series.lowerSeed;
 }
 
-// ---------------------------------------------------------------------------
-// Series simulation
-// ---------------------------------------------------------------------------
+function loserSeed(series: PlayoffSeriesState): PlayoffSeed {
+  if (series.loserId === series.higherSeed.teamId) return series.higherSeed;
+  return series.lowerSeed;
+}
+
+function toLegacySeries(series: PlayoffSeriesState): SeriesResult {
+  return {
+    winnerId: series.winnerId ?? series.higherSeed.teamId,
+    loserId: series.loserId ?? series.lowerSeed.teamId,
+    winnerWins: Math.max(series.higherSeedWins, series.lowerSeedWins),
+    loserWins: Math.min(series.higherSeedWins, series.lowerSeedWins),
+    games: series.games.map((game) => game.boxScore),
+    round: series.round,
+  };
+}
+
+function buildLeaderSummary(series: PlayoffSeriesState): string {
+  const higherAbbr = teamAbbreviation(series.higherSeed.teamId);
+  const lowerAbbr = teamAbbreviation(series.lowerSeed.teamId);
+
+  if (series.status === 'complete') {
+    const winner = series.winnerId === series.higherSeed.teamId ? higherAbbr : lowerAbbr;
+    const winnerWins = Math.max(series.higherSeedWins, series.lowerSeedWins);
+    const loserWins = Math.min(series.higherSeedWins, series.lowerSeedWins);
+    return `${winner} won ${winnerWins}-${loserWins}`;
+  }
+
+  if (series.higherSeedWins === series.lowerSeedWins) {
+    return `Series tied ${series.higherSeedWins}-${series.lowerSeedWins}`;
+  }
+
+  if (series.higherSeedWins > series.lowerSeedWins) {
+    return `${higherAbbr} leads ${series.higherSeedWins}-${series.lowerSeedWins}`;
+  }
+
+  return `${lowerAbbr} leads ${series.lowerSeedWins}-${series.higherSeedWins}`;
+}
+
+function createSeries(
+  id: string,
+  round: PlayoffRound,
+  league: LeagueId | 'MLB',
+  bestOf: 3 | 5 | 7,
+  higherSeed: PlayoffSeed,
+  lowerSeed: PlayoffSeed,
+): PlayoffSeriesState {
+  const base: PlayoffSeriesState = {
+    id,
+    round,
+    league,
+    bestOf,
+    higherSeed,
+    lowerSeed,
+    games: [],
+    higherSeedWins: 0,
+    lowerSeedWins: 0,
+    leaderSummary: 'Series tied 0-0',
+    status: 'in_progress',
+    winnerId: null,
+    loserId: null,
+  };
+  return {
+    ...base,
+    leaderSummary: buildLeaderSummary(base),
+  };
+}
 
 function buildGameTeam(teamId: string, allPlayers: GeneratedPlayer[]): GameTeam {
-  const mlbPlayers = allPlayers.filter(p => p.teamId === teamId && p.rosterStatus === 'MLB');
+  const mlbPlayers = allPlayers.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB');
   const hitters = mlbPlayers
-    .filter(p => (HITTER_POSITIONS as readonly string[]).includes(p.position))
-    .sort((a, b) => b.overallRating - a.overallRating);
+    .filter((player) => (HITTER_POSITIONS as readonly string[]).includes(player.position))
+    .sort((left, right) => right.overallRating - left.overallRating);
   const pitchers = mlbPlayers
-    .filter(p => (PITCHER_POSITIONS as readonly string[]).includes(p.position))
-    .sort((a, b) => b.overallRating - a.overallRating);
+    .filter((player) => (PITCHER_POSITIONS as readonly string[]).includes(player.position))
+    .sort((left, right) => right.overallRating - left.overallRating);
 
   const lineup = hitters.slice(0, 9);
   while (lineup.length < 9 && lineup.length > 0) {
     lineup.push(lineup[0]!);
   }
 
-  const starter = pitchers.find(p => p.position === 'SP') ?? pitchers[0] ?? lineup[0]!;
-  const bullpen = pitchers.filter(p => p !== starter);
+  const starter = pitchers.find((player) => player.position === 'SP') ?? pitchers[0] ?? lineup[0]!;
+  const bullpen = pitchers.filter((player) => player !== starter);
 
-  return { teamId, lineup, pitcher: starter, bullpen };
+  return {
+    teamId,
+    lineup,
+    pitcher: starter,
+    bullpen,
+  };
 }
 
-/**
- * Simulate a best-of-N series between two teams.
- */
+function playerPerformanceScore(stats: PlayerGameStats): number {
+  const hitting = stats.hits * 2 + stats.hr * 5 + stats.rbi * 1.5 + stats.runs + stats.bb * 0.5;
+  const pitching = stats.ip + stats.strikeouts * 1.5 - stats.earnedRuns * 2 - stats.walks * 0.5 + stats.wins * 4;
+  return hitting + pitching;
+}
+
+function formatStatLine(stats: PlayerGameStats): string {
+  if (stats.ip > 0) {
+    return `${(stats.ip / 3).toFixed(1)} IP, ${stats.strikeouts} K, ${stats.earnedRuns} ER`;
+  }
+  return `${stats.hits}-${stats.ab}, ${stats.hr} HR, ${stats.rbi} RBI`;
+}
+
+function deriveKeyPerformers(
+  allPlayers: GeneratedPlayer[],
+  playerStats: Map<string, PlayerGameStats>,
+): PlayoffKeyPerformer[] {
+  return Array.from(playerStats.values())
+    .filter((stats) => playerPerformanceScore(stats) > 0)
+    .sort((left, right) => playerPerformanceScore(right) - playerPerformanceScore(left))
+    .slice(0, 3)
+    .map((stats) => {
+      const player = allPlayers.find((candidate) => candidate.id === stats.playerId);
+      return {
+        playerId: stats.playerId,
+        playerName: player ? `${player.firstName} ${player.lastName}` : stats.playerId,
+        teamId: stats.teamId,
+        statLine: formatStatLine(stats),
+      };
+    });
+}
+
+function syncLegacyBracket(bracket: Omit<PlayoffBracket, 'series' | 'champion' | 'runnerUp'>): PlayoffBracket {
+  const dedupedCompletedSeries = new Map<string, PlayoffSeriesState>();
+  for (const series of [
+    ...bracket.completedRounds.flatMap((round) => round.series),
+    ...bracket.currentRoundSeries.filter((series) => series.status === 'complete'),
+  ]) {
+    dedupedCompletedSeries.set(series.id, series);
+  }
+  const allCompletedSeries = Array.from(dedupedCompletedSeries.values()).sort(seriesSort);
+  const series = allCompletedSeries.map(toLegacySeries);
+  const worldSeries = allCompletedSeries.find((item) => item.round === 'WORLD_SERIES');
+
+  return {
+    ...bracket,
+    series,
+    champion: worldSeries?.winnerId ?? null,
+    runnerUp: worldSeries?.loserId ?? null,
+  };
+}
+
+function createBracketFromSeeds(seeds: PlayoffSeed[]): PlayoffBracket {
+  const currentRoundSeries: PlayoffSeriesState[] = [];
+
+  for (const league of LEAGUES) {
+    const leagueSeeds = seeds
+      .filter((seed) => seed.league === league)
+      .sort(compareSeeds);
+    if (leagueSeeds.length < 6) continue;
+
+    currentRoundSeries.push(
+      createSeries(`${league}-WC-1`, 'WILD_CARD', league, 3, leagueSeeds[2]!, leagueSeeds[5]!),
+      createSeries(`${league}-WC-2`, 'WILD_CARD', league, 3, leagueSeeds[3]!, leagueSeeds[4]!),
+    );
+  }
+
+  return syncLegacyBracket({
+    seeds,
+    currentRound: 'WILD_CARD',
+    currentRoundSeries: currentRoundSeries.sort(seriesSort),
+    completedRounds: [],
+  });
+}
+
+function getRoundWinners(rounds: CompletedRoundResult[], round: PlayoffRound, league: LeagueId | 'MLB'): PlayoffSeed[] {
+  const entry = rounds.find((candidate) => candidate.round === round);
+  if (!entry) return [];
+  return entry.series
+    .filter((series) => series.league === league)
+    .map(winnerSeed)
+    .sort(compareSeeds);
+}
+
+function buildNextRoundSeries(bracket: PlayoffBracket): PlayoffSeriesState[] {
+  if (bracket.currentRound === 'WILD_CARD') {
+    const next: PlayoffSeriesState[] = [];
+    for (const league of LEAGUES) {
+      const leagueSeeds = bracket.seeds
+        .filter((seed) => seed.league === league)
+        .sort(compareSeeds);
+      const wcWinners = getRoundWinners(
+        [...bracket.completedRounds, { round: 'WILD_CARD' as const, series: bracket.currentRoundSeries }],
+        'WILD_CARD',
+        league,
+      ).sort((left, right) => right.seed - left.seed);
+      if (leagueSeeds.length < 2 || wcWinners.length < 2) continue;
+      next.push(
+        createSeries(`${league}-DS-1`, 'DIVISION_SERIES', league, 5, leagueSeeds[0]!, wcWinners[0]!),
+        createSeries(`${league}-DS-2`, 'DIVISION_SERIES', league, 5, leagueSeeds[1]!, wcWinners[1]!),
+      );
+    }
+    return next.sort(seriesSort);
+  }
+
+  if (bracket.currentRound === 'DIVISION_SERIES') {
+    const next: PlayoffSeriesState[] = [];
+    const rounds = [...bracket.completedRounds, { round: 'DIVISION_SERIES' as const, series: bracket.currentRoundSeries }];
+    for (const league of LEAGUES) {
+      const winners = getRoundWinners(rounds, 'DIVISION_SERIES', league);
+      if (winners.length < 2) continue;
+      const ordered = [...winners].sort(compareSeeds);
+      next.push(
+        createSeries(`${league}-CS-1`, 'CHAMPIONSHIP_SERIES', league, 7, ordered[0]!, ordered[1]!),
+      );
+    }
+    return next.sort(seriesSort);
+  }
+
+  if (bracket.currentRound === 'CHAMPIONSHIP_SERIES') {
+    const rounds = [...bracket.completedRounds, { round: 'CHAMPIONSHIP_SERIES' as const, series: bracket.currentRoundSeries }];
+    const alChampion = getRoundWinners(rounds, 'CHAMPIONSHIP_SERIES', 'AL')[0];
+    const nlChampion = getRoundWinners(rounds, 'CHAMPIONSHIP_SERIES', 'NL')[0];
+    if (!alChampion || !nlChampion) return [];
+    const ordered = [alChampion, nlChampion].sort(sortForHomeField);
+    return [
+      createSeries('WS-1', 'WORLD_SERIES', 'MLB', 7, ordered[0]!, ordered[1]!),
+    ];
+  }
+
+  return [];
+}
+
+function simulateSeriesState(
+  series: PlayoffSeriesState,
+  allPlayers: GeneratedPlayer[],
+  rng: GameRNG,
+): PlayoffSeriesState {
+  let current = series;
+  while (current.status !== 'complete') {
+    current = simPlayoffGame(current, allPlayers, rng.fork());
+  }
+  return current;
+}
+
+export function determinePlayoffSeeds(
+  standings: Record<string, StandingsEntry[]>,
+): PlayoffSeed[] {
+  const seeds: PlayoffSeed[] = [];
+
+  for (const league of LEAGUES) {
+    const leagueEntries = Object.entries(standings)
+      .filter(([division]) => leagueFromDivision(division) === league);
+    const divisionWinners = leagueEntries
+      .map(([, entries]) => entries[0])
+      .filter((entry): entry is StandingsEntry => entry != null)
+      .sort(standingsSort);
+    const wildCardPool = leagueEntries
+      .flatMap(([, entries]) => entries.slice(1))
+      .sort(standingsSort)
+      .slice(0, 3);
+
+    divisionWinners.forEach((winner, index) => {
+      seeds.push({
+        teamId: winner.teamId,
+        seed: index + 1,
+        wins: winner.wins,
+        losses: winner.losses,
+        league,
+        divisionWinner: true,
+      });
+    });
+
+    wildCardPool.forEach((team, index) => {
+      seeds.push({
+        teamId: team.teamId,
+        seed: index + 4,
+        wins: team.wins,
+        losses: team.losses,
+        league,
+        divisionWinner: false,
+      });
+    });
+  }
+
+  return seeds.sort((left, right) => {
+    if (left.league !== right.league) return left.league.localeCompare(right.league);
+    return compareSeeds(left, right);
+  });
+}
+
+export function buildPlayoffPreview(seeds: PlayoffSeed[]): PlayoffPreviewSeries[] {
+  const series: PlayoffPreviewSeries[] = [];
+
+  for (const league of LEAGUES) {
+    const leagueSeeds = seeds.filter((seed) => seed.league === league).sort(compareSeeds);
+    if (leagueSeeds.length < 6) continue;
+
+    series.push(
+      {
+        id: `${league}-WC-1`,
+        round: 'WILD_CARD',
+        bestOf: 3,
+        home: slotFromSeed(leagueSeeds[2]),
+        away: slotFromSeed(leagueSeeds[5]),
+      },
+      {
+        id: `${league}-WC-2`,
+        round: 'WILD_CARD',
+        bestOf: 3,
+        home: slotFromSeed(leagueSeeds[3]),
+        away: slotFromSeed(leagueSeeds[4]),
+      },
+      {
+        id: `${league}-DS-1`,
+        round: 'DIVISION_SERIES',
+        bestOf: 5,
+        home: slotFromSeed(leagueSeeds[0]),
+        away: placeholderSlot(`Lowest remaining ${league} wild card`),
+      },
+      {
+        id: `${league}-DS-2`,
+        round: 'DIVISION_SERIES',
+        bestOf: 5,
+        home: slotFromSeed(leagueSeeds[1]),
+        away: placeholderSlot(`Highest remaining ${league} wild card`),
+      },
+      {
+        id: `${league}-CS-1`,
+        round: 'CHAMPIONSHIP_SERIES',
+        bestOf: 7,
+        home: placeholderSlot(`Winner of ${league} DS 1`),
+        away: placeholderSlot(`Winner of ${league} DS 2`),
+      },
+    );
+  }
+
+  series.push({
+    id: 'WS-1',
+    round: 'WORLD_SERIES',
+    bestOf: 7,
+    home: placeholderSlot('AL Champion'),
+    away: placeholderSlot('NL Champion'),
+  });
+
+  return series;
+}
+
+export function initializePlayoffBracket(
+  standings: Record<string, StandingsEntry[]>,
+  _rng: GameRNG,
+): PlayoffBracket {
+  return createBracketFromSeeds(determinePlayoffSeeds(standings));
+}
+
+export function simPlayoffGame(
+  series: PlayoffSeriesState,
+  allPlayers: GeneratedPlayer[],
+  rng: GameRNG,
+): PlayoffSeriesState {
+  if (series.status === 'complete') {
+    return series;
+  }
+
+  const gameNumber = series.games.length + 1;
+  const homePattern = getHomePattern(series.bestOf);
+  const host = homePattern[Math.min(series.games.length, homePattern.length - 1)] === 1
+    ? series.higherSeed
+    : series.lowerSeed;
+  const guest = host.teamId === series.higherSeed.teamId ? series.lowerSeed : series.higherSeed;
+
+  const home = buildGameTeam(host.teamId, allPlayers);
+  const away = buildGameTeam(guest.teamId, allPlayers);
+
+  if (home.lineup.length < 9 || away.lineup.length < 9) {
+    const higherSeedWins = series.higherSeedWins + 1;
+    const completed = {
+      ...series,
+      higherSeedWins,
+      status: 'complete' as const,
+      winnerId: series.higherSeed.teamId,
+      loserId: series.lowerSeed.teamId,
+    };
+    return {
+      ...completed,
+      leaderSummary: buildLeaderSummary(completed),
+    };
+  }
+
+  const { boxScore, playerStats } = simulateGame(
+    rng.fork(),
+    away,
+    home,
+    `${series.id}-G${gameNumber}`,
+    true,
+  );
+  const winnerId = boxScore.homeScore > boxScore.awayScore ? boxScore.homeTeamId : boxScore.awayTeamId;
+  const loserId = winnerId === boxScore.homeTeamId ? boxScore.awayTeamId : boxScore.homeTeamId;
+  const higherSeedWon = winnerId === series.higherSeed.teamId;
+  const nextHigherSeedWins = series.higherSeedWins + (higherSeedWon ? 1 : 0);
+  const nextLowerSeedWins = series.lowerSeedWins + (higherSeedWon ? 0 : 1);
+  const winsNeeded = getWinsNeeded(series.bestOf);
+  const complete = nextHigherSeedWins >= winsNeeded || nextLowerSeedWins >= winsNeeded;
+
+  const nextSeries: PlayoffSeriesState = {
+    ...series,
+    games: [
+      ...series.games,
+      {
+        gameNumber,
+        winnerId,
+        loserId,
+        homeTeamId: boxScore.homeTeamId,
+        awayTeamId: boxScore.awayTeamId,
+        homeScore: boxScore.homeScore,
+        awayScore: boxScore.awayScore,
+        innings: boxScore.innings,
+        keyPerformers: deriveKeyPerformers(allPlayers, playerStats),
+        boxScore,
+      },
+    ],
+    higherSeedWins: nextHigherSeedWins,
+    lowerSeedWins: nextLowerSeedWins,
+    status: complete ? 'complete' : 'in_progress',
+    winnerId: complete ? winnerId : null,
+    loserId: complete ? loserId : null,
+  };
+
+  return {
+    ...nextSeries,
+    leaderSummary: buildLeaderSummary(nextSeries),
+  };
+}
+
 export function simulateSeries(
   rng: GameRNG,
   team1Id: string,
   team2Id: string,
-  bestOf: 5 | 7,
+  bestOf: 3 | 5 | 7,
   round: PlayoffRound,
   allPlayers: GeneratedPlayer[],
 ): SeriesResult {
-  const winsNeeded = Math.ceil(bestOf / 2);
-  let team1Wins = 0;
-  let team2Wins = 0;
-  const games: GameBoxScore[] = [];
-
-  // Home advantage: higher seed (team1) gets home in games 1,2,5,7
-  const homePattern = bestOf === 7
-    ? [1, 1, 2, 2, 1, 2, 1] // HHAAAHA
-    : [1, 1, 2, 2, 1];       // HHAAH
-
-  let gameNum = 0;
-  while (team1Wins < winsNeeded && team2Wins < winsNeeded) {
-    const homeTeamId = (homePattern[gameNum % homePattern.length] === 1) ? team1Id : team2Id;
-    const awayTeamId = homeTeamId === team1Id ? team2Id : team1Id;
-
-    const gameRng = rng.fork();
-    const home = buildGameTeam(homeTeamId, allPlayers);
-    const away = buildGameTeam(awayTeamId, allPlayers);
-
-    if (home.lineup.length < 9 || away.lineup.length < 9) {
-      // Can't play — team with more wins advances
-      break;
-    }
-
-    const { boxScore } = simulateGame(gameRng, away, home, `PO-G${gameNum + 1}`, true);
-    games.push(boxScore);
-
-    if (boxScore.homeScore > boxScore.awayScore) {
-      if (homeTeamId === team1Id) team1Wins++;
-      else team2Wins++;
-    } else {
-      if (awayTeamId === team1Id) team1Wins++;
-      else team2Wins++;
-    }
-
-    gameNum++;
-  }
-
-  const winnerId = team1Wins >= winsNeeded ? team1Id : team2Id;
-  const loserId = winnerId === team1Id ? team2Id : team1Id;
-
-  return {
-    winnerId,
-    loserId,
-    winnerWins: Math.max(team1Wins, team2Wins),
-    loserWins: Math.min(team1Wins, team2Wins),
-    games,
-    round,
+  const higherSeed: PlayoffSeed = {
+    teamId: team1Id,
+    seed: 1,
+    wins: 0,
+    losses: 0,
+    league: 'AL',
+    divisionWinner: false,
   };
+  const lowerSeed: PlayoffSeed = {
+    teamId: team2Id,
+    seed: 2,
+    wins: 0,
+    losses: 0,
+    league: 'AL',
+    divisionWinner: false,
+  };
+  const completed = simulateSeriesState(
+    createSeries(`LEGACY-${team1Id}-${team2Id}`, round, 'AL', bestOf, higherSeed, lowerSeed),
+    allPlayers,
+    rng.fork(),
+  );
+  return toLegacySeries(completed);
 }
 
-// ---------------------------------------------------------------------------
-// Full playoff bracket
-// ---------------------------------------------------------------------------
+export function advancePlayoffRound(
+  bracket: PlayoffBracket,
+  allPlayers?: GeneratedPlayer[],
+  rng?: GameRNG,
+): PlayoffBracket {
+  let working = bracket;
 
-/**
- * Run the entire playoff bracket from seeds to championship.
- *
- * Bracket structure (12 teams):
- * - Wild Card Round: Seeds 5-12 play (4 series, best-of-3 simplified to best-of-5 for fun)
- * - Division Series: Seeds 1-4 vs WC winners (best-of-5)
- * - Championship Series: 2 series (best-of-7)
- * - World Series: best-of-7
- */
+  if (working.currentRoundSeries.some((series) => series.status !== 'complete')) {
+    if (!allPlayers || !rng) {
+      return working;
+    }
+    const completedCurrent = working.currentRoundSeries.map((series) =>
+      simulateSeriesState(series, allPlayers, rng.fork()),
+    );
+    working = syncLegacyBracket({
+      seeds: working.seeds,
+      currentRound: working.currentRound,
+      currentRoundSeries: completedCurrent,
+      completedRounds: working.completedRounds,
+    });
+  }
+
+  if (working.currentRoundSeries.some((series) => series.status !== 'complete')) {
+    return working;
+  }
+
+  const completedRounds = [
+    ...working.completedRounds,
+    {
+      round: working.currentRound,
+      series: working.currentRoundSeries,
+    },
+  ];
+
+  if (working.currentRound === 'WORLD_SERIES') {
+    return syncLegacyBracket({
+      seeds: working.seeds,
+      currentRound: 'WORLD_SERIES',
+      currentRoundSeries: working.currentRoundSeries,
+      completedRounds,
+    });
+  }
+
+  const nextRound = buildNextRoundSeries({
+    ...working,
+    completedRounds,
+  });
+
+  const nextRoundLabel: PlayoffRound =
+    working.currentRound === 'WILD_CARD'
+      ? 'DIVISION_SERIES'
+      : working.currentRound === 'DIVISION_SERIES'
+        ? 'CHAMPIONSHIP_SERIES'
+        : 'WORLD_SERIES';
+
+  return syncLegacyBracket({
+    seeds: working.seeds,
+    currentRound: nextRoundLabel,
+    currentRoundSeries: nextRound,
+    completedRounds,
+  });
+}
+
+export function simPlayoffSeries(
+  bracket: PlayoffBracket,
+  allPlayers: GeneratedPlayer[],
+  rng: GameRNG,
+): PlayoffBracket {
+  const activeSeries = bracket.currentRoundSeries.find((series) => series.status !== 'complete');
+  if (!activeSeries) {
+    return advancePlayoffRound(bracket, allPlayers, rng.fork());
+  }
+
+  const updatedSeries = simulateSeriesState(activeSeries, allPlayers, rng.fork());
+  const nextCurrentRoundSeries = bracket.currentRoundSeries.map((series) =>
+    series.id === updatedSeries.id ? updatedSeries : series,
+  );
+  const nextBracket = syncLegacyBracket({
+    seeds: bracket.seeds,
+    currentRound: bracket.currentRound,
+    currentRoundSeries: nextCurrentRoundSeries,
+    completedRounds: bracket.completedRounds,
+  });
+
+  if (nextCurrentRoundSeries.every((series) => series.status === 'complete')) {
+    return advancePlayoffRound(nextBracket, allPlayers, rng.fork());
+  }
+
+  return nextBracket;
+}
+
+export function simNextPlayoffGame(
+  bracket: PlayoffBracket,
+  allPlayers: GeneratedPlayer[],
+  rng: GameRNG,
+): PlayoffBracket {
+  const activeSeries = bracket.currentRoundSeries.find((series) => series.status !== 'complete');
+  if (!activeSeries) {
+    return advancePlayoffRound(bracket, allPlayers, rng.fork());
+  }
+
+  const updatedSeries = simPlayoffGame(activeSeries, allPlayers, rng.fork());
+  const nextCurrentRoundSeries = bracket.currentRoundSeries.map((series) =>
+    series.id === updatedSeries.id ? updatedSeries : series,
+  );
+  const nextBracket = syncLegacyBracket({
+    seeds: bracket.seeds,
+    currentRound: bracket.currentRound,
+    currentRoundSeries: nextCurrentRoundSeries,
+    completedRounds: bracket.completedRounds,
+  });
+
+  if (nextCurrentRoundSeries.every((series) => series.status === 'complete')) {
+    return advancePlayoffRound(nextBracket, allPlayers, rng.fork());
+  }
+
+  return nextBracket;
+}
+
+export function simPlayoffRound(
+  bracket: PlayoffBracket,
+  allPlayers: GeneratedPlayer[],
+  rng: GameRNG,
+): PlayoffBracket {
+  return advancePlayoffRound(bracket, allPlayers, rng.fork());
+}
+
+export function isPlayoffComplete(bracket: PlayoffBracket): boolean {
+  return bracket.champion != null;
+}
+
 export function simulatePlayoffs(
   rng: GameRNG,
   seeds: PlayoffSeed[],
   allPlayers: GeneratedPlayer[],
 ): PlayoffBracket {
-  const series: SeriesResult[] = [];
-
-  if (seeds.length < 8) {
-    return { seeds, series, champion: seeds[0]?.teamId ?? null };
+  let bracket = createBracketFromSeeds(seeds);
+  while (!isPlayoffComplete(bracket)) {
+    bracket = advancePlayoffRound(bracket, allPlayers, rng.fork());
   }
-
-  // Wild Card Round: 5v12, 6v11, 7v10, 8v9
-  const wcMatchups = [
-    [seeds[4]!, seeds[11] ?? seeds[seeds.length - 1]!],
-    [seeds[5]!, seeds[10] ?? seeds[seeds.length - 1]!],
-    [seeds[6]!, seeds[9] ?? seeds[seeds.length - 1]!],
-    [seeds[7]!, seeds[8] ?? seeds[seeds.length - 1]!],
-  ];
-
-  const wcWinners: string[] = [];
-  for (const [higher, lower] of wcMatchups) {
-    if (!higher || !lower) continue;
-    const result = simulateSeries(rng, higher.teamId, lower.teamId, 5, 'WILD_CARD', allPlayers);
-    series.push(result);
-    wcWinners.push(result.winnerId);
-  }
-
-  // Division Series: 1 vs lowest WC, 2 vs next, 3 vs next, 4 vs next
-  const dsMatchups = [
-    [seeds[0]!.teamId, wcWinners[3] ?? wcWinners[0]!],
-    [seeds[1]!.teamId, wcWinners[2] ?? wcWinners[0]!],
-    [seeds[2]!.teamId, wcWinners[1] ?? wcWinners[0]!],
-    [seeds[3]!.teamId, wcWinners[0]!],
-  ];
-
-  const dsWinners: string[] = [];
-  for (const [higher, lower] of dsMatchups) {
-    if (!higher || !lower) continue;
-    const result = simulateSeries(rng, higher, lower, 5, 'DIVISION_SERIES', allPlayers);
-    series.push(result);
-    dsWinners.push(result.winnerId);
-  }
-
-  // Championship Series
-  const csMatchups = [
-    [dsWinners[0]!, dsWinners[1]!],
-    [dsWinners[2]!, dsWinners[3]!],
-  ];
-
-  const csWinners: string[] = [];
-  for (const [t1, t2] of csMatchups) {
-    if (!t1 || !t2) continue;
-    const result = simulateSeries(rng, t1, t2, 7, 'CHAMPIONSHIP_SERIES', allPlayers);
-    series.push(result);
-    csWinners.push(result.winnerId);
-  }
-
-  // World Series
-  let champion: string | null = null;
-  if (csWinners.length >= 2) {
-    const wsResult = simulateSeries(rng, csWinners[0]!, csWinners[1]!, 7, 'WORLD_SERIES', allPlayers);
-    series.push(wsResult);
-    champion = wsResult.winnerId;
-  } else if (csWinners.length === 1) {
-    champion = csWinners[0]!;
-  }
-
-  return { seeds, series, champion };
+  return bracket;
 }
