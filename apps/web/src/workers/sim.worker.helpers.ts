@@ -40,15 +40,22 @@ import {
   skipCurrentPhase,
   autoResolveTenderNonTender,
   buildRosterState,
+  buildWaiverPriority,
   calculateTeamPayroll,
+  claimOffWaivers as claimOffWaiversCore,
+  consumeOptionYear,
   createFreeAgencyMarket,
+  createMinorLeagueState as createMinorLeagueStateCore,
   evaluateTeamNeeds,
   generateArbitrationCase,
   getArbEligiblePlayers,
   getAvailableIFAProspects,
+  getPromotionCandidates as getPromotionCandidatesCore,
+  getRosterComplianceIssues as getRosterComplianceIssuesCore,
   getInternationalScoutAccuracy,
   getRemainingIFABudget,
   getTeamBudget,
+  placeOnWaivers as placeOnWaiversCore,
   recordArbitration,
   recordDraftPicks,
   recordFASigning,
@@ -57,8 +64,10 @@ import {
   resolveArbitration,
   scoutIFAProspect,
   signIFAProspect as signIFAProspectCore,
+  simulateAffiliateDay as simulateAffiliateDayCore,
   simulateFADay,
   tradeIFABonusPool as tradeIFABonusPoolCore,
+  accrueServiceTimeDay as accrueServiceTimeDayCore,
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
   makeRule5Selection as makeRule5SelectionCore,
   passRule5DraftTurn as passRule5DraftTurnCore,
@@ -70,7 +79,9 @@ import {
   type IFAScoutingHistoryEntry,
   type InternationalProspect,
   type InternationalScoutingReport,
+  type PromotionCandidate,
   type RetirementResult,
+  type RosterComplianceIssue,
   type Rule5EligiblePlayer,
   type Rule5Obligation,
   type Rule5OfferBackState,
@@ -195,6 +206,10 @@ export interface PlayerDTO {
   letterGrade: string;
   rosterStatus: string;
   teamId: string;
+  serviceTimeDays: number;
+  optionYearsUsed: number;
+  isOutOfOptions: boolean;
+  minorLeagueLevel: string | null;
   stats: {
     pa: number;
     ab: number;
@@ -562,19 +577,100 @@ export function createEmptyDraftState(): PersistentDraftState {
   };
 }
 
-export function createEmptyMinorLeagueState(): MinorLeagueState {
-  return {
-    serviceTimeLedger: [],
-    optionUsage: [],
-    waiverClaims: [],
-    affiliateStates: [],
-    affiliateBoxScores: [],
-  };
+export function createEmptyMinorLeagueState(season = 1): MinorLeagueState {
+  return createMinorLeagueStateCore(
+    TEAMS.map((team) => team.id),
+    season,
+  );
 }
 
 const QUALIFYING_OFFER_AMOUNT = 20;
 const QUALIFYING_OFFER_MIN_MARKET_VALUE = 15;
 const QUALIFYING_OFFER_MIN_SERVICE_YEARS = 3;
+
+function buildWaiverPriorityForState(s: FullGameState): string[] {
+  return buildWaiverPriority(
+    TEAMS.map((team) => {
+      const record = s.seasonState.standings.getRecord(team.id);
+      return {
+        teamId: team.id,
+        wins: record?.wins ?? 0,
+        losses: record?.losses ?? 0,
+      };
+    }),
+  );
+}
+
+export function advanceMinorLeagueDay(s: FullGameState) {
+  const accrued = accrueServiceTimeDayCore(s.players, s.minorLeagueState);
+  s.players = accrued.players;
+  s.minorLeagueState = simulateAffiliateDayCore(
+    s.rng.fork(),
+    accrued.state,
+    s.players,
+    s.day,
+    s.season,
+    TEAMS.map((team) => team.id),
+  );
+}
+
+export function getPromotionCandidatesForTeam(
+  s: FullGameState,
+  teamId: string,
+): PromotionCandidate[] {
+  return getPromotionCandidatesCore(s.players, s.minorLeagueState, teamId);
+}
+
+export function getRosterComplianceIssuesForTeam(
+  s: FullGameState,
+  teamId: string,
+): RosterComplianceIssue[] {
+  const rosterState = s.rosterStates.get(teamId);
+  if (!rosterState) {
+    return [];
+  }
+  const teamPlayers = s.players.filter((player) => player.teamId === teamId);
+  return getRosterComplianceIssuesCore(teamPlayers, rosterState, s.day);
+}
+
+export function claimPlayerOffWaivers(
+  s: FullGameState,
+  playerId: string,
+  claimingTeamId: string,
+) {
+  const result = claimOffWaiversCore(s.players, s.minorLeagueState, playerId, claimingTeamId);
+  if (!result.success) {
+    return result;
+  }
+
+  s.players = result.players;
+  s.minorLeagueState = result.state;
+
+  const affectedTeams = new Set<string>([claimingTeamId]);
+  for (const claim of s.minorLeagueState.waiverClaims) {
+    if (claim.playerId === playerId) {
+      affectedTeams.add(claim.fromTeamId);
+    }
+  }
+  for (const teamId of affectedTeams) {
+    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+  }
+
+  return result;
+}
+
+export function placePlayerOnWaivers(
+  s: FullGameState,
+  player: GeneratedPlayer,
+) {
+  s.minorLeagueState = placeOnWaiversCore(
+    s.minorLeagueState,
+    player,
+    buildWaiverPriorityForState(s),
+    s.season,
+    s.day,
+  );
+}
 
 function ensureDraftPickOwnershipForSeason(s: FullGameState) {
   const requiredSeasons = new Set([s.season, s.season + 1]);
@@ -2314,6 +2410,10 @@ export function toPlayerDTO(player: GeneratedPlayer, stats?: PlayerGameStats): P
     displayRating: toDisplayRating(player.overallRating),
     letterGrade: toLetterGrade(player.overallRating),
     rosterStatus: player.rosterStatus, teamId: player.teamId,
+    serviceTimeDays: player.serviceTimeDays,
+    optionYearsUsed: player.optionYearsUsed,
+    isOutOfOptions: player.isOutOfOptions,
+    minorLeagueLevel: player.minorLeagueLevel,
     stats: statBlock,
   };
 }

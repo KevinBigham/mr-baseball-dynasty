@@ -101,3 +101,35 @@ export type {
   ContractOffer,
   FreeAgencyMarket,
 } from './freeAgency.js';
+
+// Minor leagues
+export {
+  AFFILIATE_LEVELS,
+  AFFILIATE_SCHEDULE_LENGTHS,
+  EXPANDED_MLB_ROSTER_LIMIT,
+  SEPTEMBER_EXPANDED_ROSTER_DAYS,
+  ROOKIE_AFFILIATE_START_DAY,
+  createMinorLeagueState,
+  accrueServiceTimeDay,
+  consumeOptionYear,
+  buildWaiverPriority,
+  placeOnWaivers,
+  claimOffWaivers,
+  isExpandedRosterWindow,
+  getActiveRosterLimit,
+  getRosterComplianceIssues,
+  getPromotionCandidates,
+  simulateAffiliateDay,
+} from './minorLeagues.js';
+export type {
+  AffiliateLevel,
+  AffiliatePlayerStats,
+  AffiliateState,
+  WaiverClaim,
+  AffiliateBoxScore,
+  MinorLeagueState,
+  MinorLeagueMutationResult,
+  WaiverClaimResult,
+  RosterComplianceIssue,
+  PromotionCandidate,
+} from './minorLeagues.js';

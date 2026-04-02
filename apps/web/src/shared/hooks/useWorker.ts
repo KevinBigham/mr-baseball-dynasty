@@ -232,6 +232,38 @@ export function useWorker() {
   );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const promotePlayer = useCallback(
+    async (playerId: string) => runMutation(() => api.promotePlayer(playerId)),
+    [api, runMutation],
+  );
+  const demotePlayer = useCallback(
+    async (playerId: string) => runMutation(() => api.demotePlayer(playerId)),
+    [api, runMutation],
+  );
+  const designateForAssignment = useCallback(
+    async (playerId: string) => runMutation(() => api.designateForAssignment(playerId)),
+    [api, runMutation],
+  );
+  const claimOffWaivers = useCallback(
+    async (playerId: string) => runMutation(() => api.claimOffWaivers(playerId)),
+    [api, runMutation],
+  );
+  const getPromotionCandidates = useCallback(
+    async (teamId?: string) => api.getPromotionCandidates(teamId),
+    [api],
+  );
+  const getRosterComplianceIssues = useCallback(
+    async (teamId?: string) => api.getRosterComplianceIssues(teamId),
+    [api],
+  );
+  const getAffiliateOverview = useCallback(
+    async (teamId?: string) => api.getAffiliateOverview(teamId),
+    [api],
+  );
+  const getAffiliateBoxScore = useCallback(
+    async (boxScoreId: string) => api.getAffiliateBoxScore(boxScoreId),
+    [api],
+  );
   const proceedToOffseason = useCallback(async () => runMutation(() => api.proceedToOffseason()), [api, runMutation]);
   const startNextSeason = useCallback(async () => runMutation(() => api.startNextSeason()), [api, runMutation]);
   const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
@@ -303,7 +335,9 @@ export function useWorker() {
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
-    getNews, markNewsRead, proceedToOffseason, startNextSeason,
+    getNews, markNewsRead, promotePlayer, demotePlayer, designateForAssignment, claimOffWaivers,
+    getPromotionCandidates, getRosterComplianceIssues, getAffiliateOverview, getAffiliateBoxScore,
+    proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,

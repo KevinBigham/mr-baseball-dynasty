@@ -3,6 +3,7 @@ import {
   TEAMS,
   assignGMPersonality,
   buildRosterState,
+  consumeOptionYear,
   createSeasonState,
   demotePlayer,
   determinePlayoffSeeds,
@@ -43,7 +44,9 @@ import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
   createEmptyMinorLeagueState,
+  advanceMinorLeagueDay,
   buildOffseasonStateView,
+  claimPlayerOffWaivers,
   createEmptyTradeState,
   enforceRule5RosterRestriction,
   ensurePlayersHaveRule5Eligibility,
@@ -55,6 +58,7 @@ import {
   requireState,
   resolveRule5OfferBackDecision,
   passUserRule5Turn,
+  placePlayerOnWaivers,
   scoutUserDraftPlayer,
   scoutUserIFAPlayer,
   signUserIFAPlayer,
@@ -450,7 +454,7 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.tradeState = createEmptyTradeState();
   s.internationalScoutingState = createEmptyInternationalScoutingState(s.season);
   s.draftState = createEmptyDraftState();
-  s.minorLeagueState = createEmptyMinorLeagueState();
+  s.minorLeagueState = createEmptyMinorLeagueState(s.season);
   const teamIds = TEAMS.map((team) => team.id);
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
@@ -480,6 +484,7 @@ function simDayInternal(): SimResultDTO {
     const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
     s.seasonState = newState;
     s.day = newState.currentDay;
+    advanceMinorLeagueDay(s);
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
@@ -592,7 +597,7 @@ export const actionApi = {
       rosterStates,
       internationalScoutingState: createEmptyInternationalScoutingState(1),
       draftState: createEmptyDraftState(),
-      minorLeagueState: createEmptyMinorLeagueState(),
+      minorLeagueState: createEmptyMinorLeagueState(1),
       playerMorale: new Map(),
       teamChemistry: new Map(),
       ownerState: new Map(),
@@ -864,7 +869,14 @@ export const actionApi = {
     }
 
     const result = promotePlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
     return { success: result.success, error: result.error };
   },
@@ -886,9 +898,28 @@ export const actionApi = {
       return rule5Restriction;
     }
 
+    if (player.rosterStatus === 'MLB' && !player.isOutOfOptions) {
+      const optionResult = consumeOptionYear(player, s.minorLeagueState, s.season);
+      s.minorLeagueState = optionResult.state;
+      s.players = s.players.map((candidate) =>
+        candidate.id === playerId ? optionResult.player : candidate,
+      );
+    }
+
     const result = demotePlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const updatedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (updatedPlayer && player.rosterStatus === 'MLB' && updatedPlayer.isOutOfOptions) {
+      placePlayerOnWaivers(s, updatedPlayer);
+    }
     return { success: result.success, error: result.error };
   },
 
@@ -910,9 +941,37 @@ export const actionApi = {
     }
 
     const result = dfaPlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const updatedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (updatedPlayer) {
+      placePlayerOnWaivers(s, updatedPlayer);
+    }
     return { success: result.success, error: result.error };
+  },
+
+  promotePlayer(playerId: string) {
+    return this.promotePlayerAction(playerId);
+  },
+
+  demotePlayer(playerId: string) {
+    return this.demotePlayerAction(playerId);
+  },
+
+  designateForAssignment(playerId: string) {
+    return this.dfaPlayerAction(playerId);
+  },
+
+  claimOffWaivers(playerId: string) {
+    const s = requireState();
+    return claimPlayerOffWaivers(s, playerId, s.userTeamId);
   },
 
   makeContractOffer(playerId: string, years: number, salary: number) {

@@ -32,6 +32,7 @@ import {
   DraftSignabilitySchema,
   QualifyingOfferRecordSchema,
 } from "./draft.js";
+import { MinorLeagueStateSchema } from "./minors.js";
 
 export const SaveMetaSchema = z.object({
   id: z.string().uuid(),
@@ -327,13 +328,6 @@ export const DraftStateSchema = z.object({
 });
 export type DraftState = z.infer<typeof DraftStateSchema>;
 
-export const MinorLeagueStateSchema = z.object({
-  serviceTimeLedger: z.array(z.tuple([z.string(), z.number().int().min(0)])),
-  optionUsage: z.array(z.tuple([z.string(), z.array(z.number().int().min(0))])),
-  waiverClaims: z.array(z.unknown()),
-  affiliateStates: z.array(z.unknown()),
-  affiliateBoxScores: z.array(z.unknown()),
-});
 export type MinorLeagueState = z.infer<typeof MinorLeagueStateSchema>;
 
 export const CURRENT_GAME_SNAPSHOT_VERSION = 7;

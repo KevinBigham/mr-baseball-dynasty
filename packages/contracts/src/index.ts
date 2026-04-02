@@ -51,6 +51,23 @@ export {
 export type { TransactionType, RosterTransaction } from "./schemas/roster.js";
 
 export {
+  AffiliateLevelEnum,
+  AffiliatePlayerStatsSchema,
+  AffiliateStateSchema,
+  WaiverClaimSchema,
+  AffiliateBoxScoreSchema,
+  MinorLeagueStateSchema,
+} from "./schemas/minors.js";
+export type {
+  AffiliateLevel,
+  AffiliatePlayerStats,
+  AffiliateState,
+  WaiverClaim,
+  AffiliateBoxScore,
+  MinorLeagueState,
+} from "./schemas/minors.js";
+
+export {
   ScoutReportSchema,
   DraftProspectBackgroundEnum,
   DraftScoutingReportSchema,
@@ -183,7 +200,6 @@ export {
   IFAScoutingHistoryEntrySchema,
   InternationalScoutingStateSchema,
   DraftStateSchema,
-  MinorLeagueStateSchema,
   ScheduledGameSchema,
   StandingsRecordSchema,
   PlayerStatEntrySchema,
@@ -213,7 +229,6 @@ export type {
   IFAScoutingHistoryEntry,
   InternationalScoutingState,
   DraftState,
-  MinorLeagueState,
   ScheduledGame,
   StandingsRecord,
   PlayerStatEntry,

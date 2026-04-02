@@ -17,6 +17,64 @@ import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
 import { processTradeMarketActivity } from './sim.worker.trade';
 
+interface WorkerPlayerView {
+  id: string;
+  teamId: string;
+  rosterStatus: string;
+  serviceTimeDays: number;
+}
+
+interface PromotionCandidateView {
+  playerId: string;
+  playerName: string;
+  score: number;
+}
+
+interface RosterComplianceIssueView {
+  code: string;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+interface DFACandidateView {
+  playerId: string;
+  playerName: string;
+  score: number;
+}
+
+interface AffiliateOverviewView {
+  affiliates: Array<{
+    level: string;
+    gamesPlayed: number;
+    wins: number;
+    losses: number;
+  }>;
+  recentBoxScores: Array<{
+    id: string;
+    level: string;
+    summary: string;
+  }>;
+  waiverClaims: Array<{
+    playerId: string;
+    status: string;
+  }>;
+}
+
+interface AffiliateBoxScoreView {
+  id: string;
+  summary: string;
+}
+
+interface MinorLeagueWorkerApi {
+  getPromotionCandidates: (teamId?: string) => PromotionCandidateView[];
+  getRosterComplianceIssues: (teamId?: string) => {
+    issues: RosterComplianceIssueView[];
+    dfaRecommendations: DFACandidateView[];
+  };
+  getAffiliateOverview: (teamId?: string) => AffiliateOverviewView;
+  getAffiliateBoxScore: (boxScoreId: string) => AffiliateBoxScoreView | null;
+}
+
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
     playerId: 'player',
@@ -186,6 +244,83 @@ describe('sim worker narrative APIs', () => {
 
     expect(api.getTeamChemistry('nyy')).toEqual(beforeChemistry);
     expect(api.getBriefing(10)).toEqual(beforeBriefing);
+  });
+
+  it('exposes minor league management queries and affiliate box scores', () => {
+    api.newGame(111, 'nyy');
+    api.simDay();
+
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const state = requireState();
+    const mlbPlayer = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')!;
+    const beforeServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
+
+    api.simDay();
+
+    const afterServiceTime = (api.getPlayer(mlbPlayer.id) as unknown as WorkerPlayerView).serviceTimeDays;
+
+    const promotionTarget = state.players.find((player) => player.teamId === 'nyy' && player.rosterStatus === 'AA')!;
+    const affiliateState = state.minorLeagueState.affiliateStates.find(
+      (entry) => entry.teamId === 'nyy' && entry.level === 'AA',
+    )!;
+    affiliateState.playerStats = [[promotionTarget.id, {
+      playerId: promotionTarget.id,
+      games: 24,
+      pa: 118,
+      hits: 38,
+      hr: 7,
+      rbi: 29,
+      bb: 18,
+      k: 17,
+      ipOuts: 0,
+      earnedRuns: 0,
+      strikeouts: 0,
+      walks: 0,
+      wins: 0,
+      losses: 0,
+    }]];
+
+    const rosterState = state.rosterStates.get('nyy')!;
+    rosterState.fortyManRoster = state.players
+      .filter((player) => player.teamId === 'nyy')
+      .map((player) => player.id);
+
+    const promotionCandidates = workerApi.getPromotionCandidates('nyy');
+    const compliance = workerApi.getRosterComplianceIssues('nyy');
+    const affiliateOverview = workerApi.getAffiliateOverview('nyy');
+    const latestBoxScore = workerApi.getAffiliateBoxScore(affiliateOverview.recentBoxScores[0]!.id);
+
+    expect(afterServiceTime).toBe(beforeServiceTime + 1);
+    expect(promotionCandidates[0]?.playerId).toBe(promotionTarget.id);
+    expect(compliance.issues.some((issue) => issue.code === 'forty_man_over_limit')).toBe(true);
+    expect(compliance.dfaRecommendations.length).toBeGreaterThan(0);
+    expect(affiliateOverview.affiliates.some((affiliate) => affiliate.level === 'AAA' && affiliate.gamesPlayed > 0)).toBe(true);
+    expect(affiliateOverview.recentBoxScores.length).toBeGreaterThan(0);
+    expect(latestBoxScore?.id).toBe(affiliateOverview.recentBoxScores[0]!.id);
+  });
+
+  it('routes out-of-options demotions through waivers and allows the priority team to claim the player', () => {
+    api.newGame(112, 'ari');
+    const workerApi = api as unknown as MinorLeagueWorkerApi;
+    const state = requireState();
+    const player = state.players.find((candidate) => candidate.teamId === 'bos' && candidate.rosterStatus === 'MLB')!;
+    player.optionYearsUsed = 3;
+    player.isOutOfOptions = true;
+
+    const demotionResult = api.demotePlayer(player.id);
+    const overviewBeforeClaim = workerApi.getAffiliateOverview('ari');
+
+    expect(demotionResult.success).toBe(true);
+    expect(overviewBeforeClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'pending')).toBe(true);
+
+    const claimResult = api.claimOffWaivers(player.id);
+    const claimedPlayer = api.getPlayer(player.id) as unknown as WorkerPlayerView;
+    const overviewAfterClaim = workerApi.getAffiliateOverview('ari');
+
+    expect(claimResult.success).toBe(true);
+    expect(claimedPlayer.teamId).toBe('ari');
+    expect(claimedPlayer.rosterStatus).toBe('AAA');
+    expect(overviewAfterClaim.waiverClaims.some((claim) => claim.playerId === player.id && claim.status === 'claimed')).toBe(true);
   });
 
   it('adds trade consequences after an accepted user trade', () => {

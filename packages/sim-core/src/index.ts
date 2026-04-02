@@ -363,6 +363,36 @@ export type {
   FreeAgencyMarket,
 } from './roster/index.js';
 export {
+  AFFILIATE_LEVELS,
+  AFFILIATE_SCHEDULE_LENGTHS,
+  EXPANDED_MLB_ROSTER_LIMIT,
+  SEPTEMBER_EXPANDED_ROSTER_DAYS,
+  ROOKIE_AFFILIATE_START_DAY,
+  createMinorLeagueState,
+  accrueServiceTimeDay,
+  consumeOptionYear,
+  buildWaiverPriority,
+  placeOnWaivers,
+  claimOffWaivers,
+  isExpandedRosterWindow,
+  getActiveRosterLimit,
+  getRosterComplianceIssues,
+  getPromotionCandidates,
+  simulateAffiliateDay,
+} from './roster/index.js';
+export type {
+  AffiliateLevel,
+  AffiliatePlayerStats,
+  AffiliateState,
+  WaiverClaim,
+  AffiliateBoxScore,
+  MinorLeagueState,
+  MinorLeagueMutationResult,
+  WaiverClaimResult,
+  RosterComplianceIssue,
+  PromotionCandidate,
+} from './roster/index.js';
+export {
   calculateRule5EligibleAfterSeason,
   createRule5Session,
   estimateBackfilledRule5EligibilityAfterSeason,
