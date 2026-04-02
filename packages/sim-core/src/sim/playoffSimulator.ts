@@ -39,6 +39,36 @@ export interface PlayoffBracket {
   readonly champion: string | null;
 }
 
+export interface PlayoffPreviewTeamSlot {
+  readonly teamId: string | null;
+  readonly seed: number | null;
+  readonly placeholder: string | null;
+}
+
+export interface PlayoffPreviewSeries {
+  readonly id: string;
+  readonly round: PlayoffRound;
+  readonly bestOf: 5 | 7;
+  readonly home: PlayoffPreviewTeamSlot;
+  readonly away: PlayoffPreviewTeamSlot;
+}
+
+function slotFromSeed(seed: PlayoffSeed | undefined): PlayoffPreviewTeamSlot {
+  return {
+    teamId: seed?.teamId ?? null,
+    seed: seed?.seed ?? null,
+    placeholder: null,
+  };
+}
+
+function placeholderSlot(placeholder: string): PlayoffPreviewTeamSlot {
+  return {
+    teamId: null,
+    seed: null,
+    placeholder,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Seeding
 // ---------------------------------------------------------------------------
@@ -80,6 +110,92 @@ export function determinePlayoffSeeds(
   }
 
   return seeds;
+}
+
+export function buildPlayoffPreview(seeds: PlayoffSeed[]): PlayoffPreviewSeries[] {
+  if (seeds.length < 8) {
+    return [];
+  }
+
+  return [
+    {
+      id: 'wc-1',
+      round: 'WILD_CARD',
+      bestOf: 5,
+      home: slotFromSeed(seeds[4]),
+      away: slotFromSeed(seeds[11] ?? seeds[seeds.length - 1]),
+    },
+    {
+      id: 'wc-2',
+      round: 'WILD_CARD',
+      bestOf: 5,
+      home: slotFromSeed(seeds[5]),
+      away: slotFromSeed(seeds[10] ?? seeds[seeds.length - 1]),
+    },
+    {
+      id: 'wc-3',
+      round: 'WILD_CARD',
+      bestOf: 5,
+      home: slotFromSeed(seeds[6]),
+      away: slotFromSeed(seeds[9] ?? seeds[seeds.length - 1]),
+    },
+    {
+      id: 'wc-4',
+      round: 'WILD_CARD',
+      bestOf: 5,
+      home: slotFromSeed(seeds[7]),
+      away: slotFromSeed(seeds[8]),
+    },
+    {
+      id: 'ds-1',
+      round: 'DIVISION_SERIES',
+      bestOf: 5,
+      home: slotFromSeed(seeds[0]),
+      away: placeholderSlot('Winner of 8 vs 9'),
+    },
+    {
+      id: 'ds-2',
+      round: 'DIVISION_SERIES',
+      bestOf: 5,
+      home: slotFromSeed(seeds[1]),
+      away: placeholderSlot('Winner of 7 vs 10'),
+    },
+    {
+      id: 'ds-3',
+      round: 'DIVISION_SERIES',
+      bestOf: 5,
+      home: slotFromSeed(seeds[2]),
+      away: placeholderSlot('Winner of 6 vs 11'),
+    },
+    {
+      id: 'ds-4',
+      round: 'DIVISION_SERIES',
+      bestOf: 5,
+      home: slotFromSeed(seeds[3]),
+      away: placeholderSlot('Winner of 5 vs 12'),
+    },
+    {
+      id: 'cs-1',
+      round: 'CHAMPIONSHIP_SERIES',
+      bestOf: 7,
+      home: placeholderSlot('Winner of DS 1'),
+      away: placeholderSlot('Winner of DS 2'),
+    },
+    {
+      id: 'cs-2',
+      round: 'CHAMPIONSHIP_SERIES',
+      bestOf: 7,
+      home: placeholderSlot('Winner of DS 3'),
+      away: placeholderSlot('Winner of DS 4'),
+    },
+    {
+      id: 'ws-1',
+      round: 'WORLD_SERIES',
+      bestOf: 7,
+      home: placeholderSlot('Winner of CS 1'),
+      away: placeholderSlot('Winner of CS 2'),
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------

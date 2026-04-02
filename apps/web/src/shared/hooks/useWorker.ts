@@ -64,6 +64,7 @@ export function useWorker() {
   const simDay = useCallback(async () => api.simDay(), [api]);
   const simWeek = useCallback(async () => api.simWeek(), [api]);
   const simMonth = useCallback(async () => api.simMonth(), [api]);
+  const simToPlayoffs = useCallback(async () => api.simToPlayoffs(), [api]);
   const getState = useCallback(async () => api.getState(), [api]);
   const exportSnapshot = useCallback(async () => api.exportSnapshot(), [api]);
   const importSnapshot = useCallback(
@@ -94,6 +95,7 @@ export function useWorker() {
   );
 
   const getPlayoffBracket = useCallback(async () => api.getPlayoffBracket(), [api]);
+  const getSeasonFlowState = useCallback(async () => api.getSeasonFlowState(), [api]);
   const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
   const scoutPlayerReport = useCallback(
     async (playerId: string) => api.scoutPlayerReport(playerId),
@@ -126,6 +128,8 @@ export function useWorker() {
   );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
+  const proceedToOffseason = useCallback(async () => api.proceedToOffseason(), [api]);
+  const startNextSeason = useCallback(async () => api.startNextSeason(), [api]);
   const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
   const getPressRoomFeed = useCallback(
     async (limit?: number) => api.getPressRoomFeed(limit),
@@ -161,14 +165,15 @@ export function useWorker() {
   );
 
   return {
-    ping, newGame, simDay, simWeek, simMonth, getState,
+    ping, newGame, simDay, simWeek, simMonth, simToPlayoffs, getState,
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer,
-    getLeagueLeaders, getPlayoffBracket,
+    getLeagueLeaders, getPlayoffBracket, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport,
     getDraftClass, startDraft, makeDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, proposeTrade, respondToTradeOffer,
-    getNews, markNewsRead, getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
+    getNews, markNewsRead, proceedToOffseason, startNextSeason,
+    getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,
     searchPlayers,

@@ -22,6 +22,7 @@ import type {
 } from '@mbd/sim-core';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
+  buildSeasonFlowStateView,
   buildDraftRoomView,
   buildOffseasonStateView,
   getTeamPlayers,
@@ -166,6 +167,10 @@ export const queryApi = {
 
   getPlayoffBracket(): PlayoffBracket | null {
     return state?.playoffBracket ?? null;
+  },
+
+  getSeasonFlowState() {
+    return buildSeasonFlowStateView(requireState());
   },
 
   getUserTeamId(): string {

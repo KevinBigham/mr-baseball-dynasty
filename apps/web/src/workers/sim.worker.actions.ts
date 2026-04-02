@@ -95,6 +95,108 @@ function applyAISigningProgress(
   }
 }
 
+function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
+  if (seasonComplete) {
+    ensureAwardHistoryForSeason(s);
+    clearPendingTradeOffers(s);
+    s.phase = 'playoffs';
+    s.day = 1;
+    s.playoffBracket = null;
+  }
+
+  return {
+    day: s.day,
+    season: s.season,
+    phase: s.phase,
+    gamesPlayed,
+    seasonComplete,
+  };
+}
+
+function simWeekInternal(): SimResultDTO {
+  const s = requireState();
+  if (s.phase !== 'regular') {
+    return simDayInternal();
+  }
+
+  const previousDay = s.day;
+  const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+  s.seasonState = newState;
+  s.day = newState.currentDay;
+  processTradeMarketActivity(s, previousDay, s.day);
+  processDayInjuriesAndNews(s);
+  refreshNarrativeState(s, result.games);
+  return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function simMonthInternal(): SimResultDTO {
+  const s = requireState();
+  if (s.phase !== 'regular') {
+    return simDayInternal();
+  }
+
+  const previousDay = s.day;
+  const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
+  s.seasonState = newState;
+  s.day = newState.currentDay;
+  processTradeMarketActivity(s, previousDay, s.day);
+  processDayInjuriesAndNews(s);
+  refreshNarrativeState(s, result.games);
+  return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
+  const beforePlayers = s.players;
+  const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
+  recordBreakoutNarratives(s, beforePlayers, developedPlayers);
+  s.players = developedPlayers;
+
+  const retired = determineRetirements(s.rng.fork(), s.players);
+  if (s.offseasonState) {
+    s.offseasonState = recordRetirements(
+      s.offseasonState,
+      retired.map((playerId) => {
+        const player = s.players.find((candidate) => candidate.id === playerId);
+        const seasonsPlayed = s.serviceTime.get(playerId) ?? 0;
+        const playerName = player ? `${player.firstName} ${player.lastName}` : playerId;
+        return {
+          playerId,
+          teamId: player?.teamId ?? '',
+          playerName,
+          seasonsPlayed,
+          summary: `${playerName} retired after ${seasonsPlayed} seasons.`,
+        };
+      }),
+    );
+  }
+
+  applyRetirementConsequences(s, retired);
+  finalizeSeasonHistoryRetirements(s, retired);
+  s.players = s.players.filter((player) => !retired.includes(player.id));
+  s.season++;
+  s.day = 1;
+  s.phase = 'preseason';
+  s.playoffBracket = null;
+  s.offseasonState = null;
+  s.draftClass = null;
+  s.freeAgencyMarket = null;
+  s.tradeState = createEmptyTradeState();
+  const teamIds = TEAMS.map((team) => team.id);
+  s.schedule = generateSchedule(s.rng.fork());
+  s.seasonState = createSeasonState(s.season, teamIds);
+  for (const teamId of teamIds) {
+    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+  }
+  ensureNarrativeState(s);
+  return {
+    day: 1,
+    season: s.season,
+    phase: 'preseason',
+    gamesPlayed: 0,
+    seasonComplete: false,
+  };
+}
+
 function simDayInternal(): SimResultDTO {
   const s = requireState();
   if (s.phase === 'preseason') {
@@ -110,96 +212,71 @@ function simDayInternal(): SimResultDTO {
     processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
-    if (result.seasonComplete) {
-      ensureAwardHistoryForSeason(s);
-      clearPendingTradeOffers(s);
-      s.phase = 'playoffs';
-      s.day = 1;
-    }
-    return {
-      day: s.day,
-      season: s.season,
-      phase: s.phase,
-      gamesPlayed: result.games.length,
-      seasonComplete: result.seasonComplete,
-    };
+    return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
   }
 
   if (s.phase === 'playoffs') {
     if (!s.playoffBracket) {
       const seeds = determinePlayoffSeeds(s.seasonState.standings.getFullStandings());
-      s.playoffBracket = simulatePlayoffs(s.rng, seeds, s.players);
+      s.playoffBracket = {
+        seeds,
+        series: [],
+        champion: null,
+      };
+      return {
+        day: s.day,
+        season: s.season,
+        phase: 'playoffs',
+        gamesPlayed: 0,
+        seasonComplete: true,
+      };
     }
+
+    if (s.playoffBracket.champion) {
+      const alreadyRecorded = s.seasonHistory.some((entry) => entry.season === s.season);
+      if (!alreadyRecorded) {
+        ensureAwardHistoryForSeason(s);
+        const seasonMoments = applyPostseasonConsequences(s);
+        recordSeasonHistory(s, seasonMoments);
+        clearPendingTradeOffers(s);
+      }
+
+      return {
+        day: s.day,
+        season: s.season,
+        phase: 'playoffs',
+        gamesPlayed: 0,
+        seasonComplete: true,
+      };
+    }
+
+    s.playoffBracket = simulatePlayoffs(s.rng, s.playoffBracket.seeds, s.players);
     ensureAwardHistoryForSeason(s);
     const seasonMoments = applyPostseasonConsequences(s);
     recordSeasonHistory(s, seasonMoments);
     clearPendingTradeOffers(s);
-    s.phase = 'offseason';
-    s.day = 1;
     return {
-      day: 1,
+      day: s.day,
       season: s.season,
-      phase: 'offseason',
+      phase: 'playoffs',
       gamesPlayed: 0,
       seasonComplete: true,
     };
   }
 
   if (s.phase === 'offseason') {
-    const offseasonProgress = advanceOffseasonOnce(s);
-    applyAISigningProgress(s, offseasonProgress.aiSignings);
-
     if (s.offseasonState?.completed) {
-      const beforePlayers = s.players;
-      const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
-      recordBreakoutNarratives(s, beforePlayers, developedPlayers);
-      s.players = developedPlayers;
-
-      const retired = determineRetirements(s.rng.fork(), s.players);
-      if (s.offseasonState) {
-        s.offseasonState = recordRetirements(
-          s.offseasonState,
-          retired.map((playerId) => {
-            const player = s.players.find((candidate) => candidate.id === playerId);
-            const seasonsPlayed = s.serviceTime.get(playerId) ?? 0;
-            const playerName = player ? `${player.firstName} ${player.lastName}` : playerId;
-            return {
-              playerId,
-              teamId: player?.teamId ?? '',
-              playerName,
-              seasonsPlayed,
-              summary: `${playerName} retired after ${seasonsPlayed} seasons.`,
-            };
-          }),
-        );
-      }
-
-      applyRetirementConsequences(s, retired);
-      finalizeSeasonHistoryRetirements(s, retired);
-      s.players = s.players.filter((player) => !retired.includes(player.id));
-      s.season++;
-      s.day = 1;
-      s.phase = 'preseason';
-      s.playoffBracket = null;
-      s.offseasonState = null;
-      s.draftClass = null;
-      s.freeAgencyMarket = null;
-      s.tradeState = createEmptyTradeState();
-      const teamIds = TEAMS.map((team) => team.id);
-      s.schedule = generateSchedule(s.rng.fork());
-      s.seasonState = createSeasonState(s.season, teamIds);
-      for (const teamId of teamIds) {
-        s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
-      }
-      ensureNarrativeState(s);
       return {
-        day: 1,
+        day: s.day,
         season: s.season,
-        phase: 'preseason',
+        phase: 'offseason',
         gamesPlayed: 0,
-        seasonComplete: false,
+        seasonComplete: true,
       };
     }
+
+    const offseasonProgress = advanceOffseasonOnce(s);
+    applyAISigningProgress(s, offseasonProgress.aiSignings);
 
     return {
       day: s.day,
@@ -290,58 +367,59 @@ export const actionApi = {
   },
 
   simWeek(): SimResultDTO {
-    const s = requireState();
-    if (s.phase !== 'regular') {
-      return simDayInternal();
-    }
-
-    const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
-    const previousDay = s.day;
-    s.seasonState = newState;
-    s.day = newState.currentDay;
-    processTradeMarketActivity(s, previousDay, s.day);
-    processDayInjuriesAndNews(s);
-    refreshNarrativeState(s, result.games);
-    if (result.seasonComplete) {
-      ensureAwardHistoryForSeason(s);
-      clearPendingTradeOffers(s);
-      s.phase = 'playoffs';
-      s.day = 1;
-    }
-    return {
-      day: s.day,
-      season: s.season,
-      phase: s.phase,
-      gamesPlayed: result.games.length,
-      seasonComplete: result.seasonComplete,
-    };
+    return simWeekInternal();
   },
 
   simMonth(): SimResultDTO {
+    return simMonthInternal();
+  },
+
+  simToPlayoffs(): SimResultDTO {
     const s = requireState();
-    if (s.phase !== 'regular') {
-      return simDayInternal();
+    let result = simDayInternal();
+
+    while (s.phase === 'regular') {
+      const remainingDays = Math.max(0, 163 - s.day);
+      if (remainingDays >= 30) {
+        result = simMonthInternal();
+      } else if (remainingDays >= 7) {
+        result = simWeekInternal();
+      } else {
+        result = simDayInternal();
+      }
     }
 
-    const previousDay = s.day;
-    const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
-    s.seasonState = newState;
-    s.day = newState.currentDay;
-    processTradeMarketActivity(s, previousDay, s.day);
-    processDayInjuriesAndNews(s);
-    refreshNarrativeState(s, result.games);
-    if (result.seasonComplete) {
-      ensureAwardHistoryForSeason(s);
-      clearPendingTradeOffers(s);
-      s.phase = 'playoffs';
+    return result;
+  },
+
+  proceedToOffseason(): SimResultDTO {
+    const s = requireState();
+    if (s.phase === 'playoffs' && s.playoffBracket?.champion) {
+      s.phase = 'offseason';
       s.day = 1;
     }
+
     return {
       day: s.day,
       season: s.season,
       phase: s.phase,
-      gamesPlayed: result.games.length,
-      seasonComplete: result.seasonComplete,
+      gamesPlayed: 0,
+      seasonComplete: s.phase !== 'regular',
+    };
+  },
+
+  startNextSeason(): SimResultDTO {
+    const s = requireState();
+    if (s.phase === 'offseason' && s.offseasonState?.completed) {
+      return finalizeOffseasonRollover(s);
+    }
+
+    return {
+      day: s.day,
+      season: s.season,
+      phase: s.phase,
+      gamesPlayed: 0,
+      seasonComplete: s.phase !== 'regular',
     };
   },
 

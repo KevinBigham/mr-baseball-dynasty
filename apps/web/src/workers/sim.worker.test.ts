@@ -302,7 +302,7 @@ describe('sim worker narrative APIs', () => {
       ...createOffseasonState(state.season),
       completed: true,
     };
-    api.simDay();
+    api.startNextSeason();
 
     const retirementNews = api.getNews(25).find((item) => item.category === 'roster_move');
     const retirementBriefing = api.getBriefing(25).find((item) => item.category === 'news' && item.relatedTeamIds.includes('nyy'));
@@ -576,7 +576,8 @@ describe('sim worker narrative APIs', () => {
       completed: true,
     };
 
-    api.simDay();
+    api.proceedToOffseason();
+    api.startNextSeason();
 
     const finalized = api.getSeasonHistory().find((entry) => entry.season === 1)!;
     expect(finalized.notableRetirements.length).toBeGreaterThan(0);
@@ -790,6 +791,67 @@ describe('sim worker narrative APIs', () => {
     expect(api.getNews(25).some((item) => item.category === 'trade' && item.headline.includes('declined'))).toBe(true);
     expect(api.getBriefing(25).some((item) => item.category === 'news' && item.headline.includes('declined'))).toBe(true);
     expect(requireState().playerMorale.get(requested.id)?.score).toBeGreaterThan(baselineMorale);
+  });
+
+  it('fast-forwards to the playoff intro ceremony without simming the bracket', () => {
+    api.newGame(344, 'nyy');
+
+    const result = api.simToPlayoffs();
+    const flow = api.getSeasonFlowState() as { status: string; action: string | null };
+
+    expect(result.phase).toBe('playoffs');
+    expect(requireState().playoffBracket).toBeNull();
+    expect(flow.status).toBe('regular_season_complete');
+    expect(flow.action).toBe('proceed_to_playoffs');
+  });
+
+  it('preserves playoff and offseason ceremony states until explicit proceed actions', () => {
+    api.newGame(345, 'nyy');
+    const state = requireState();
+    state.phase = 'playoffs';
+    state.day = 1;
+    state.news = [];
+    state.briefingQueue = [];
+    state.seasonHistory = [];
+
+    const preview = api.simDay();
+    let flow = api.getSeasonFlowState() as { status: string; action: string | null };
+
+    expect(preview.phase).toBe('playoffs');
+    expect(requireState().playoffBracket?.champion).toBeNull();
+    expect(flow.status).toBe('playoff_preview');
+    expect(flow.action).toBe('sim_playoffs');
+
+    const completed = api.simDay();
+    flow = api.getSeasonFlowState() as { status: string; action: string | null };
+
+    expect(completed.phase).toBe('playoffs');
+    expect(requireState().playoffBracket?.champion).toBeTruthy();
+    expect(flow.status).toBe('playoffs_complete');
+    expect(flow.action).toBe('proceed_to_offseason');
+    expect(api.getSeasonHistory().length).toBeGreaterThan(0);
+
+    const offseasonStart = api.proceedToOffseason();
+    expect(offseasonStart.phase).toBe('offseason');
+
+    requireState().offseasonState = {
+      ...createOffseasonState(requireState().season),
+      completed: true,
+    };
+
+    const stalled = api.simDay();
+    flow = api.getSeasonFlowState() as { status: string; action: string | null };
+
+    expect(stalled.phase).toBe('offseason');
+    expect(flow.status).toBe('offseason_complete');
+    expect(flow.action).toBe('start_next_season');
+
+    const nextSeason = api.startNextSeason();
+
+    expect(nextSeason.phase).toBe('preseason');
+    expect(requireState().season).toBe(2);
+    expect(requireState().playoffBracket).toBeNull();
+    expect(requireState().offseasonState).toBeNull();
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

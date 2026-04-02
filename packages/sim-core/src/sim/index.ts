@@ -38,12 +38,15 @@ export type {
 } from './seasonSimulator.js';
 
 export {
+  buildPlayoffPreview,
   determinePlayoffSeeds,
   simulateSeries,
   simulatePlayoffs,
 } from './playoffSimulator.js';
 export type {
   PlayoffSeed,
+  PlayoffPreviewSeries,
+  PlayoffPreviewTeamSlot,
   SeriesResult,
   PlayoffRound,
   PlayoffBracket,

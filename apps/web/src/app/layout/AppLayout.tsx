@@ -4,16 +4,38 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { SimControls } from './SimControls';
 import { CommandPalette } from './CommandPalette';
+import { SeasonFlowCard } from './SeasonFlowCard';
+import type { SeasonFlowState } from './seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
 import { loadMostRecentSnapshot } from '@/shared/lib/saveSystem';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable
+    || target.tagName === 'INPUT'
+    || target.tagName === 'TEXTAREA'
+    || target.tagName === 'SELECT'
+  );
+}
+
 export function AppLayout() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { setSimulating, updateFromSim, initializeGame, isInitialized } = useGameStore();
+  const { setSimulating, updateFromSim, initializeGame, isInitialized, isSimulating } = useGameStore();
   const initialized = useRef(false);
+
+  const refreshSeasonFlow = useCallback(async () => {
+    if (!workerReady) return;
+    const next = await worker.getSeasonFlowState();
+    setSeasonFlow(next as SeasonFlowState);
+  }, [worker, workerReady]);
 
   // Auto-initialize a new game when the worker is ready
   useEffect(() => {
@@ -33,6 +55,7 @@ export function AppLayout() {
             playerCount: result.playerCount,
             userTeamId: result.userTeamId,
           });
+          await refreshSeasonFlow();
           return;
         }
 
@@ -44,22 +67,25 @@ export function AppLayout() {
           playerCount: result.playerCount,
           userTeamId: 'nyy',
         });
+        await refreshSeasonFlow();
       } catch (err: unknown) {
         console.error('Failed to initialize game:', err);
       }
     })();
-  }, [workerReady, initializeGame]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workerReady, initializeGame, refreshSeasonFlow, worker]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Global keyboard shortcut for Cmd+K / Ctrl+K
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
-      }
-    },
-    []
-  );
+  useEffect(() => {
+    if (!workerReady || !isInitialized) return;
+
+    void refreshSeasonFlow();
+    const intervalId = window.setInterval(() => {
+      void refreshSeasonFlow();
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isInitialized, refreshSeasonFlow, workerReady]);
 
   const handleSim = useCallback(
     async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
@@ -68,26 +94,80 @@ export function AppLayout() {
       try {
         const result = await simFn();
         updateFromSim(result);
+        await refreshSeasonFlow();
       } catch (err) {
         console.error('Simulation error:', err);
       } finally {
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, setSimulating, updateFromSim]
+    [workerReady, isInitialized, refreshSeasonFlow, setSimulating, updateFromSim]
   );
 
+  const handleFlowAction = useCallback(async () => {
+    if (!seasonFlow?.action) return;
+
+    if (seasonFlow.action === 'proceed_to_playoffs' || seasonFlow.action === 'sim_playoffs') {
+      await handleSim(() => worker.simDay());
+      return;
+    }
+
+    if (seasonFlow.action === 'proceed_to_offseason') {
+      await handleSim(() => worker.proceedToOffseason());
+      return;
+    }
+
+    if (seasonFlow.action === 'start_next_season') {
+      await handleSim(() => worker.startNextSeason());
+    }
+  }, [handleSim, seasonFlow?.action, worker]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      if (commandPaletteOpen || isEditableTarget(event.target) || !seasonFlow?.canUseRegularSimControls) {
+        return;
+      }
+
+      if (event.code !== 'Space') {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.shiftKey) {
+        void handleSim(() => worker.simWeek());
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey) {
+        void handleSim(() => worker.simMonth());
+        return;
+      }
+
+      void handleSim(() => worker.simDay());
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [commandPaletteOpen, handleSim, seasonFlow?.canUseRegularSimControls, worker]);
+
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div className="flex h-screen flex-col bg-dynasty-base" onKeyDown={handleKeyDown}>
+    <div className="flex h-screen flex-col bg-dynasty-base">
       {/* Top bar */}
-      <TopBar onOpenCommandPalette={() => setCommandPaletteOpen(true)} />
+      <TopBar onOpenCommandPalette={() => setCommandPaletteOpen(true)} flow={seasonFlow} />
 
       {/* Main area: sidebar + content */}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto p-6">
-          {isInitialized ? <Outlet /> : (
+          {!isInitialized ? (
             <div className="flex h-full items-center justify-center">
               <div className="text-center">
                 <div className="font-brand text-4xl text-accent-primary">MBD</div>
@@ -96,6 +176,17 @@ export function AppLayout() {
                 </div>
               </div>
             </div>
+          ) : (
+            <>
+              {seasonFlow && (
+                <SeasonFlowCard
+                  flow={seasonFlow}
+                  actionBusy={isSimulating}
+                  onAction={() => void handleFlowAction()}
+                />
+              )}
+              <Outlet />
+            </>
           )}
         </main>
       </div>
@@ -105,16 +196,9 @@ export function AppLayout() {
         onSimDay={() => handleSim(() => worker.simDay())}
         onSimWeek={() => handleSim(() => worker.simWeek())}
         onSimMonth={() => handleSim(() => worker.simMonth())}
-        onSimInstant={() =>
-          handleSim(async () => {
-            let result = { day: 1, season: 1, phase: 'preseason', gamesPlayed: 0, seasonComplete: false };
-            for (let i = 0; i < 30; i++) {
-              result = await worker.simWeek();
-              if (result.seasonComplete || result.phase !== 'regular') break;
-            }
-            return result;
-          })
-        }
+        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
+        onFlowAction={() => void handleFlowAction()}
+        flow={seasonFlow}
       />
 
       {/* Command palette overlay */}

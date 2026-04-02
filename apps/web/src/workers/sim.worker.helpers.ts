@@ -7,9 +7,11 @@ import {
   TEAMS,
   DRAFT_ROUNDS,
   aiSelectPick,
+  buildPlayoffPreview,
   determineDraftOrder,
   generateDraftClass,
   getTeamById,
+  getOffseasonLength,
   toDisplayRating,
   toLetterGrade,
   advanceInjury,
@@ -42,6 +44,7 @@ import {
 import { applyMoraleEvent } from '../../../../packages/sim-core/src/league/narrativeState';
 import type {
   GeneratedPlayer,
+  PlayoffPreviewSeries as CorePlayoffPreviewSeries,
   ScheduledGame,
   SeasonState,
   PlayoffBracket,
@@ -238,6 +241,68 @@ export interface DraftBoardCell {
 export interface DraftBoardRow {
   round: number;
   cells: DraftBoardCell[];
+}
+
+export type SeasonFlowStatus =
+  | 'preseason'
+  | 'regular'
+  | 'regular_season_complete'
+  | 'playoff_preview'
+  | 'playoffs_complete'
+  | 'offseason'
+  | 'offseason_complete';
+
+export interface SeasonFlowStanding {
+  teamId: string;
+  teamName: string;
+  abbreviation: string;
+  wins: number;
+  losses: number;
+  division: string;
+}
+
+export interface SeasonFlowPreviewTeam {
+  teamId: string | null;
+  teamName: string;
+  abbreviation: string;
+  seed: number | null;
+  placeholder: string | null;
+}
+
+export interface SeasonFlowPreviewSeries {
+  id: string;
+  round: string;
+  bestOf: number;
+  home: SeasonFlowPreviewTeam;
+  away: SeasonFlowPreviewTeam;
+}
+
+export interface SeasonFlowChampionSummary {
+  championTeamId: string | null;
+  championTeamName: string;
+  runnerUpTeamName: string;
+  seriesRecord: string;
+}
+
+export interface SeasonFlowOffseasonSummary {
+  nextSeason: number;
+  moves: string[];
+}
+
+export interface SeasonFlowStateView {
+  status: SeasonFlowStatus;
+  season: number;
+  phaseLabel: string;
+  detailLabel: string;
+  progress: number;
+  canUseRegularSimControls: boolean;
+  action: 'proceed_to_playoffs' | 'sim_playoffs' | 'proceed_to_offseason' | 'start_next_season' | null;
+  actionLabel: string | null;
+  daysUntilTradeDeadline: number | null;
+  standingsSnapshot: SeasonFlowStanding[];
+  playoffPreview: SeasonFlowPreviewSeries[];
+  championSummary: SeasonFlowChampionSummary | null;
+  offseasonSummary: SeasonFlowOffseasonSummary | null;
 }
 
 export interface DraftCurrentPick {
@@ -950,6 +1015,246 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
   return {
     ...offseasonState,
     transactionGroups,
+  };
+}
+
+function roundLabel(round: string): string {
+  switch (round) {
+    case 'WILD_CARD':
+      return 'Wild Card';
+    case 'DIVISION_SERIES':
+      return 'Division Series';
+    case 'CHAMPIONSHIP_SERIES':
+      return 'Championship Series';
+    case 'WORLD_SERIES':
+      return 'World Series';
+    default:
+      return round;
+  }
+}
+
+function previewTeamView(
+  slot: CorePlayoffPreviewSeries['home'],
+): SeasonFlowPreviewTeam {
+  if (slot.teamId) {
+    const team = getTeamById(slot.teamId);
+    return {
+      teamId: slot.teamId,
+      teamName: team ? `${team.city} ${team.name}` : slot.teamId.toUpperCase(),
+      abbreviation: team?.abbreviation ?? slot.teamId.toUpperCase(),
+      seed: slot.seed,
+      placeholder: null,
+    };
+  }
+
+  return {
+    teamId: null,
+    teamName: slot.placeholder ?? 'TBD',
+    abbreviation: 'TBD',
+    seed: null,
+    placeholder: slot.placeholder,
+  };
+}
+
+function buildStandingsSnapshot(s: FullGameState): SeasonFlowStanding[] {
+  return Object.entries(s.seasonState.standings.getFullStandings())
+    .flatMap(([division, entries]) =>
+      entries.map((entry) => {
+        const team = getTeamById(entry.teamId);
+        return {
+          teamId: entry.teamId,
+          teamName: team ? `${team.city} ${team.name}` : entry.teamId.toUpperCase(),
+          abbreviation: team?.abbreviation ?? entry.teamId.toUpperCase(),
+          wins: entry.wins,
+          losses: entry.losses,
+          division,
+        };
+      }),
+    )
+    .sort((left, right) => {
+      if (right.wins !== left.wins) return right.wins - left.wins;
+      return left.losses - right.losses;
+    });
+}
+
+function buildChampionSummary(s: FullGameState): SeasonFlowChampionSummary | null {
+  if (!s.playoffBracket?.champion) return null;
+
+  const championTeam = getTeamById(s.playoffBracket.champion);
+  const worldSeries = s.playoffBracket.series.find((series) => series.round === 'WORLD_SERIES');
+  const runnerUpTeam = worldSeries ? getTeamById(worldSeries.loserId) : null;
+
+  return {
+    championTeamId: s.playoffBracket.champion,
+    championTeamName: championTeam ? `${championTeam.city} ${championTeam.name}` : s.playoffBracket.champion.toUpperCase(),
+    runnerUpTeamName: runnerUpTeam
+      ? `${runnerUpTeam.city} ${runnerUpTeam.name}`
+      : (worldSeries?.loserId ? teamLabel(worldSeries.loserId) : 'Runner-up'),
+    seriesRecord: worldSeries ? `${worldSeries.winnerWins}-${worldSeries.loserWins}` : '4-0',
+  };
+}
+
+function buildOffseasonSummary(s: FullGameState): SeasonFlowOffseasonSummary | null {
+  const offseasonView = buildOffseasonStateView(s);
+  if (!offseasonView) return null;
+
+  return {
+    nextSeason: s.season + 1,
+    moves: offseasonView.transactionGroups
+      .flatMap((group) => group.rows.map((row) => row.summary))
+      .slice(0, 4),
+  };
+}
+
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+export function buildSeasonFlowStateView(s: FullGameState): SeasonFlowStateView {
+  const standingsSnapshot = buildStandingsSnapshot(s);
+  const userRecord = standingsSnapshot.find((entry) => entry.teamId === s.userTeamId);
+  const playoffPreview = s.playoffBracket
+    ? buildPlayoffPreview(s.playoffBracket.seeds).map((series) => ({
+      id: series.id,
+      round: roundLabel(series.round),
+      bestOf: series.bestOf,
+      home: previewTeamView(series.home),
+      away: previewTeamView(series.away),
+    }))
+    : [];
+
+  if (s.phase === 'preseason') {
+    return {
+      status: 'preseason',
+      season: s.season,
+      phaseLabel: `Season ${s.season} — Spring Training`,
+      detailLabel: 'Spring Training begins',
+      progress: 0,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot,
+      playoffPreview: [],
+      championSummary: null,
+      offseasonSummary: null,
+    };
+  }
+
+  if (s.phase === 'regular') {
+    return {
+      status: 'regular',
+      season: s.season,
+      phaseLabel: `Season ${s.season} — Day ${s.day}/162`,
+      detailLabel: 'Regular Season',
+      progress: clampProgress(s.day / 162),
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      daysUntilTradeDeadline: Math.max(0, 120 - s.day),
+      standingsSnapshot,
+      playoffPreview: [],
+      championSummary: null,
+      offseasonSummary: null,
+    };
+  }
+
+  if (s.phase === 'playoffs' && !s.playoffBracket) {
+    return {
+      status: 'regular_season_complete',
+      season: s.season,
+      phaseLabel: `Season ${s.season} — Regular Season Complete`,
+      detailLabel: userRecord
+        ? `${teamLabel(s.userTeamId)} finished ${userRecord.wins}-${userRecord.losses}`
+        : 'The regular season has ended.',
+      progress: 1,
+      canUseRegularSimControls: false,
+      action: 'proceed_to_playoffs',
+      actionLabel: 'Proceed to Playoffs',
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: standingsSnapshot.slice(0, 6),
+      playoffPreview: [],
+      championSummary: null,
+      offseasonSummary: null,
+    };
+  }
+
+  if (s.phase === 'playoffs' && s.playoffBracket && !s.playoffBracket.champion) {
+    return {
+      status: 'playoff_preview',
+      season: s.season,
+      phaseLabel: `Season ${s.season} — Playoff Bracket`,
+      detailLabel: 'Bracket is set. Twelve teams remain.',
+      progress: 0,
+      canUseRegularSimControls: false,
+      action: 'sim_playoffs',
+      actionLabel: 'Sim Playoffs',
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: standingsSnapshot.slice(0, 6),
+      playoffPreview,
+      championSummary: null,
+      offseasonSummary: null,
+    };
+  }
+
+  if (s.phase === 'playoffs') {
+    const championSummary = buildChampionSummary(s);
+    return {
+      status: 'playoffs_complete',
+      season: s.season,
+      phaseLabel: `Season ${s.season} — World Series Final`,
+      detailLabel: championSummary
+        ? `${championSummary.championTeamName} defeated ${championSummary.runnerUpTeamName} ${championSummary.seriesRecord}`
+        : 'The postseason has concluded.',
+      progress: 1,
+      canUseRegularSimControls: false,
+      action: 'proceed_to_offseason',
+      actionLabel: 'Proceed to Offseason',
+      daysUntilTradeDeadline: null,
+      standingsSnapshot: standingsSnapshot.slice(0, 6),
+      playoffPreview,
+      championSummary,
+      offseasonSummary: null,
+    };
+  }
+
+  if (s.offseasonState?.completed) {
+    return {
+      status: 'offseason_complete',
+      season: s.season,
+      phaseLabel: `Welcome to Season ${s.season + 1}`,
+      detailLabel: 'Spring Training begins',
+      progress: 1,
+      canUseRegularSimControls: false,
+      action: 'start_next_season',
+      actionLabel: `Start Season ${s.season + 1}`,
+      daysUntilTradeDeadline: null,
+      standingsSnapshot,
+      playoffPreview: [],
+      championSummary: null,
+      offseasonSummary: buildOffseasonSummary(s),
+    };
+  }
+
+  const offseasonView = buildOffseasonStateView(s);
+  const offseasonLength = getOffseasonLength();
+  const offseasonDay = offseasonView?.totalDay ?? 1;
+  const offseasonPhase = offseasonView?.currentPhase ?? 'season_review';
+
+  return {
+    status: 'offseason',
+    season: s.season,
+    phaseLabel: `Season ${s.season} — Offseason: ${phaseLabel(offseasonPhase)}`,
+    detailLabel: `Day ${Math.min(offseasonDay, offseasonLength)}/${offseasonLength}`,
+    progress: clampProgress(offseasonDay / offseasonLength),
+    canUseRegularSimControls: false,
+    action: null,
+    actionLabel: null,
+    daysUntilTradeDeadline: null,
+    standingsSnapshot,
+    playoffPreview: [],
+    championSummary: null,
+    offseasonSummary: null,
   };
 }
 
