@@ -1,160 +1,308 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Trophy, ChevronRight, Activity, Users,
+  Activity,
+  ArrowLeftRight,
+  Briefcase,
+  ChevronRight,
+  DollarSign,
+  HeartPulse,
+  Newspaper,
+  Radar,
+  Trophy,
+  Users,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import type { PressRoomEntry } from '@/shared/types/pressRoom';
 
-interface TeamStandings {
-  teamId: string;
-  teamName: string;
-  abbreviation: string;
-  wins: number;
-  losses: number;
-  pct: string;
-  gamesBack: number;
-  streak: string;
-  runDifferential: number;
+interface DashboardSummary {
+  franchise: {
+    teamName: string;
+    abbreviation: string;
+    season: number;
+    record: string;
+    division: string;
+    divisionRank: number;
+    dynasty: { score: number; grade: string };
+    owner: { hotSeat: boolean; patience: number; confidence: number; summary: string } | null;
+    chemistry: { score: number; tier: string; summary: string } | null;
+  };
+  momentum: {
+    last10: string;
+    streak: string;
+    runDifferential: number;
+    seasonRunDiffPerGame: number;
+    last30RunDiffPerGame: number;
+    playoffProbability: number;
+  };
+  roster: {
+    topPerformers: Array<{
+      playerId: string;
+      name: string;
+      position: string;
+      label: string;
+      sparklineValues: number[];
+      statLine: string;
+    }>;
+    injuredCount: number;
+    nextReturnDays: number | null;
+    payroll: number;
+    budget: number;
+    luxuryTax: number;
+  };
+  intel: {
+    tradeInboxCount: number;
+    expiringContracts: Array<{
+      playerId: string;
+      name: string;
+      position: string;
+      salary: number;
+    }>;
+    topProspect: {
+      playerId: string;
+      name: string;
+      position: string;
+      readiness: number;
+      level: string;
+    } | null;
+  };
+  divisionStandings: Array<{
+    teamId: string;
+    teamName: string;
+    abbreviation: string;
+    wins: number;
+    losses: number;
+    pct: string;
+    gamesBack: number;
+    streak: string;
+    runDifferential: number;
+    divisionRank: number;
+  }>;
+  pressRoom: {
+    feed: PressRoomEntry[];
+    latest: PressRoomEntry | null;
+    briefingCount: number;
+    newsCount: number;
+  };
 }
 
-interface PlayerStat {
-  id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  age: number;
-  displayRating: number;
-  letterGrade: string;
-  stats: {
-    avg: string;
-    hr: number;
-    rbi: number;
-    hits: number;
-    era: string;
-    strikeouts: number;
-  } | null;
+function ownerTone(patience: number | undefined): string {
+  if (patience == null) return 'bg-dynasty-border';
+  if (patience >= 65) return 'bg-accent-success';
+  if (patience >= 40) return 'bg-accent-warning';
+  return 'bg-accent-danger';
 }
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default:  return 'bg-dynasty-border text-dynasty-muted';
+function chemistryTone(tier: string | undefined): string {
+  switch (tier) {
+    case 'electric':
+      return 'text-accent-success';
+    case 'connected':
+      return 'text-accent-info';
+    case 'tense':
+      return 'text-accent-warning';
+    case 'fractured':
+      return 'text-accent-danger';
+    default:
+      return 'text-dynasty-text';
   }
 }
 
 export default function DashboardPage() {
   const worker = useWorker();
-  const { season, day, phase, userTeamId, isInitialized } = useGameStore();
-  const [userStandings, setUserStandings] = useState<TeamStandings | null>(null);
-  const [divisionStandings, setDivisionStandings] = useState<TeamStandings[]>([]);
-  const [roster, setRoster] = useState<PlayerStat[]>([]);
-  const [leaders, setLeaders] = useState<PlayerStat[]>([]);
+  const { isInitialized, userTeamId, season, day, phase } = useGameStore();
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
-
     try {
-      const [standingsData, rosterData, hrLeaders] = await Promise.all([
-        worker.getStandings(),
-        worker.getTeamRoster(userTeamId),
-        worker.getLeagueLeaders('hr', 5),
-      ]);
-
-      if (standingsData) {
-        for (const [, teams] of Object.entries(standingsData.divisions)) {
-          const typedTeams = teams as TeamStandings[];
-          const userTeam = typedTeams.find(t => t.teamId === userTeamId);
-          if (userTeam) {
-            setUserStandings(userTeam);
-            setDivisionStandings(typedTeams);
-            break;
-          }
-        }
-      }
-
-      setRoster(rosterData as PlayerStat[]);
-      setLeaders(hrLeaders as PlayerStat[]);
+      const nextSummary = await worker.getDashboardSummary();
+      setSummary((nextSummary ?? null) as DashboardSummary | null);
     } catch (err) {
-      console.error('Failed to fetch dashboard data:', err);
+      console.error('Failed to fetch dashboard summary:', err);
     }
-  }, [isInitialized, worker, userTeamId]);
+  }, [isInitialized, worker]);
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, [fetchData, day, season, phase]);
+
+  const latestPressItem = summary?.pressRoom.latest ?? null;
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-dynasty-text">
-          Front Office
-        </h1>
-        <p className="font-data text-sm text-dynasty-muted">
-          Season {season} | Day {day} | {phase.toUpperCase()}
-        </p>
-      </div>
-
-      {/* Team status cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="flex items-center gap-2 text-dynasty-muted">
-            <Trophy className="h-4 w-4" />
-            <span className="font-heading text-xs uppercase">Record</span>
-          </div>
-          {userStandings ? (
-            <div className="mt-2">
-              <div className="font-data text-3xl font-bold text-dynasty-text">
-                {userStandings.wins}-{userStandings.losses}
-              </div>
-              <div className="mt-1 flex items-center gap-3 font-data text-sm">
-                <span className="text-dynasty-muted">PCT {userStandings.pct}</span>
-                <span className={userStandings.gamesBack > 0 ? 'text-accent-warning' : 'text-accent-success'}>
-                  {userStandings.gamesBack > 0 ? `${userStandings.gamesBack} GB` : '1st'}
-                </span>
-                <span className={userStandings.streak.startsWith('W') ? 'text-accent-success' : 'text-accent-danger'}>
-                  {userStandings.streak}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-2 font-data text-3xl text-dynasty-muted">0-0</div>
-          )}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="font-heading text-2xl font-bold text-dynasty-text">Front Office</h1>
+          <p className="font-data text-sm text-dynasty-muted">
+            Season {season} | Day {day} | {phase.toUpperCase()}
+          </p>
         </div>
-
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="flex items-center gap-2 text-dynasty-muted">
-            <Activity className="h-4 w-4" />
-            <span className="font-heading text-xs uppercase">Run Differential</span>
-          </div>
-          <div className="mt-2">
-            <div className={`font-data text-3xl font-bold ${
-              (userStandings?.runDifferential ?? 0) >= 0 ? 'text-accent-success' : 'text-accent-danger'
-            }`}>
-              {(userStandings?.runDifferential ?? 0) >= 0 ? '+' : ''}{userStandings?.runDifferential ?? 0}
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-          <div className="flex items-center gap-2 text-dynasty-muted">
-            <Users className="h-4 w-4" />
-            <span className="font-heading text-xs uppercase">Active Roster</span>
-          </div>
-          <div className="mt-2">
-            <div className="font-data text-3xl font-bold text-dynasty-text">{roster.length}</div>
-            <div className="mt-1 font-data text-sm text-dynasty-muted">players on 26-man</div>
-          </div>
+        <div className="inline-flex items-center gap-3 rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3">
+          <span className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Dynasty Score</span>
+          <span className="font-brand text-3xl text-accent-primary">{summary?.franchise.dynasty.grade ?? 'F'}</span>
+          <span className="font-data text-sm text-dynasty-muted">{summary?.franchise.dynasty.score ?? 0} pts</span>
         </div>
       </div>
 
-      {/* Division Standings + HR Leaders */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Division Standings */}
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">Franchise Header</div>
+              <h2 className="mt-2 font-brand text-4xl text-dynasty-textBright">{summary?.franchise.teamName ?? 'Franchise'}</h2>
+              <div className="mt-2 flex flex-wrap items-center gap-3 font-data text-sm text-dynasty-muted">
+                <span>{summary?.franchise.record ?? '0-0'}</span>
+                <span>{summary ? `${summary.franchise.divisionRank}${summary.franchise.divisionRank === 1 ? 'st' : 'th'} place` : 'Division race'}</span>
+                <span>{summary?.franchise.division ?? 'Division'}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Owner Patience</div>
+              <div className="mt-2 h-2.5 w-40 overflow-hidden rounded-full bg-dynasty-border">
+                <div
+                  className={`h-full transition-all duration-300 ${ownerTone(summary?.franchise.owner?.patience)}`}
+                  style={{ width: `${summary?.franchise.owner?.patience ?? 0}%` }}
+                />
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                {summary?.franchise.owner?.summary ?? 'Owner state unavailable.'}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Clubhouse Chemistry</div>
+              <div className={`mt-2 font-data text-3xl ${chemistryTone(summary?.franchise.chemistry?.tier)}`}>
+                {summary?.franchise.chemistry?.score ?? 0}
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                {summary?.franchise.chemistry?.summary ?? 'Chemistry has not formed yet.'}
+              </div>
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Playoff Odds</div>
+              <div className="mt-2 font-data text-3xl text-accent-primary">
+                {summary?.momentum.playoffProbability ?? 0}%
+              </div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">
+                Pace-based estimate against the current league cutoff.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
+          <div className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-warning">Season Momentum</div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <MomentumStat icon={<Activity className="h-4 w-4" />} label="Last 10" value={summary?.momentum.last10 ?? '0-0'} />
+            <MomentumStat icon={<Radar className="h-4 w-4" />} label="Streak" value={summary?.momentum.streak ?? 'W0'} />
+            <MomentumStat icon={<Trophy className="h-4 w-4" />} label="Run Diff" value={`${(summary?.momentum.runDifferential ?? 0) >= 0 ? '+' : ''}${summary?.momentum.runDifferential ?? 0}`} />
+            <MomentumStat icon={<Users className="h-4 w-4" />} label="Trend" value={`${summary?.momentum.last30RunDiffPerGame ?? 0}/g`} />
+          </div>
+          <div className="mt-4 rounded border border-dynasty-border bg-dynasty-elevated p-4">
+            <div className="font-heading text-sm text-dynasty-text">
+              Last 30 estimate: {summary?.momentum.last30RunDiffPerGame ?? 0}/g vs season {summary?.momentum.seasonRunDiffPerGame ?? 0}/g
+            </div>
+            <div className="mt-1 font-heading text-xs text-dynasty-muted">
+              Positive delta usually means the club is playing over its baseline.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <Users className="h-4 w-4 text-accent-success" />
+              Roster Snapshot
+            </h2>
+            <Link to="/roster" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Full roster <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid gap-3">
+            {(summary?.roster.topPerformers ?? []).map((performer) => (
+              <div key={performer.playerId} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-heading text-sm text-dynasty-text">{performer.name}</div>
+                    <div className="font-data text-xs text-dynasty-muted">{performer.position} · {performer.label}</div>
+                  </div>
+                  <div className="flex h-8 items-end gap-1">
+                    {performer.sparklineValues.map((value, index) => (
+                      <span
+                        key={`${performer.playerId}-${index}`}
+                        className="w-3 rounded-sm bg-accent-primary/70"
+                        style={{ height: `${Math.max(8, Math.min(32, value * 20))}px` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">{performer.statLine}</div>
+              </div>
+            ))}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  <HeartPulse className="h-4 w-4 text-accent-danger" />
+                  Injuries
+                </div>
+                <div className="mt-2 font-data text-3xl text-dynasty-textBright">{summary?.roster.injuredCount ?? 0}</div>
+                <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                  {summary?.roster.nextReturnDays != null ? `${summary.roster.nextReturnDays} days until next return` : 'No active injuries'}
+                </div>
+              </div>
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+                <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  <DollarSign className="h-4 w-4 text-accent-warning" />
+                  Payroll
+                </div>
+                <div className="mt-2 font-data text-3xl text-dynasty-textBright">${summary?.roster.payroll.toFixed(1) ?? '0.0'}M</div>
+                <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                  Budget ${summary?.roster.budget.toFixed(1) ?? '0.0'}M · Luxury tax ${summary?.roster.luxuryTax.toFixed(1) ?? '0.0'}M
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <Briefcase className="h-4 w-4 text-accent-info" />
+              Front Office Intel
+            </h2>
+            <Link to="/trade" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Trade Center <ChevronRight className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="grid gap-3">
+            <IntelCard
+              icon={<ArrowLeftRight className="h-4 w-4 text-accent-info" />}
+              label="Trade Inbox"
+              value={String(summary?.intel.tradeInboxCount ?? 0)}
+              body={`${summary?.intel.tradeInboxCount ?? 0} pending offers waiting for a decision.`}
+            />
+            <IntelCard
+              icon={<DollarSign className="h-4 w-4 text-accent-warning" />}
+              label="Expiring Deals"
+              value={String(summary?.intel.expiringContracts.length ?? 0)}
+              body={(summary?.intel.expiringContracts ?? []).map((player) => `${player.name} (${player.position})`).join(', ') || 'No major expirations.'}
+            />
+            <IntelCard
+              icon={<Users className="h-4 w-4 text-accent-success" />}
+              label="Top Prospect"
+              value={summary?.intel.topProspect?.position ?? '--'}
+              body={summary?.intel.topProspect ? `${summary.intel.topProspect.name} at ${summary.intel.topProspect.level}` : 'System is light on near-ready talent.'}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
           <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
             <h2 className="font-heading text-sm font-semibold text-dynasty-text">Division Standings</h2>
@@ -174,7 +322,7 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {divisionStandings.map(team => (
+              {(summary?.divisionStandings ?? []).map((team) => (
                 <tr key={team.teamId} className={`border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated ${team.teamId === userTeamId ? 'bg-accent-primary/10' : ''}`}>
                   <td className="px-4 py-2 font-heading font-medium text-dynasty-text">{team.abbreviation}</td>
                   <td className="px-2 py-2 text-right font-data text-dynasty-text">{team.wins}</td>
@@ -188,95 +336,78 @@ export default function DashboardPage() {
           </table>
         </div>
 
-        {/* HR Leaders */}
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
           <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">HR Leaders</h2>
-            <Link to="/leaders" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-              All leaders <ChevronRight className="h-3 w-3" />
+            <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
+              <Newspaper className="h-4 w-4 text-accent-warning" />
+              Press Room
+            </h2>
+            <Link to="/press-room" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
+              Open archive <ChevronRight className="h-3 w-3" />
             </Link>
           </div>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                <th className="px-4 py-2 text-left font-heading">#</th>
-                <th className="px-2 py-2 text-left font-heading">Player</th>
-                <th className="px-2 py-2 text-left font-heading">POS</th>
-                <th className="px-2 py-2 text-right font-data">HR</th>
-                <th className="px-2 py-2 text-right font-data">RBI</th>
-                <th className="px-2 py-2 text-right font-data">AVG</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaders.map((player, idx) => (
-                <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                  <td className="px-4 py-2 font-data text-dynasty-muted">{idx + 1}</td>
-                  <td className="px-2 py-2 font-heading font-medium text-dynasty-text">
-                    {player.firstName.charAt(0)}. {player.lastName}
-                  </td>
-                  <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                  <td className="px-2 py-2 text-right font-data font-bold text-accent-primary">{player.stats?.hr ?? 0}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.rbi ?? 0}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.avg ?? '.000'}</td>
-                </tr>
-              ))}
-              {leaders.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                    Sim games to see leaders
-                  </td>
-                </tr>
+          <div className="space-y-4 p-4">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-heading text-lg text-dynasty-textBright">{latestPressItem?.headline ?? 'No archived items yet'}</div>
+              <div className="mt-2 font-heading text-sm text-dynasty-muted">{latestPressItem?.body ?? 'The Press Room will populate as the season creates storylines.'}</div>
+              {latestPressItem && (
+                <div className="mt-3 font-data text-[11px] uppercase text-dynasty-muted">
+                  {latestPressItem.source} · {latestPressItem.category.replace('_', ' ')} · {latestPressItem.timestamp}
+                </div>
               )}
-            </tbody>
-          </table>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <IntelCard
+                icon={<Briefcase className="h-4 w-4 text-accent-info" />}
+                label="Briefing Desk"
+                value={String(summary?.pressRoom.briefingCount ?? 0)}
+                body="Front-office items in the archive."
+              />
+              <IntelCard
+                icon={<Newspaper className="h-4 w-4 text-accent-warning" />}
+                label="News Wire"
+                value={String(summary?.pressRoom.newsCount ?? 0)}
+                body="League headlines available right now."
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
+    </div>
+  );
+}
 
-      {/* Your Roster */}
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-        <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-          <h2 className="font-heading text-sm font-semibold text-dynasty-text">Your Roster</h2>
-          <Link to="/roster" className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary">
-            Full roster <ChevronRight className="h-3 w-3" />
-          </Link>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                <th className="px-4 py-2 text-left font-heading">Player</th>
-                <th className="px-2 py-2 text-left font-heading">POS</th>
-                <th className="px-2 py-2 text-right font-data">OVR</th>
-                <th className="px-2 py-2 text-center font-heading">GRD</th>
-                <th className="px-2 py-2 text-right font-data">AGE</th>
-                <th className="px-2 py-2 text-right font-data">AVG</th>
-                <th className="px-2 py-2 text-right font-data">HR</th>
-                <th className="px-2 py-2 text-right font-data">RBI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roster.slice(0, 15).map(player => (
-                <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                  <td className="px-4 py-2 font-heading font-medium text-dynasty-text">
-                    {player.firstName} {player.lastName}
-                  </td>
-                  <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
-                      {player.letterGrade}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.age}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.avg ?? '-'}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.hr ?? '-'}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.rbi ?? '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+function MomentumStat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+      <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+        {icon}
+        {label}
       </div>
+      <div className="mt-2 font-data text-3xl text-dynasty-textBright">{value}</div>
+    </div>
+  );
+}
+
+function IntelCard({
+  icon,
+  label,
+  value,
+  body,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+      <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+        {icon}
+        {label}
+      </div>
+      <div className="mt-2 font-data text-3xl text-dynasty-textBright">{value}</div>
+      <div className="mt-2 font-heading text-xs text-dynasty-muted">{body}</div>
     </div>
   );
 }

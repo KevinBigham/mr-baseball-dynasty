@@ -1,34 +1,43 @@
 import { Settings, Command } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import type { SeasonFlowState } from './seasonFlow';
 
 interface TopBarProps {
   onOpenCommandPalette: () => void;
+  flow: SeasonFlowState | null;
 }
 
-export function TopBar({ onOpenCommandPalette }: TopBarProps) {
+export function TopBar({ onOpenCommandPalette, flow }: TopBarProps) {
   const { season, day, phase, teamName } = useGameStore();
+  const phaseLabel = flow?.phaseLabel ?? `Season ${season} — Day ${day}`;
+  const detailLabel = flow?.detailLabel ?? phase;
+  const progress = Math.round((flow?.progress ?? 0) * 100);
 
   return (
     <header className="flex h-12 items-center justify-between border-b border-dynasty-border bg-dynasty-surface px-4">
       {/* Left: Brand + Season context */}
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-center gap-4">
         <span className="font-brand text-2xl tracking-wide text-accent-primary">
           MBD
         </span>
-        <div className="hidden items-center gap-2 text-sm sm:flex">
-          <span className="font-heading font-medium text-dynasty-text">
-            Season {season}
-          </span>
-          <span className="text-dynasty-muted">|</span>
-          <span className="font-heading text-dynasty-muted">{teamName}</span>
-          <span className="text-dynasty-muted">|</span>
-          <span className="font-data text-dynasty-muted">
-            Day {day}
-          </span>
-          <span className="rounded bg-dynasty-elevated px-1.5 py-0.5 font-data text-xs uppercase text-accent-info">
-            {phase}
-          </span>
+        <div className="hidden min-w-0 sm:block">
+          <div className="truncate font-heading font-medium text-dynasty-text">
+            {phaseLabel}
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="truncate font-heading text-xs text-dynasty-muted">{teamName}</span>
+            <span className="font-data text-[11px] uppercase tracking-[0.18em] text-accent-info">
+              {detailLabel}
+            </span>
+            <span className="font-data text-[11px] text-dynasty-muted">{progress}%</span>
+          </div>
+          <div className="mt-1 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-dynasty-border">
+            <div
+              className="h-full bg-accent-primary transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
       </div>
 

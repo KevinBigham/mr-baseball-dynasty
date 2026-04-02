@@ -1,0 +1,177 @@
+import { describe, it, expect } from 'vitest';
+import {
+  GameRNG,
+  generatePlayer,
+  generateTeamRoster,
+  calculateMarketValue,
+  getDemandLevel,
+  createFreeAgencyMarket,
+  projectContractYears,
+  getTopFreeAgents,
+  simulateFullFreeAgency,
+} from '../src/index.js';
+import type { GeneratedPlayer } from '../src/index.js';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makePlayer(seed: number, position: string = 'SS'): GeneratedPlayer {
+  const rng = new GameRNG(seed);
+  return generatePlayer(rng, position as any, 'NYY', 'MLB');
+}
+
+function makeExpiringPlayer(seed: number): GeneratedPlayer {
+  const player = makePlayer(seed);
+  return { ...player, contract: { ...player.contract, years: 0 } };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('calculateMarketValue', () => {
+  it('returns positive value for a good player', () => {
+    const player = makePlayer(42);
+    const value = calculateMarketValue(player);
+    expect(value).toBeGreaterThan(0);
+  });
+
+  it('returns higher value for better-rated players', () => {
+    const player1 = makePlayer(42);
+    const player2 = makePlayer(43);
+    const low = {
+      ...player1,
+      hitterAttributes: {
+        contact: 100, power: 100, eye: 100, speed: 100, defense: 100, durability: 100,
+      },
+    };
+    const high = {
+      ...player2,
+      age: 27,
+      hitterAttributes: {
+        contact: 400, power: 400, eye: 400, speed: 400, defense: 400, durability: 400,
+      },
+    };
+    expect(calculateMarketValue(high)).toBeGreaterThan(calculateMarketValue(low));
+  });
+});
+
+describe('getDemandLevel', () => {
+  it('returns correct tier for various market values', () => {
+    expect(getDemandLevel(30)).toBe('elite');
+    expect(getDemandLevel(20)).toBe('high');
+    expect(getDemandLevel(10)).toBe('moderate');
+    expect(getDemandLevel(4)).toBe('low');
+    expect(getDemandLevel(1)).toBe('fringe');
+  });
+});
+
+describe('createFreeAgencyMarket', () => {
+  it('creates market with free agents from expiring contracts', () => {
+    const players = [
+      makeExpiringPlayer(1),
+      makeExpiringPlayer(2),
+      makeExpiringPlayer(3),
+      makePlayer(4), // Not expiring
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    expect(market.season).toBe(1);
+    expect(market.freeAgents.length).toBe(3);
+    expect(market.day).toBe(0);
+    // All free agents should have a market value
+    for (const fa of market.freeAgents) {
+      expect(fa.marketValue).toBeGreaterThan(0);
+      expect(fa.signedWith).toBeNull();
+    }
+  });
+});
+
+describe('projectContractYears', () => {
+  it('returns reasonable years for various player profiles', () => {
+    const rng = new GameRNG(42);
+    const youngStar = makePlayer(42);
+    const youngStarProfile = {
+      ...youngStar,
+      age: 26,
+      hitterAttributes: {
+        contact: 450, power: 450, eye: 400, speed: 350, defense: 350, durability: 400,
+      },
+    };
+    const years = projectContractYears(rng, youngStarProfile);
+    expect(years).toBeGreaterThanOrEqual(1);
+    expect(years).toBeLessThanOrEqual(10);
+  });
+
+  it('returns shorter deals for older players', () => {
+    const youngYears: number[] = [];
+    const oldYears: number[] = [];
+    for (let seed = 1; seed <= 20; seed++) {
+      const rng1 = new GameRNG(seed + 1000);
+      const rng2 = new GameRNG(seed + 2000);
+      const young = { ...makePlayer(seed), age: 26 };
+      const old = { ...makePlayer(seed), age: 36 };
+      youngYears.push(projectContractYears(rng1, young));
+      oldYears.push(projectContractYears(rng2, old));
+    }
+    const avgYoung = youngYears.reduce((a, b) => a + b, 0) / youngYears.length;
+    const avgOld = oldYears.reduce((a, b) => a + b, 0) / oldYears.length;
+    expect(avgYoung).toBeGreaterThan(avgOld);
+  });
+});
+
+describe('getTopFreeAgents', () => {
+  it('returns sorted list by market value', () => {
+    const players = Array.from({ length: 10 }, (_, i) => makeExpiringPlayer(i + 100));
+    const market = createFreeAgencyMarket(1, players);
+    const top = getTopFreeAgents(market, undefined, 5);
+    expect(top.length).toBeLessThanOrEqual(5);
+    for (let i = 1; i < top.length; i++) {
+      expect(top[i - 1]!.marketValue).toBeGreaterThanOrEqual(top[i]!.marketValue);
+    }
+  });
+
+  it('filters by position when specified', () => {
+    const players = [
+      { ...makeExpiringPlayer(1), position: 'SP' as const },
+      { ...makeExpiringPlayer(2), position: 'SS' as const },
+      { ...makeExpiringPlayer(3), position: 'SP' as const },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    const spAgents = getTopFreeAgents(market, 'SP');
+    for (const fa of spAgents) {
+      expect(fa.player.position).toBe('SP');
+    }
+  });
+});
+
+describe('simulateFullFreeAgency', () => {
+  it('is deterministic for the same market, budgets, and team needs', () => {
+    const players = [
+      { ...makeExpiringPlayer(201), teamId: '' },
+      { ...makeExpiringPlayer(202), teamId: '' },
+    ];
+    const market = createFreeAgencyMarket(1, players);
+    const budgets = new Map([
+      ['bos', 220],
+      ['tor', 5],
+    ]);
+    const payrolls = new Map([
+      ['bos', 20],
+      ['tor', 4.8],
+    ]);
+    const needs = new Map([
+      ['bos', new Map([['SS', 95]])],
+      ['tor', new Map([['SS', 10]])],
+    ]);
+
+    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+
+    expect(second).toEqual(first);
+    expect(first.day).toBe(60);
+    expect(first.freeAgents).toEqual([]);
+    expect(first.signedPlayers[0]?.signedWith).toBe('bos');
+    expect(first.signedPlayers[0]?.contract).toBeTruthy();
+  });
+});

@@ -9,11 +9,16 @@ import {
   FileText,
   ArrowLeftRight,
   Trophy,
+  CalendarRange,
+  Newspaper,
   History,
   Settings,
   Save,
   PlusCircle,
 } from 'lucide-react';
+import { useWorker } from '@/shared/hooks/useWorker';
+import { useGameStore } from '@/shared/hooks/useGameStore';
+import { loadMostRecentSnapshot, saveGame } from '@/shared/lib/saveSystem';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -31,6 +36,8 @@ interface CommandItem {
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const worker = useWorker();
+  const { season, day, phase, userTeamId, initializeGame } = useGameStore();
 
   useEffect(() => {
     if (!open) {
@@ -48,11 +55,58 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { id: 'nav-trade', label: 'Trade Center', icon: <ArrowLeftRight className="h-4 w-4" />, action: () => navigate('/trade'), group: 'navigation' },
     { id: 'nav-standings', label: 'League Standings', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/standings'), group: 'navigation' },
     { id: 'nav-leaders', label: 'Stat Leaders', icon: <Trophy className="h-4 w-4" />, action: () => navigate('/league/leaders'), group: 'navigation' },
+    { id: 'nav-playoffs', label: 'Playoffs', icon: <CalendarRange className="h-4 w-4" />, action: () => navigate('/playoffs'), group: 'navigation' },
+    { id: 'nav-press-room', label: 'Press Room', icon: <Newspaper className="h-4 w-4" />, action: () => navigate('/press-room'), group: 'navigation' },
     { id: 'nav-history', label: 'Franchise History', icon: <History className="h-4 w-4" />, action: () => navigate('/history'), group: 'navigation' },
     { id: 'nav-settings', label: 'Settings', icon: <Settings className="h-4 w-4" />, action: () => navigate('/settings'), group: 'navigation' },
     // Actions
-    { id: 'act-save', label: 'Save Game', icon: <Save className="h-4 w-4" />, action: () => { /* TODO: save game */ }, group: 'actions' },
-    { id: 'act-new', label: 'New Game', icon: <PlusCircle className="h-4 w-4" />, action: () => { /* TODO: new game */ }, group: 'actions' },
+    {
+      id: 'act-save',
+      label: 'Quick Save',
+      icon: <Save className="h-4 w-4" />,
+      action: async () => {
+        if (!worker.isReady) return;
+        const snapshot = await worker.exportSnapshot();
+        await saveGame(1, `Season ${season} Day ${day}`, snapshot);
+      },
+      group: 'actions',
+    },
+    {
+      id: 'act-load',
+      label: 'Load Latest Save',
+      icon: <Save className="h-4 w-4" />,
+      action: async () => {
+        if (!worker.isReady) return;
+        const latestSave = await loadMostRecentSnapshot();
+        if (!latestSave?.snapshot) return;
+        const result = await worker.importSnapshot(latestSave.snapshot);
+        initializeGame({
+          season: result.season,
+          day: result.day,
+          phase: result.phase,
+          playerCount: result.playerCount,
+          userTeamId: result.userTeamId,
+        });
+      },
+      group: 'actions',
+    },
+    {
+      id: 'act-new',
+      label: 'New Game',
+      icon: <PlusCircle className="h-4 w-4" />,
+      action: async () => {
+        if (!worker.isReady) return;
+        const result = await worker.newGame(Date.now(), userTeamId);
+        initializeGame({
+          season: result.season,
+          day: result.day,
+          phase: result.phase,
+          playerCount: result.playerCount,
+          userTeamId,
+        });
+      },
+      group: 'actions',
+    },
   ];
 
   const navItems = items.filter((i) => i.group === 'navigation');

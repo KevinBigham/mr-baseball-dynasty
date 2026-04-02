@@ -51,6 +51,7 @@ function getStatValue(player: PlayerDTO, cat: StatCategory): string {
 
 export default function LeadersPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { day, season, phase, isInitialized } = useGameStore();
   const [activeCat, setActiveCat] = useState<StatCategory>('hr');
   const [leaders, setLeaders] = useState<PlayerDTO[]>([]);
@@ -59,7 +60,7 @@ export default function LeadersPage() {
     if (!isInitialized || !worker.isReady) return;
     const data = await worker.getLeagueLeaders(activeCat, 20);
     setLeaders(data as PlayerDTO[]);
-  }, [isInitialized, worker, activeCat]);
+  }, [isInitialized, workerReady, activeCat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchLeaders();

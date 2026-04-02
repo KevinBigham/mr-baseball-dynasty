@@ -44,6 +44,7 @@ function gradeColor(grade: string): string {
 
 export default function PlayersPage() {
   const worker = useWorker();
+  const workerReady = worker.isReady;
   const { isInitialized } = useGameStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PlayerDTO[]>([]);
@@ -53,7 +54,7 @@ export default function PlayersPage() {
     if (!isInitialized || !worker.isReady) return;
     const leaders = await worker.getLeagueLeaders('hr', 50);
     setDefaultPlayers(leaders as PlayerDTO[]);
-  }, [isInitialized, worker]);
+  }, [isInitialized, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchDefaults();
@@ -69,7 +70,7 @@ export default function PlayersPage() {
       setResults(found as PlayerDTO[]);
     }, 200);
     return () => clearTimeout(timer);
-  }, [query, worker]);
+  }, [query, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const players = query ? results : defaultPlayers;
 
