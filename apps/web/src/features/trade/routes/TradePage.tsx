@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, ArrowRight, Check, X, RotateCcw,
-  ChevronDown, AlertTriangle, Scale,
+  AlertTriangle,
+  ArrowLeftRight,
+  ArrowRight,
+  Check,
+  Inbox,
+  RotateCcw,
+  Scale,
+  X,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
 
 interface PlayerDTO {
   id: string;
@@ -24,15 +26,46 @@ interface PlayerDTO {
   stats: Record<string, unknown> | null;
 }
 
-interface TradeResult {
-  status: 'accepted' | 'rejected' | 'counter';
-  message: string;
-  counterOffer?: { offering: string[]; requesting: string[] };
+interface TradeAssetView {
+  playerId: string;
+  playerName: string;
+  position: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Static team list (fallback until worker exposes getTeams)          */
-/* ------------------------------------------------------------------ */
+interface TradeOfferView {
+  id: string;
+  fromTeamId: string;
+  fromTeamName: string;
+  fromTeamAbbreviation: string;
+  toTeamId: string;
+  toTeamName: string;
+  toTeamAbbreviation: string;
+  fairnessScore: number;
+  message: string;
+  createdAt: string;
+  offeringPlayers: TradeAssetView[];
+  requestingPlayers: TradeAssetView[];
+}
+
+interface TradeHistoryView {
+  id: string;
+  fromTeamId: string;
+  fromTeamName: string;
+  fromTeamAbbreviation: string;
+  toTeamId: string;
+  toTeamName: string;
+  toTeamAbbreviation: string;
+  fairnessScore: number;
+  summary: string;
+  timestamp: string;
+  offeringPlayers: TradeAssetView[];
+  requestingPlayers: TradeAssetView[];
+}
+
+interface TradeResult {
+  status: 'accepted' | 'rejected' | 'counter' | 'declined';
+  message: string;
+}
 
 const ALL_TEAMS = [
   { id: 'bal', name: 'Orioles', abbr: 'BAL' }, { id: 'bos', name: 'Red Sox', abbr: 'BOS' },
@@ -53,40 +86,25 @@ const ALL_TEAMS = [
   { id: 'mtl', name: 'Expos', abbr: 'MTL' }, { id: 'por', name: 'Evergreens', abbr: 'POR' },
 ];
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
 function gradeColor(grade: string): string {
   switch (grade) {
     case 'A': return 'bg-accent-success/20 text-accent-success';
     case 'B': return 'bg-accent-info/20 text-accent-info';
     case 'C': return 'bg-accent-warning/20 text-accent-warning';
     case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default:  return 'bg-dynasty-border text-dynasty-muted';
+    default: return 'bg-dynasty-border text-dynasty-muted';
   }
 }
 
-function chipGradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'text-accent-success';
-    case 'B': return 'text-accent-info';
-    case 'C': return 'text-accent-warning';
-    case 'D': return 'text-accent-danger';
-    default:  return 'text-dynasty-muted';
-  }
+function estimateValue(player: PlayerDTO): number {
+  const ageFactor = Math.max(0, 1 - (player.age - 24) * 0.04);
+  return player.overallRating * (0.6 + ageFactor * 0.4);
 }
 
-/** Rough trade-value heuristic (used when worker method unavailable). */
-function estimateValue(p: PlayerDTO): number {
-  const ageFactor = Math.max(0, 1 - (p.age - 24) * 0.04);
-  return p.overallRating * (0.6 + ageFactor * 0.4);
-}
-
-function fairnessRatio(offerVal: number, requestVal: number): number {
-  const total = offerVal + requestVal;
+function fairnessRatio(offerValue: number, requestValue: number): number {
+  const total = offerValue + requestValue;
   if (total === 0) return 0.5;
-  return offerVal / total;
+  return offerValue / total;
 }
 
 function fairnessLabel(ratio: number): { text: string; color: string } {
@@ -97,19 +115,30 @@ function fairnessLabel(ratio: number): { text: string; color: string } {
   return { text: 'Heavily favors them', color: 'text-accent-danger' };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Roster table row                                                   */
-/* ------------------------------------------------------------------ */
+function fairnessText(score: number, fromTeam: string, toTeam: string): string {
+  if (Math.abs(score) <= 10) return 'Balanced';
+  return score > 0 ? `Favored ${fromTeam}` : `Favored ${toTeam}`;
+}
 
-function PlayerRow({ player, selected, onClick }: {
-  player: PlayerDTO; selected: boolean; onClick: () => void;
+function PlayerRow({
+  player,
+  selected,
+  disabled,
+  onClick,
+}: {
+  player: PlayerDTO;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 }) {
   return (
     <tr
-      onClick={onClick}
-      className={`cursor-pointer border-b border-dynasty-border/50 text-sm transition-colors ${
-        selected ? 'bg-accent-primary/15' : 'hover:bg-dynasty-elevated'
-      }`}
+      onClick={() => {
+        if (!disabled) onClick();
+      }}
+      className={`border-b border-dynasty-border/50 text-sm transition-colors ${
+        disabled ? 'cursor-default opacity-60' : 'cursor-pointer'
+      } ${selected ? 'bg-accent-primary/15' : disabled ? '' : 'hover:bg-dynasty-elevated'}`}
     >
       <td className="px-3 py-1.5 font-heading font-medium text-dynasty-text">
         {player.firstName} {player.lastName}
@@ -126,12 +155,113 @@ function PlayerRow({ player, selected, onClick }: {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main component                                                     */
-/* ------------------------------------------------------------------ */
+function OfferCard({
+  offer,
+  onAccept,
+  onCounter,
+  onDecline,
+}: {
+  offer: TradeOfferView;
+  onAccept: () => void;
+  onCounter: () => void;
+  onDecline: () => void;
+}) {
+  const evaluation = fairnessText(-offer.fairnessScore, 'Them', 'You');
+
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-heading text-sm font-semibold text-dynasty-textBright">{offer.fromTeamName}</p>
+          <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            {offer.createdAt} · {evaluation}
+          </p>
+        </div>
+        <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+          {offer.fromTeamAbbreviation}
+        </span>
+      </div>
+
+      <p className="mt-3 font-heading text-sm text-dynasty-text">{offer.message}</p>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+          <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-success">They Offer</p>
+          <div className="mt-2 space-y-1">
+            {offer.offeringPlayers.map((asset) => (
+              <p key={asset.playerId} className="font-data text-xs text-dynasty-text">
+                {asset.playerName} · {asset.position}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2">
+          <p className="font-heading text-[11px] uppercase tracking-[0.18em] text-accent-warning">They Want</p>
+          <div className="mt-2 space-y-1">
+            {offer.requestingPlayers.map((asset) => (
+              <p key={asset.playerId} className="font-data text-xs text-dynasty-text">
+                {asset.playerName} · {asset.position}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          onClick={onAccept}
+          className="inline-flex items-center gap-2 rounded-md bg-accent-success px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-accent-success/80"
+        >
+          <Check className="h-4 w-4" /> Accept
+        </button>
+        <button
+          onClick={onCounter}
+          className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info"
+        >
+          <ArrowLeftRight className="h-4 w-4" /> Counter
+        </button>
+        <button
+          onClick={onDecline}
+          className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-dynasty-muted transition-colors hover:border-accent-danger hover:text-accent-danger"
+        >
+          <X className="h-4 w-4" /> Decline
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HistoryCard({ trade }: { trade: TradeHistoryView }) {
+  const evaluation = fairnessText(trade.fairnessScore, trade.fromTeamAbbreviation, trade.toTeamAbbreviation);
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-heading text-sm font-semibold text-dynasty-textBright">
+            {trade.fromTeamAbbreviation} ↔ {trade.toTeamAbbreviation}
+          </p>
+          <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            {trade.timestamp} · {evaluation}
+          </p>
+        </div>
+        <span className="rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+          {trade.offeringPlayers.length + trade.requestingPlayers.length} assets
+        </span>
+      </div>
+      <p className="mt-3 font-heading text-sm text-dynasty-text">{trade.summary}</p>
+    </div>
+  );
+}
 
 export default function TradePage() {
   const worker = useWorker();
+  const {
+    getTeamRoster,
+    getTradeOffers,
+    getTradeHistory,
+    proposeTrade,
+    respondToTradeOffer,
+  } = worker;
   const { userTeamId, isInitialized, day, season, phase } = useGameStore();
 
   const [selectedTeam, setSelectedTeam] = useState('');
@@ -139,335 +269,460 @@ export default function TradePage() {
   const [targetRoster, setTargetRoster] = useState<PlayerDTO[]>([]);
   const [offering, setOffering] = useState<string[]>([]);
   const [requesting, setRequesting] = useState<string[]>([]);
+  const [incomingOffers, setIncomingOffers] = useState<TradeOfferView[]>([]);
+  const [tradeHistory, setTradeHistory] = useState<TradeHistoryView[]>([]);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
   const [proposing, setProposing] = useState(false);
-
-  const otherTeams = ALL_TEAMS.filter(t => t.id !== userTeamId);
+  const [activeCounterOfferId, setActiveCounterOfferId] = useState<string | null>(null);
 
   const workerReady = worker.isReady;
+  const otherTeams = ALL_TEAMS.filter((team) => team.id !== userTeamId);
+  const tradeMarketOpen = phase === 'regular' && day <= 120;
+  const daysUntilDeadline = Math.max(0, 120 - day);
 
-  /* ---- fetch user roster ---- */
-  const fetchUser = useCallback(async () => {
+  const loadUserRoster = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
-    try {
-      const data = await worker.getTeamRoster(userTeamId);
-      if (data) setYourRoster(data as PlayerDTO[]);
-    } catch { /* worker method may not exist yet */ }
-  }, [isInitialized, workerReady, userTeamId]); // eslint-disable-line react-hooks/exhaustive-deps
+    const data = await getTeamRoster(userTeamId);
+    setYourRoster((data as PlayerDTO[]) ?? []);
+  }, [getTeamRoster, isInitialized, userTeamId, workerReady]);
 
-  useEffect(() => { fetchUser(); }, [fetchUser, day, season, phase]);
-
-  /* ---- fetch target roster ---- */
-  useEffect(() => {
+  const loadTargetRoster = useCallback(async () => {
     if (!selectedTeam || !isInitialized || !workerReady) {
       setTargetRoster([]);
       return;
     }
-    (async () => {
-      try {
-        const data = await worker.getTeamRoster(selectedTeam);
-        if (data) setTargetRoster(data as PlayerDTO[]);
-      } catch { /* defensive */ }
-    })();
-  }, [selectedTeam, isInitialized, workerReady, day, season, phase]); // eslint-disable-line react-hooks/exhaustive-deps
+    const data = await getTeamRoster(selectedTeam);
+    setTargetRoster((data as PlayerDTO[]) ?? []);
+  }, [getTeamRoster, isInitialized, selectedTeam, workerReady]);
 
-  /* ---- toggle helpers ---- */
+  const loadTradeActivity = useCallback(async () => {
+    if (!isInitialized || !workerReady) return;
+    const [offers, history] = await Promise.all([
+      getTradeOffers(),
+      getTradeHistory(),
+    ]);
+    setIncomingOffers((offers as TradeOfferView[]) ?? []);
+    setTradeHistory((history as TradeHistoryView[]) ?? []);
+  }, [getTradeHistory, getTradeOffers, isInitialized, workerReady]);
+
+  useEffect(() => {
+    void loadUserRoster();
+  }, [loadUserRoster, day, season, phase]);
+
+  useEffect(() => {
+    void loadTargetRoster();
+  }, [loadTargetRoster, day, season, phase]);
+
+  useEffect(() => {
+    void loadTradeActivity();
+  }, [loadTradeActivity, day, season, phase]);
+
   const toggleOffer = (id: string) => {
     setTradeResult(null);
-    setOffering(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setOffering((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   };
+
   const toggleRequest = (id: string) => {
     setTradeResult(null);
-    setRequesting(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setRequesting((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  };
+
+  const resetBuilder = () => {
+    setOffering([]);
+    setRequesting([]);
+    setActiveCounterOfferId(null);
   };
 
   const clearTrade = () => {
-    setOffering([]);
-    setRequesting([]);
+    resetBuilder();
     setTradeResult(null);
   };
 
-  /* ---- trade value calculation ---- */
   const playerById = (id: string) =>
-    yourRoster.find(p => p.id === id) ?? targetRoster.find(p => p.id === id);
+    yourRoster.find((player) => player.id === id) ?? targetRoster.find((player) => player.id === id);
 
-  const offerTotal = offering.reduce((s, id) => s + estimateValue(playerById(id)!), 0);
-  const requestTotal = requesting.reduce((s, id) => s + estimateValue(playerById(id)!), 0);
-  const ratio = fairnessRatio(offerTotal, requestTotal);
-  const fairness = fairnessLabel(ratio);
+  const offerTotal = offering.reduce((sum, id) => sum + estimateValue(playerById(id)!), 0);
+  const requestTotal = requesting.reduce((sum, id) => sum + estimateValue(playerById(id)!), 0);
+  const packageFairness = fairnessLabel(fairnessRatio(offerTotal, requestTotal));
 
-  /* ---- propose trade ---- */
-  const proposeTrade = async () => {
-    if (offering.length === 0 || requesting.length === 0) return;
+  const submitTrade = async () => {
+    if (!selectedTeam || offering.length === 0 || requesting.length === 0 || !tradeMarketOpen) return;
     setProposing(true);
     try {
-      const result = await (worker as any).proposeTrade({
-        fromTeam: userTeamId, toTeam: selectedTeam,
-        offering, requesting,
-      });
-      setTradeResult(result as TradeResult);
-    } catch {
-      // Fallback: simulate acceptance based on fairness
-      if (ratio >= 0.4 && ratio <= 0.6) {
-        setTradeResult({ status: 'accepted', message: 'Trade accepted.' });
-      } else if (ratio < 0.4) {
-        setTradeResult({ status: 'rejected', message: 'The other GM feels this trade is too one-sided.' });
+      if (activeCounterOfferId) {
+        const result = await respondToTradeOffer(activeCounterOfferId, 'counter', {
+          offeringPlayerIds: offering,
+          requestingPlayerIds: requesting,
+        });
+        const response = result as { decision: 'accepted' | 'rejected' | 'countered' | 'declined'; message: string };
+        setTradeResult({
+          status: response.decision === 'accepted'
+            ? 'accepted'
+            : response.decision === 'countered'
+              ? 'counter'
+              : 'rejected',
+          message: response.message,
+        });
+        resetBuilder();
       } else {
-        setTradeResult({ status: 'rejected', message: 'Your front office advises against this deal.' });
+        const result = await proposeTrade(offering, requesting, selectedTeam);
+        const response = result as { decision: 'accepted' | 'rejected' | 'countered'; reason: string };
+        setTradeResult({
+          status: response.decision === 'accepted'
+            ? 'accepted'
+            : response.decision === 'countered'
+              ? 'counter'
+              : 'rejected',
+          message: response.reason,
+        });
+        if (response.decision === 'accepted') {
+          resetBuilder();
+        }
       }
+
+      await Promise.all([loadUserRoster(), loadTargetRoster(), loadTradeActivity()]);
     } finally {
       setProposing(false);
     }
   };
 
-  const hasPackage = offering.length > 0 || requesting.length > 0;
+  const handleAcceptOffer = async (offerId: string) => {
+    setProposing(true);
+    try {
+      const result = await respondToTradeOffer(offerId, 'accept');
+      const response = result as { decision: 'accepted' | 'rejected'; message: string };
+      setTradeResult({
+        status: response.decision === 'accepted' ? 'accepted' : 'rejected',
+        message: response.message,
+      });
+      await Promise.all([loadUserRoster(), loadTargetRoster(), loadTradeActivity()]);
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const handleDeclineOffer = async (offerId: string) => {
+    setProposing(true);
+    try {
+      const result = await respondToTradeOffer(offerId, 'decline');
+      const response = result as { message: string };
+      setTradeResult({ status: 'declined', message: response.message });
+      await loadTradeActivity();
+    } finally {
+      setProposing(false);
+    }
+  };
+
+  const handleCounterOffer = (offer: TradeOfferView) => {
+    setSelectedTeam(offer.fromTeamId);
+    setOffering(offer.requestingPlayers.map((asset) => asset.playerId));
+    setRequesting(offer.offeringPlayers.map((asset) => asset.playerId));
+    setActiveCounterOfferId(offer.id);
+    setTradeResult(null);
+  };
+
+  const marketMessage = useMemo(() => {
+    if (phase !== 'regular') {
+      return 'Trade market closed — reopens in offseason';
+    }
+    if (!tradeMarketOpen) {
+      return 'Trade market closed — reopens in offseason';
+    }
+    return `${daysUntilDeadline} days until trade deadline`;
+  }, [daysUntilDeadline, phase, tradeMarketOpen]);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div>
         <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Trade Center</h1>
         <p className="mt-1 font-heading text-sm text-dynasty-muted">
-          Build trade packages and negotiate with other front offices.
+          Deadline pressure, incoming offers, and every deal from around the league.
         </p>
       </div>
 
-      {/* Two-panel layout */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* LEFT: Your Assets */}
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">Your Assets</h2>
-            <p className="font-data text-xs text-dynasty-muted">{yourRoster.length} players</p>
-          </div>
-          <div className="max-h-[420px] overflow-y-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 bg-dynasty-surface">
-                <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                  <th className="px-3 py-2 text-left font-heading">Player</th>
-                  <th className="px-2 py-2 text-left font-heading">POS</th>
-                  <th className="px-2 py-2 text-right font-data">OVR</th>
-                  <th className="px-2 py-2 text-center font-heading">GRD</th>
-                  <th className="px-2 py-2 text-right font-data">AGE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {yourRoster.map(p => (
-                  <PlayerRow
-                    key={p.id} player={p}
-                    selected={offering.includes(p.id)}
-                    onClick={() => toggleOffer(p.id)}
+      <div className={`rounded-lg border px-4 py-3 ${
+        tradeMarketOpen
+          ? 'border-accent-warning/30 bg-accent-warning/10'
+          : 'border-dynasty-border bg-dynasty-surface'
+      }`}>
+        <p className={`font-heading text-sm ${tradeMarketOpen ? 'text-accent-warning' : 'text-dynasty-text'}`}>
+          {marketMessage}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="space-y-4 xl:col-span-4">
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+            <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
+              <Inbox className="h-4 w-4 text-dynasty-muted" />
+              <div>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">Trade Inbox</h2>
+                <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  {incomingOffers.length} active conversations
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-3 py-3">
+              {incomingOffers.length === 0 ? (
+                <p className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
+                  No active trade offers.
+                </p>
+              ) : (
+                incomingOffers.map((offer) => (
+                  <OfferCard
+                    key={offer.id}
+                    offer={offer}
+                    onAccept={() => void handleAcceptOffer(offer.id)}
+                    onCounter={() => handleCounterOffer(offer)}
+                    onDecline={() => void handleDeclineOffer(offer.id)}
                   />
-                ))}
-                {yourRoster.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                    Start a new game to see your roster
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+            <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
+              <ArrowLeftRight className="h-4 w-4 text-dynasty-muted" />
+              <div>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">Trade History</h2>
+                <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  Season {season} ledger
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-3 py-3">
+              {tradeHistory.length === 0 ? (
+                <p className="rounded border border-dynasty-border bg-dynasty-elevated px-4 py-6 text-center font-heading text-sm text-dynasty-muted">
+                  No trades completed yet this season.
+                </p>
+              ) : (
+                tradeHistory.map((trade) => (
+                  <HistoryCard key={trade.id} trade={trade} />
+                ))
+              )}
+            </div>
           </div>
         </div>
 
-        {/* RIGHT: Target Team */}
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="border-b border-dynasty-border px-4 py-3">
-            <div className="flex items-center gap-3">
-              <h2 className="font-heading text-sm font-semibold text-dynasty-text">Target Team</h2>
-              <div className="relative flex-1">
-                <select
-                  value={selectedTeam}
-                  onChange={e => { setSelectedTeam(e.target.value); setRequesting([]); setTradeResult(null); }}
-                  className="w-full appearance-none rounded border border-dynasty-border bg-dynasty-elevated px-3 py-1.5 pr-8 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none"
+        <div className="space-y-4 xl:col-span-8">
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-heading text-sm font-semibold text-dynasty-text">
+                  {activeCounterOfferId ? 'Counter Offer Builder' : 'Trade Builder'}
+                </h2>
+                <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                  {activeCounterOfferId ? 'Loaded from trade inbox' : 'Direct proposal to another front office'}
+                </p>
+              </div>
+              <select
+                value={selectedTeam}
+                onChange={(event) => {
+                  setSelectedTeam(event.target.value);
+                  setRequesting([]);
+                  setTradeResult(null);
+                  setActiveCounterOfferId(null);
+                }}
+                className="rounded border border-dynasty-border bg-dynasty-elevated px-3 py-2 font-heading text-sm text-dynasty-text focus:border-accent-primary focus:outline-none"
+              >
+                <option value="">Select a team...</option>
+                {otherTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.abbr} - {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated">
+                <div className="border-b border-dynasty-border px-4 py-3">
+                  <h3 className="font-heading text-sm font-semibold text-dynasty-text">Your Assets</h3>
+                </div>
+                <div className="max-h-[22rem] overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-dynasty-elevated">
+                      <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
+                        <th className="px-3 py-2 text-left font-heading">Player</th>
+                        <th className="px-2 py-2 text-left font-heading">POS</th>
+                        <th className="px-2 py-2 text-right font-data">OVR</th>
+                        <th className="px-2 py-2 text-center font-heading">GRD</th>
+                        <th className="px-2 py-2 text-right font-data">AGE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {yourRoster.map((player) => (
+                        <PlayerRow
+                          key={player.id}
+                          player={player}
+                          selected={offering.includes(player.id)}
+                          disabled={!tradeMarketOpen}
+                          onClick={() => toggleOffer(player.id)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated">
+                <div className="border-b border-dynasty-border px-4 py-3">
+                  <h3 className="font-heading text-sm font-semibold text-dynasty-text">Target Roster</h3>
+                </div>
+                <div className="max-h-[22rem] overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-dynasty-elevated">
+                      <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
+                        <th className="px-3 py-2 text-left font-heading">Player</th>
+                        <th className="px-2 py-2 text-left font-heading">POS</th>
+                        <th className="px-2 py-2 text-right font-data">OVR</th>
+                        <th className="px-2 py-2 text-center font-heading">GRD</th>
+                        <th className="px-2 py-2 text-right font-data">AGE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {targetRoster.map((player) => (
+                        <PlayerRow
+                          key={player.id}
+                          player={player}
+                          selected={requesting.includes(player.id)}
+                          disabled={!tradeMarketOpen}
+                          onClick={() => toggleRequest(player.id)}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="flex items-center gap-2">
+                <Scale className="h-4 w-4 text-dynasty-muted" />
+                <h3 className="font-heading text-sm font-semibold text-dynasty-text">Package Evaluation</h3>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr]">
+                <div>
+                  <p className="mb-2 font-heading text-[11px] uppercase tracking-[0.18em] text-accent-primary">Offering</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {offering.length === 0 ? (
+                      <span className="font-heading text-xs text-dynasty-muted">Select players from your roster</span>
+                    ) : (
+                      offering.map((id) => {
+                        const player = playerById(id);
+                        if (!player) return null;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => toggleOffer(id)}
+                            className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
+                          >
+                            {player.firstName[0]}. {player.lastName} · {player.position}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="hidden items-center justify-center md:flex">
+                  <ArrowRight className="h-5 w-5 text-dynasty-muted" />
+                </div>
+
+                <div>
+                  <p className="mb-2 font-heading text-[11px] uppercase tracking-[0.18em] text-accent-info">Requesting</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {requesting.length === 0 ? (
+                      <span className="font-heading text-xs text-dynasty-muted">Select players from the target roster</span>
+                    ) : (
+                      requesting.map((id) => {
+                        const player = playerById(id);
+                        if (!player) return null;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => toggleRequest(id)}
+                            className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-xs text-dynasty-text"
+                          >
+                            {player.firstName[0]}. {player.lastName} · {player.position}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {(offering.length > 0 || requesting.length > 0) && (
+                <div className="mt-4 space-y-2">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-dynasty-border">
+                    <div
+                      className="h-full transition-all duration-300"
+                      style={{
+                        width: `${Math.round(fairnessRatio(offerTotal, requestTotal) * 100)}%`,
+                        background: fairnessRatio(offerTotal, requestTotal) >= 0.4 && fairnessRatio(offerTotal, requestTotal) <= 0.6
+                          ? 'rgb(34 197 94)'
+                          : fairnessRatio(offerTotal, requestTotal) >= 0.3 && fairnessRatio(offerTotal, requestTotal) <= 0.7
+                            ? 'rgb(245 158 11)'
+                            : 'rgb(244 63 94)',
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between font-data text-xs">
+                    <span className="text-dynasty-muted">Favors you</span>
+                    <span className={packageFairness.color}>{packageFairness.text}</span>
+                    <span className="text-dynasty-muted">Favors them</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => void submitTrade()}
+                  disabled={!tradeMarketOpen || !selectedTeam || offering.length === 0 || requesting.length === 0 || proposing}
+                  className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <option value="">Select a team...</option>
-                  {otherTeams.map(t => (
-                    <option key={t.id} value={t.id}>{t.abbr} - {t.name}</option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-dynasty-muted" />
+                  <ArrowRight className="h-4 w-4" />
+                  {activeCounterOfferId ? 'Send Counter Offer' : 'Propose Trade'}
+                </button>
+                {(offering.length > 0 || requesting.length > 0 || activeCounterOfferId) && (
+                  <button
+                    onClick={clearTrade}
+                    className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:text-dynasty-text"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
           </div>
-          <div className="max-h-[420px] overflow-y-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 bg-dynasty-surface">
-                <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                  <th className="px-3 py-2 text-left font-heading">Player</th>
-                  <th className="px-2 py-2 text-left font-heading">POS</th>
-                  <th className="px-2 py-2 text-right font-data">OVR</th>
-                  <th className="px-2 py-2 text-center font-heading">GRD</th>
-                  <th className="px-2 py-2 text-right font-data">AGE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {targetRoster.map(p => (
-                  <PlayerRow
-                    key={p.id} player={p}
-                    selected={requesting.includes(p.id)}
-                    onClick={() => toggleRequest(p.id)}
-                  />
-                ))}
-                {!selectedTeam && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                    Select a team above to view their roster
-                  </td></tr>
-                )}
-                {selectedTeam && targetRoster.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                    Loading roster...
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
 
-      {/* Trade Evaluation Bar */}
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Scale className="h-4 w-4 text-dynasty-muted" />
-          <h3 className="font-heading text-sm font-semibold text-dynasty-text">Trade Package</h3>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto_1fr]">
-          {/* Offering */}
-          <div>
-            <p className="mb-2 font-heading text-xs font-semibold uppercase tracking-wider text-accent-primary">
-              Offering
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {offering.length === 0 && (
-                <span className="font-heading text-xs text-dynasty-muted">Click players from Your Assets</span>
-              )}
-              {offering.map(id => {
-                const p = playerById(id);
-                if (!p) return null;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => toggleOffer(id)}
-                    className="flex items-center gap-1 rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text hover:border-accent-danger"
-                  >
-                    <span>{p.firstName[0]}. {p.lastName}</span>
-                    <span className={chipGradeColor(p.letterGrade)}>({p.position}, {p.displayRating})</span>
-                    <X className="h-3 w-3 text-dynasty-muted" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Arrow */}
-          <div className="hidden items-center md:flex">
-            <ArrowLeftRight className="h-5 w-5 text-dynasty-muted" />
-          </div>
-
-          {/* Requesting */}
-          <div>
-            <p className="mb-2 font-heading text-xs font-semibold uppercase tracking-wider text-accent-info">
-              Requesting
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {requesting.length === 0 && (
-                <span className="font-heading text-xs text-dynasty-muted">Click players from Target Team</span>
-              )}
-              {requesting.map(id => {
-                const p = playerById(id);
-                if (!p) return null;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => toggleRequest(id)}
-                    className="flex items-center gap-1 rounded border border-dynasty-border bg-dynasty-elevated px-2 py-1 font-data text-xs text-dynasty-text hover:border-accent-danger"
-                  >
-                    <span>{p.firstName[0]}. {p.lastName}</span>
-                    <span className={chipGradeColor(p.letterGrade)}>({p.position}, {p.displayRating})</span>
-                    <X className="h-3 w-3 text-dynasty-muted" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Fairness bar */}
-        {hasPackage && (
-          <div className="mt-4 space-y-2">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-dynasty-border">
-              <div
-                className="h-full transition-all duration-300"
-                style={{
-                  width: `${Math.round(ratio * 100)}%`,
-                  background: ratio >= 0.4 && ratio <= 0.6
-                    ? 'rgb(34 197 94)' : ratio >= 0.3 && ratio <= 0.7
-                    ? 'rgb(245 158 11)' : 'rgb(244 63 94)',
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between font-data text-xs">
-              <span className="text-dynasty-muted">Favors you</span>
-              <span className={fairness.color}>{fairness.text}</span>
-              <span className="text-dynasty-muted">Favors them</span>
-            </div>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            onClick={proposeTrade}
-            disabled={offering.length === 0 || requesting.length === 0 || proposing}
-            className="flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ArrowRight className="h-4 w-4" />
-            {proposing ? 'Proposing...' : 'Propose Trade'}
-          </button>
-          {hasPackage && (
-            <button
-              onClick={clearTrade}
-              className="flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:text-dynasty-text"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Trade Response */}
-      {tradeResult && (
-        <div className={`rounded-lg border p-4 ${
-          tradeResult.status === 'accepted'
-            ? 'border-accent-success/40 bg-accent-success/10'
-            : tradeResult.status === 'counter'
-            ? 'border-accent-warning/40 bg-accent-warning/10'
-            : 'border-accent-danger/40 bg-accent-danger/10'
-        }`}>
-          <div className="flex items-center gap-2">
-            {tradeResult.status === 'accepted' && <Check className="h-5 w-5 text-accent-success" />}
-            {tradeResult.status === 'rejected' && <X className="h-5 w-5 text-accent-danger" />}
-            {tradeResult.status === 'counter' && <AlertTriangle className="h-5 w-5 text-accent-warning" />}
-            <h3 className="font-heading text-sm font-semibold text-dynasty-text">
-              {tradeResult.status === 'accepted' ? 'Trade Accepted' :
-               tradeResult.status === 'counter' ? 'Counter-Offer' : 'Trade Rejected'}
-            </h3>
-          </div>
-          <p className="mt-1 font-heading text-sm text-dynasty-muted">{tradeResult.message}</p>
-
-          {tradeResult.status === 'counter' && tradeResult.counterOffer && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button className="flex items-center gap-1 rounded-md bg-accent-success px-3 py-1.5 font-heading text-xs font-semibold text-white hover:bg-accent-success/80">
-                <Check className="h-3.5 w-3.5" /> Accept Counter
-              </button>
-              <button className="flex items-center gap-1 rounded-md border border-dynasty-border px-3 py-1.5 font-heading text-xs text-dynasty-muted hover:text-dynasty-text">
-                <X className="h-3.5 w-3.5" /> Reject
-              </button>
+          {tradeResult && (
+            <div className={`rounded-lg border p-4 ${
+              tradeResult.status === 'accepted'
+                ? 'border-accent-success/40 bg-accent-success/10'
+                : tradeResult.status === 'counter'
+                  ? 'border-accent-warning/40 bg-accent-warning/10'
+                  : 'border-accent-danger/40 bg-accent-danger/10'
+            }`}>
+              <div className="flex items-center gap-2">
+                {tradeResult.status === 'accepted' && <Check className="h-5 w-5 text-accent-success" />}
+                {tradeResult.status !== 'accepted' && <AlertTriangle className="h-5 w-5 text-accent-warning" />}
+                <h3 className="font-heading text-sm font-semibold text-dynasty-text">
+                  {tradeResult.status === 'accepted'
+                    ? 'Deal Completed'
+                    : tradeResult.status === 'counter'
+                      ? 'Trade Talks Continue'
+                      : 'Talks Broke Down'}
+                </h3>
+              </div>
+              <p className="mt-2 font-heading text-sm text-dynasty-text">{tradeResult.message}</p>
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

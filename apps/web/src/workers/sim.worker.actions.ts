@@ -51,6 +51,13 @@ import type {
 } from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
 import {
+  clearPendingTradeOffers,
+  isTradeMarketOpen,
+  processTradeMarketActivity,
+  recordAcceptedUserTrade,
+  respondToTradeOffer,
+} from './sim.worker.trade.js';
+import {
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
   finalizeSeasonHistoryRetirements,
@@ -96,13 +103,16 @@ function simDayInternal(): SimResultDTO {
   }
 
   if (s.phase === 'regular') {
+    const previousDay = s.day;
     const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
     s.seasonState = newState;
     s.day = newState.currentDay;
+    processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
     if (result.seasonComplete) {
       ensureAwardHistoryForSeason(s);
+      clearPendingTradeOffers(s);
       s.phase = 'playoffs';
       s.day = 1;
     }
@@ -123,6 +133,7 @@ function simDayInternal(): SimResultDTO {
     ensureAwardHistoryForSeason(s);
     const seasonMoments = applyPostseasonConsequences(s);
     recordSeasonHistory(s, seasonMoments);
+    clearPendingTradeOffers(s);
     s.phase = 'offseason';
     s.day = 1;
     return {
@@ -173,6 +184,7 @@ function simDayInternal(): SimResultDTO {
       s.offseasonState = null;
       s.draftClass = null;
       s.freeAgencyMarket = null;
+      s.tradeState = createEmptyTradeState();
       const teamIds = TEAMS.map((team) => team.id);
       s.schedule = generateSchedule(s.rng.fork());
       s.seasonState = createSeasonState(s.season, teamIds);
@@ -284,12 +296,15 @@ export const actionApi = {
     }
 
     const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+    const previousDay = s.day;
     s.seasonState = newState;
     s.day = newState.currentDay;
+    processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
     if (result.seasonComplete) {
       ensureAwardHistoryForSeason(s);
+      clearPendingTradeOffers(s);
       s.phase = 'playoffs';
       s.day = 1;
     }
@@ -308,13 +323,16 @@ export const actionApi = {
       return simDayInternal();
     }
 
+    const previousDay = s.day;
     const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
     s.seasonState = newState;
     s.day = newState.currentDay;
+    processTradeMarketActivity(s, previousDay, s.day);
     processDayInjuriesAndNews(s);
     refreshNarrativeState(s, result.games);
     if (result.seasonComplete) {
       ensureAwardHistoryForSeason(s);
+      clearPendingTradeOffers(s);
       s.phase = 'playoffs';
       s.day = 1;
     }
@@ -360,6 +378,9 @@ export const actionApi = {
 
   proposeTrade(offered: string[], requested: string[], toTeamId: string) {
     const s = requireState();
+    if (!isTradeMarketOpen(s)) {
+      return { decision: 'rejected', reason: 'Trade market closed — reopens in offseason' };
+    }
     const gm = s.gmPersonalities.get(toTeamId);
     if (!gm) {
       return { decision: 'rejected', reason: 'Unknown team' };
@@ -388,9 +409,18 @@ export const actionApi = {
       executeTrade(proposal, s.players);
       s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
       s.rosterStates.set(toTeamId, buildRosterState(toTeamId, s.players));
+      recordAcceptedUserTrade(s, proposal);
       applyTradeConsequences(s, offered, requested, toTeamId, preTradeUserPlayers, preTradePartnerPlayers);
     }
     return { decision: result.decision, reason: result.reason, counter: result.counter ?? undefined };
+  },
+
+  respondToTradeOffer(
+    offerId: string,
+    action: 'accept' | 'decline' | 'counter',
+    counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+  ) {
+    return respondToTradeOffer(requireState(), offerId, action, counterPackage);
   },
 
   promotePlayerAction(playerId: string) {

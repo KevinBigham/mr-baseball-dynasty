@@ -19,7 +19,6 @@ import type {
   PlayoffBracket,
   RosterState,
   StandingsEntry,
-  TradeProposal,
 } from '@mbd/sim-core';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
@@ -40,6 +39,10 @@ import {
   getSeasonHistory,
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
+import {
+  buildTradeHistoryView,
+  buildTradeOffersView,
+} from './sim.worker.trade.js';
 
 export const queryApi = {
   getState() {
@@ -251,21 +254,12 @@ export const queryApi = {
     return player ? evaluatePlayerTradeValue(player) : null;
   },
 
-  getTradeOffers(): TradeProposal[] {
-    const s = requireState();
-    const gm = s.gmPersonalities.get(s.userTeamId);
-    if (!gm) {
-      return [];
-    }
+  getTradeOffers() {
+    return buildTradeOffersView(requireState());
+  },
 
-    return generateAITradeOffers(
-      s.rng.fork(),
-      s.userTeamId,
-      getTeamPlayers(s.userTeamId),
-      s.players,
-      gm,
-      false,
-    );
+  getTradeHistory() {
+    return buildTradeHistoryView(requireState());
   },
 
   getRosterState(teamId: string): RosterState | null {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createOffseasonState,
   evaluatePlayerTradeValue,
+  type GeneratedPlayer,
   type PlayerGameStats,
 } from '@mbd/sim-core';
 
@@ -13,6 +14,7 @@ vi.mock('comlink', () => ({
 
 import { api } from './sim.worker';
 import { requireState, setState } from './sim.worker.helpers';
+import { processTradeMarketActivity } from './sim.worker.trade';
 
 function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats {
   return {
@@ -37,6 +39,89 @@ function createPlayerStats(overrides: Partial<PlayerGameStats>): PlayerGameStats
     losses: 0,
     ...overrides,
   };
+}
+
+function setHitterProfile(
+  player: GeneratedPlayer,
+  position: GeneratedPlayer['position'],
+  rating: number,
+  age: number,
+  annualSalary: number,
+) {
+  if (player.pitcherAttributes) {
+    throw new Error(`Expected hitter for ${player.id}`);
+  }
+
+  player.position = position;
+  player.age = age;
+  player.contract.noTradeClause = false;
+  player.contract.annualSalary = annualSalary;
+  player.hitterAttributes = {
+    contact: rating,
+    power: rating,
+    eye: rating,
+    speed: Math.max(80, rating - 40),
+    defense: Math.max(80, rating - 30),
+    durability: Math.max(80, rating - 20),
+  };
+}
+
+function buildIncomingOffer(offerId: string) {
+  const state = requireState();
+  const requested = state.players.find(
+    (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+  )!;
+  const offered = state.players.find(
+    (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+  )!;
+
+  requested.contract.noTradeClause = false;
+  offered.contract.noTradeClause = false;
+
+  return {
+    requested,
+    offered,
+    offer: {
+      id: offerId,
+      fromTeamId: 'bos',
+      toTeamId: 'nyy',
+      offeringPlayerIds: [offered.id],
+      requestingPlayerIds: [requested.id],
+      fairnessScore: -4,
+      message: 'Boston wants to discuss a one-for-one swap.',
+      createdAt: 'S1D60',
+    },
+  };
+}
+
+function configureMonthlyTradeScenario() {
+  const state = requireState();
+  const userBatters = state.players.filter(
+    (player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+  );
+  const partnerBatters = state.players.filter(
+    (player) => player.teamId === 'bos' && player.rosterStatus === 'MLB' && player.pitcherAttributes == null,
+  );
+
+  const target = userBatters[0]!;
+  const weakShortstop = partnerBatters[0]!;
+  const sweetenerOne = partnerBatters[1]!;
+  const sweetenerTwo = partnerBatters[2]!;
+
+  for (const player of state.players) {
+    if (player.pitcherAttributes != null) continue;
+    if (player.id !== target.id && player.position === 'SS') {
+      player.position = '2B';
+    }
+  }
+
+  setHitterProfile(target, 'SS', 520, 26, 4);
+  setHitterProfile(weakShortstop, 'SS', 120, 28, 8);
+  setHitterProfile(sweetenerOne, '1B', 420, 29, 3);
+  setHitterProfile(sweetenerTwo, 'LF', 410, 30, 2);
+  state.gmPersonalities.set('bos', 'aggressive');
+
+  return { target };
 }
 
 describe('sim worker narrative APIs', () => {
@@ -105,6 +190,8 @@ describe('sim worker narrative APIs', () => {
   it('adds trade consequences after an accepted user trade', () => {
     api.newGame(321, 'nyy');
     const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
     const userPlayers = state.players
       .filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB' && !player.contract.noTradeClause)
       .sort((left, right) => evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall);
@@ -612,6 +699,97 @@ describe('sim worker narrative APIs', () => {
     expect(secondRun.draft?.status).toBe('complete');
     expect(secondRun.draft?.userDraftClass?.overallGrade).toMatch(/^[A-F]/);
     expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
+  });
+
+  it('closes the trade market after day 120 and clears pending offers', () => {
+    api.newGame(340, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+
+    const { offer, requested, offered } = buildIncomingOffer('deadline-offer');
+    state.tradeState.pendingOffers = [offer];
+
+    processTradeMarketActivity(state, 120, 121);
+    state.day = 121;
+
+    expect(api.getTradeOffers()).toEqual([]);
+
+    const closedResult = api.proposeTrade([requested.id], [offered.id], 'bos');
+    expect(closedResult.decision).toBe('rejected');
+    expect(closedResult.reason).toContain('Trade market closed');
+  });
+
+  it('generates deterministic monthly AI trade offers for the user inbox', () => {
+    api.newGame(341, 'nyy');
+    let state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    const { target } = configureMonthlyTradeScenario();
+
+    processTradeMarketActivity(state, 30, 31);
+    const firstRun = api.getTradeOffers();
+
+    expect(firstRun.length).toBeGreaterThan(0);
+    expect(firstRun.some((offer) => offer.fromTeamId === 'bos' && offer.toTeamId === 'nyy')).toBe(true);
+    expect(firstRun.some((offer) => offer.requestingPlayers.some((player) => player.playerId === target.id))).toBe(true);
+
+    api.newGame(341, 'nyy');
+    state = requireState();
+    state.phase = 'regular';
+    state.day = 31;
+    configureMonthlyTradeScenario();
+
+    processTradeMarketActivity(state, 30, 31);
+    const secondRun = api.getTradeOffers();
+
+    expect(secondRun).toEqual(firstRun);
+  });
+
+  it('accepts AI trade offers and records history, news, briefing, and morale updates', () => {
+    api.newGame(342, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, requested, offered } = buildIncomingOffer('accept-offer');
+    const baselineIncomingMorale = state.playerMorale.get(offered.id)?.score ?? 0;
+    const baselineOutgoingMorale = state.playerMorale.get(requested.id)?.score ?? 0;
+
+    state.tradeState.pendingOffers = [offer];
+
+    const result = api.respondToTradeOffer(offer.id, 'accept');
+
+    expect(result.success).toBe(true);
+    expect(result.decision).toBe('accepted');
+    expect(api.getTradeOffers()).toEqual([]);
+    expect(api.getTradeHistory()[0]?.id).toBe(offer.id);
+    expect(requireState().players.find((player) => player.id === offered.id)?.teamId).toBe('nyy');
+    expect(requireState().players.find((player) => player.id === requested.id)?.teamId).toBe('bos');
+    expect(api.getNews(25).some((item) => item.category === 'trade' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
+    expect(api.getBriefing(25).some((item) => item.category === 'news' && item.relatedPlayerIds.includes(offered.id))).toBe(true);
+    expect(requireState().playerMorale.get(offered.id)?.score).toBeGreaterThan(baselineIncomingMorale);
+    expect(requireState().playerMorale.get(requested.id)?.score).toBeLessThan(baselineOutgoingMorale);
+  });
+
+  it('declines AI trade offers and records the response in morale, news, and briefing', () => {
+    api.newGame(343, 'nyy');
+    const state = requireState();
+    state.phase = 'regular';
+    state.day = 60;
+
+    const { offer, requested } = buildIncomingOffer('decline-offer');
+    const baselineMorale = state.playerMorale.get(requested.id)?.score ?? 0;
+    state.tradeState.pendingOffers = [offer];
+
+    const result = api.respondToTradeOffer(offer.id, 'decline');
+
+    expect(result.success).toBe(true);
+    expect(result.decision).toBe('declined');
+    expect(api.getTradeOffers()).toEqual([]);
+    expect(api.getTradeHistory()).toEqual([]);
+    expect(api.getNews(25).some((item) => item.category === 'trade' && item.headline.includes('declined'))).toBe(true);
+    expect(api.getBriefing(25).some((item) => item.category === 'news' && item.headline.includes('declined'))).toBe(true);
+    expect(requireState().playerMorale.get(requested.id)?.score).toBeGreaterThan(baselineMorale);
   });
 
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {

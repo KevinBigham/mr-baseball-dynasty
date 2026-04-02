@@ -109,6 +109,21 @@ export function useWorker() {
     async () => api.simulateRemainingDraft(),
     [api],
   );
+  const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
+  const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
+  const proposeTrade = useCallback(
+    async (offered: string[], requested: string[], toTeamId: string) =>
+      api.proposeTrade(offered, requested, toTeamId),
+    [api],
+  );
+  const respondToTradeOffer = useCallback(
+    async (
+      offerId: string,
+      action: 'accept' | 'decline' | 'counter',
+      counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+    ) => api.respondToTradeOffer(offerId, action, counterPackage),
+    [api],
+  );
   const getNews = useCallback(async (limit?: number) => api.getNews(limit), [api]);
   const markNewsRead = useCallback(async (newsId: string) => api.markNewsRead(newsId), [api]);
   const getBriefing = useCallback(async (limit?: number) => api.getBriefing(limit), [api]);
@@ -152,6 +167,7 @@ export function useWorker() {
     getLeagueLeaders, getPlayoffBracket,
     getScoutingStaff, scoutPlayerReport,
     getDraftClass, startDraft, makeDraftPick, simulateRemainingDraft,
+    getTradeOffers, getTradeHistory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,
