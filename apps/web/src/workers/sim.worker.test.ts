@@ -777,6 +777,91 @@ describe('sim worker narrative APIs', () => {
     expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
   });
 
+  it('creates a rule 5 protection audit after the amateur draft and lets the user protect an exposed prospect', () => {
+    api.newGame(340, 'nyy');
+    const state = requireState();
+    const candidate = state.players.find(
+      (player) => player.teamId === 'nyy' && player.rosterStatus === 'AA',
+    )!;
+
+    candidate.rule5EligibleAfterSeason = state.season;
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 3,
+      totalDay: 40,
+    };
+    state.rosterStates.set('nyy', {
+      ...state.rosterStates.get('nyy')!,
+      fortyManRoster: [],
+    });
+
+    const entered = api.advanceOffseason() as {
+      currentPhase: string;
+      rule5?: { phase: string; eligiblePlayers: Array<{ playerId: string }> };
+    } | null;
+
+    expect(entered?.currentPhase).toBe('protection_audit');
+    expect(entered?.rule5?.phase).toBe('protection_audit');
+    expect(entered?.rule5?.eligiblePlayers.some((player) => player.playerId === candidate.id)).toBe(true);
+
+    const protectedResult = (api as typeof api & {
+      toggleRule5Protection: (playerId: string) => { success: boolean };
+    }).toggleRule5Protection(candidate.id);
+    const protectedView = api.getOffseasonState() as {
+      currentPhase: string;
+      rule5?: { eligiblePlayers: Array<{ playerId: string }> };
+    } | null;
+
+    expect(protectedResult.success).toBe(true);
+    expect(protectedView?.rule5?.eligiblePlayers.some((player) => player.playerId === candidate.id)).toBe(false);
+
+    const locked = (api as typeof api & {
+      lockRule5Protection: () => { currentPhase: string; rule5?: { phase: string } } | null;
+    }).lockRule5Protection();
+
+    expect(locked?.currentPhase).toBe('rule5_draft');
+    expect(locked?.rule5?.phase).toBe('rule5_draft');
+  });
+
+  it('blocks demoting active rule 5 players until the offer-back flow resolves', () => {
+    api.newGame(341, 'nyy');
+    const state = requireState();
+    const player = state.players.find(
+      (candidate) => candidate.teamId === 'nyy' && candidate.rosterStatus === 'MLB' && candidate.pitcherAttributes == null,
+    )!;
+
+    state.rule5Obligations = [
+      {
+        playerId: player.id,
+        originalTeamId: 'bos',
+        draftingTeamId: 'nyy',
+        draftedAfterSeason: state.season,
+        status: 'active',
+      },
+    ];
+
+    const blocked = api.demotePlayerAction(player.id);
+
+    expect(blocked.success).toBe(false);
+    expect(blocked.error).toMatch(/rule 5/i);
+    expect(state.rule5OfferBackStates[0]).toEqual(expect.objectContaining({
+      playerId: player.id,
+      originalTeamId: 'bos',
+      draftingTeamId: 'nyy',
+      status: 'pending',
+    }));
+
+    const resolved = (api as typeof api & {
+      resolveRule5OfferBack: (playerId: string, acceptReturn: boolean) => { success: boolean };
+    }).resolveRule5OfferBack(player.id, true);
+
+    expect(resolved.success).toBe(true);
+    expect(state.rule5Obligations[0]?.status).toBe('returned');
+    expect(state.players.find((candidate) => candidate.id === player.id)?.teamId).toBe('bos');
+  });
+
   it('closes the trade market after day 120 and clears pending offers', () => {
     api.newGame(340, 'nyy');
     const state = requireState();

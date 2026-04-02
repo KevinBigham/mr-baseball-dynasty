@@ -6,6 +6,7 @@ import {
   TEAMS,
   assignGMPersonality,
   buildRosterState,
+  createRule5Session,
   createSeasonState,
   generateLeaguePlayers,
   generateSchedule,
@@ -137,6 +138,9 @@ function createState(): FullGameState {
     scoutingStaffs,
     gmPersonalities,
     offseasonState: null,
+    rule5Session: null,
+    rule5Obligations: [],
+    rule5OfferBackStates: [],
     draftClass: null,
     freeAgencyMarket: null,
     news: [],
@@ -156,11 +160,39 @@ function createState(): FullGameState {
 describe('snapshot helpers', () => {
   it('round-trips full game state without losing deterministic future state', () => {
     const original = createState();
+    const candidate = original.players.find(
+      (player) => player.teamId === 'bos' && player.rosterStatus === 'AA',
+    )!;
+
+    candidate.rule5EligibleAfterSeason = original.season;
+    original.rule5Session = createRule5Session({
+      season: original.season,
+      draftOrder: ['nyy', 'bos'],
+      players: original.players,
+      rosterStates: original.rosterStates,
+    });
+    original.rule5Obligations = [
+      {
+        playerId: candidate.id,
+        originalTeamId: 'bos',
+        draftingTeamId: 'nyy',
+        draftedAfterSeason: original.season,
+        status: 'active',
+      },
+    ];
+    original.rule5OfferBackStates = [
+      {
+        playerId: candidate.id,
+        originalTeamId: 'bos',
+        draftingTeamId: 'nyy',
+        status: 'pending',
+      },
+    ];
 
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(5);
+    expect(snapshot.schemaVersion).toBe(6);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -168,6 +200,9 @@ describe('snapshot helpers', () => {
     expect(snapshot.narrative.briefingQueue).toHaveLength(1);
     expect(snapshot.narrative.storyFlags).toHaveLength(1);
     expect(snapshot.narrative.rivalries).toHaveLength(1);
+    expect(snapshot.rule5Session).toBeTruthy();
+    expect(snapshot.rule5Obligations).toHaveLength(1);
+    expect(snapshot.rule5OfferBackStates).toHaveLength(1);
 
     expect(restored.userTeamId).toBe(original.userTeamId);
     expect(restored.day).toBe(original.day);
@@ -180,6 +215,9 @@ describe('snapshot helpers', () => {
     expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
     expect(restored.tradeState.pendingOffers).toEqual([]);
     expect(restored.tradeState.tradeHistory).toEqual([]);
+    expect(restored.rule5Session?.phase).toBe('protection_audit');
+    expect(restored.rule5Obligations[0]?.status).toBe('active');
+    expect(restored.rule5OfferBackStates[0]?.status).toBe('pending');
   });
 
   it('migrates v2 snapshots into the v5 narrative, stat, trade, and legacy shape', () => {
@@ -263,7 +301,7 @@ describe('snapshot helpers', () => {
     expect(restored.hallOfFameBallot).toEqual([]);
   });
 
-  it('migrates v4 snapshots into the v5 legacy state shape', () => {
+  it('migrates v4 snapshots into the v6 legacy and rule5 state shape', () => {
     const snapshot = exportGameSnapshot(createState());
     const v4Snapshot = {
       ...snapshot,
@@ -286,6 +324,9 @@ describe('snapshot helpers', () => {
     expect(restored.hallOfFameBallot).toEqual([]);
     expect(restored.franchiseTimeline).toEqual([]);
     expect(restored.careerStats).toEqual([]);
+    expect(restored.rule5Session).toBeNull();
+    expect(restored.rule5Obligations).toEqual([]);
+    expect(restored.rule5OfferBackStates).toEqual([]);
   });
 
   it('rejects unsupported snapshot schema versions', () => {

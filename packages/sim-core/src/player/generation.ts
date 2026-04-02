@@ -7,6 +7,7 @@
 import type { GameRNG } from '../math/prng.js';
 import { clampRating } from './attributes.js';
 import type { HitterAttributes, PitcherAttributes } from './attributes.js';
+import { calculateRule5EligibleAfterSeason } from '../roster/rule5.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -155,6 +156,7 @@ export interface GeneratedPlayer {
   teamId: string;
   nationality: Nationality;
   overallRating: number;
+  rule5EligibleAfterSeason: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +344,7 @@ export function generatePlayer(
     teamId,
     nationality,
     overallRating,
+    rule5EligibleAfterSeason: calculateRule5EligibleAfterSeason(1, age),
   };
 }
 

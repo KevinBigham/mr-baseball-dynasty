@@ -158,6 +158,7 @@ export {
   GameSnapshotV2Schema,
   GameSnapshotV3Schema,
   GameSnapshotV4Schema,
+  GameSnapshotV5Schema,
   GameSnapshotSchema,
   migrateGameSnapshot,
   parseGameSnapshot,
@@ -176,6 +177,7 @@ export type {
   GameSnapshotV2,
   GameSnapshotV3,
   GameSnapshotV4,
+  GameSnapshotV5,
   GameSnapshot,
 } from "./schemas/save.js";
 

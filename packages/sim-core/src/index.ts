@@ -321,6 +321,23 @@ export type {
   ContractOffer,
   FreeAgencyMarket,
 } from './roster/index.js';
+export {
+  calculateRule5EligibleAfterSeason,
+  createRule5Session,
+  estimateBackfilledRule5EligibilityAfterSeason,
+  lockRule5ProtectionAudit,
+  makeRule5Selection,
+  passRule5DraftTurn,
+  toggleRule5Protection,
+} from './roster/index.js';
+export type {
+  Rule5ActionResult,
+  Rule5EligiblePlayer,
+  Rule5Obligation,
+  Rule5OfferBackState,
+  Rule5Selection,
+  Rule5SessionState,
+} from './roster/index.js';
 
 // Narrative
 export {

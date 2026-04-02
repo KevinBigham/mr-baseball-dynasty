@@ -41,15 +41,22 @@ import type {
 import {
   buildOffseasonStateView,
   createEmptyTradeState,
+  enforceRule5RosterRestriction,
+  ensurePlayersHaveRule5Eligibility,
   getTeamPlayers,
+  lockUserRule5Protection,
   makeUserDraftSelection,
+  makeUserRule5Selection,
   processDayInjuriesAndNews,
   requireState,
+  resolveRule5OfferBackDecision,
+  passUserRule5Turn,
   startDraftSession,
   setState,
   skipOffseasonPhaseWithAI,
   simulateRemainingDraftSession,
   timestamp,
+  toggleUserRule5Protection,
   advanceOffseasonOnce,
 } from './sim.worker.helpers.js';
 import type {
@@ -424,6 +431,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.phase = 'preseason';
   s.playoffBracket = null;
   s.offseasonState = null;
+  s.rule5Session = null;
+  s.rule5Obligations = [];
+  s.rule5OfferBackStates = [];
   s.draftClass = null;
   s.freeAgencyMarket = null;
   s.tradeState = createEmptyTradeState();
@@ -522,6 +532,7 @@ export const actionApi = {
     const rng = new GameRNG(seed);
     const teamIds = TEAMS.map((team) => team.id);
     const players = generateLeaguePlayers(rng.fork(), teamIds);
+    ensurePlayersHaveRule5Eligibility(players, 1);
     const schedule = generateSchedule(rng.fork());
     const seasonState = createSeasonState(1, teamIds);
 
@@ -556,6 +567,9 @@ export const actionApi = {
       scoutingStaffs,
       gmPersonalities,
       offseasonState: null,
+      rule5Session: null,
+      rule5Obligations: [],
+      rule5OfferBackStates: [],
       draftClass: null,
       freeAgencyMarket: null,
       news: [],
@@ -857,6 +871,11 @@ export const actionApi = {
       return { success: false, error: 'No roster state' };
     }
 
+    const rule5Restriction = enforceRule5RosterRestriction(s, playerId);
+    if (!rule5Restriction.success) {
+      return rule5Restriction;
+    }
+
     const result = demotePlayer(playerId, s.players, rosterState, timestamp());
     s.players = result.players;
     s.rosterStates.set(player.teamId, result.rosterState);
@@ -873,6 +892,11 @@ export const actionApi = {
     const rosterState = s.rosterStates.get(player.teamId);
     if (!rosterState) {
       return { success: false, error: 'No roster state' };
+    }
+
+    const rule5Restriction = enforceRule5RosterRestriction(s, playerId);
+    if (!rule5Restriction.success) {
+      return rule5Restriction;
     }
 
     const result = dfaPlayer(playerId, s.players, rosterState, timestamp());
@@ -949,6 +973,34 @@ export const actionApi = {
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
     return view ? { ...view, flowStateChanged: true } : null;
+  },
+
+  toggleRule5Protection(playerId: string) {
+    const s = requireState();
+    return toggleUserRule5Protection(s, playerId);
+  },
+
+  lockRule5Protection(): OffseasonStateView | null {
+    const s = requireState();
+    const result = lockUserRule5Protection(s);
+    if (!result.success) {
+      return null;
+    }
+    return buildOffseasonStateView(s);
+  },
+
+  makeRule5Pick(playerId: string) {
+    const s = requireState();
+    return makeUserRule5Selection(s, playerId);
+  },
+
+  passRule5Pick() {
+    const s = requireState();
+    return passUserRule5Turn(s);
+  },
+
+  resolveRule5OfferBack(playerId: string, acceptReturn: boolean) {
+    return resolveRule5OfferBackDecision(requireState(), playerId, acceptReturn);
   },
 
   markNewsRead(newsId: string) {

@@ -97,5 +97,6 @@ export const PlayerSchema = z.object({
   developmentPhase: DevelopmentPhaseEnum,
   injury: InjurySchema.optional(),
   teamId: z.string(),
+  rule5EligibleAfterSeason: z.number().int().min(1),
 });
 export type Player = z.infer<typeof PlayerSchema>;

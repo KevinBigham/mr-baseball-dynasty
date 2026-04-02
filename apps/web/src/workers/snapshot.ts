@@ -36,6 +36,7 @@ import {
 } from '@mbd/sim-core';
 import {
   createEmptyTradeState,
+  ensurePlayersHaveRule5Eligibility,
   normalizeDraftSessionState,
   normalizeOffseasonState,
   type DraftSessionState,
@@ -82,6 +83,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot.schemaVersion !== 2 &&
     snapshot.schemaVersion !== 3 &&
     snapshot.schemaVersion !== 4 &&
+    snapshot.schemaVersion !== 5 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -111,6 +113,9 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
     scoutingStaffs: toEntries(state.scoutingStaffs),
     gmPersonalities: toEntries(state.gmPersonalities),
     offseasonState: state.offseasonState,
+    rule5Session: state.rule5Session,
+    rule5Obligations: state.rule5Obligations,
+    rule5OfferBackStates: state.rule5OfferBackStates,
     draftClass: state.draftClass,
     freeAgencyMarket: state.freeAgencyMarket,
     news: state.news,
@@ -136,6 +141,7 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
 export function importGameSnapshot(snapshotLike: unknown): FullGameState {
   const snapshot = validateSnapshot(snapshotLike);
   const players = snapshot.players as GeneratedPlayer[];
+  ensurePlayersHaveRule5Eligibility(players, snapshot.season);
   const serviceTime = fromEntries(snapshot.serviceTime);
   const seasonState = deserializeSeasonState(snapshot.seasonState);
 
@@ -158,6 +164,9 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
       players,
       serviceTime,
     ),
+    rule5Session: (snapshot.rule5Session as FullGameState['rule5Session']) ?? null,
+    rule5Obligations: (snapshot.rule5Obligations as FullGameState['rule5Obligations']) ?? [],
+    rule5OfferBackStates: (snapshot.rule5OfferBackStates as FullGameState['rule5OfferBackStates']) ?? [],
     draftClass: normalizeDraftSessionState(
       snapshot.draftClass as DraftSessionState | null,
       seasonState,

@@ -63,6 +63,25 @@ export type {
   OffseasonSummary,
 } from './offseason.js';
 
+// Rule 5
+export {
+  calculateRule5EligibleAfterSeason,
+  createRule5Session,
+  estimateBackfilledRule5EligibilityAfterSeason,
+  lockRule5ProtectionAudit,
+  makeRule5Selection,
+  passRule5DraftTurn,
+  toggleRule5Protection,
+} from './rule5.js';
+export type {
+  Rule5ActionResult,
+  Rule5EligiblePlayer,
+  Rule5Obligation,
+  Rule5OfferBackState,
+  Rule5Selection,
+  Rule5SessionState,
+} from './rule5.js';
+
 // Free Agency
 export {
   calculateMarketValue,
