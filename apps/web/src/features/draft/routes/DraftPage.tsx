@@ -1,115 +1,152 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  FileText, Users, Star, ChevronDown, Clock, Check, Zap,
+  Check,
+  Clock3,
+  LayoutGrid,
+  Radio,
+  Star,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import type {
+  DraftActionResult,
+  DraftBoardCell,
+  DraftRoomPick,
+  DraftRoomProspect,
+  DraftRoomView,
+} from '@/workers/sim.worker.helpers';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Prospect {
-  id: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  grade: number;
-  age: number;
-  type: 'College' | 'HS';
-}
-
-interface DraftPick {
-  round: number;
-  pick: number;
-  teamAbbr: string;
-  prospect: Prospect;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function gradeColor(grade: number): string {
+function gradeTextClass(grade: number): string {
   if (grade >= 60) return 'text-accent-success';
   if (grade >= 50) return 'text-accent-info';
   if (grade >= 40) return 'text-accent-warning';
   return 'text-dynasty-muted';
 }
 
-function gradeBg(grade: number): string {
-  if (grade >= 60) return 'bg-accent-success/20 text-accent-success';
-  if (grade >= 50) return 'bg-accent-info/20 text-accent-info';
-  if (grade >= 40) return 'bg-accent-warning/20 text-accent-warning';
-  return 'bg-dynasty-border text-dynasty-muted';
+function gradeChipClass(grade: number): string {
+  if (grade >= 60) return 'border-accent-success/30 bg-accent-success/10 text-accent-success';
+  if (grade >= 50) return 'border-accent-info/30 bg-accent-info/10 text-accent-info';
+  if (grade >= 40) return 'border-accent-warning/30 bg-accent-warning/10 text-accent-warning';
+  return 'border-dynasty-border bg-dynasty-elevated text-dynasty-muted';
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+function toneClasses(tone: DraftRoomPick['tone'] | DraftBoardCell['tone']): string {
+  switch (tone) {
+    case 'user':
+      return 'border-accent-success/35 bg-accent-success/12 text-accent-success';
+    case 'division_rival':
+      return 'border-accent-warning/35 bg-accent-warning/12 text-accent-warning';
+    default:
+      return 'border-dynasty-border bg-dynasty-elevated text-dynasty-text';
+  }
+}
 
-function ProspectsTable({
-  prospects, selectedId, onSelect,
+function statusText(view: DraftRoomView | null, phase: string): string {
+  if (phase !== 'offseason') return 'Draft Unavailable';
+  if (!view || view.status === 'available') return 'Draft Available';
+  if (view.status === 'complete') return 'Draft Complete';
+  return 'Draft In Progress';
+}
+
+function formatProgress(view: DraftRoomView | null, visiblePicks: DraftRoomPick[]): string {
+  if (!view) return '';
+
+  if (visiblePicks.length > 0) {
+    const latest = visiblePicks[visiblePicks.length - 1]!;
+    return `Round ${latest.round} of ${view.counts.totalRounds} — Pick ${latest.pickNumber} of ${view.counts.totalPicks}`;
+  }
+
+  if (view.currentPick) {
+    return `Round ${view.currentPick.round} of ${view.counts.totalRounds} — Pick ${view.currentPick.pickNumber} of ${view.counts.totalPicks}`;
+  }
+
+  return `0 of ${view.counts.totalPicks}`;
+}
+
+function ProspectsPanel({
+  prospects,
+  selectedProspectId,
+  onSelect,
 }: {
-  prospects: Prospect[];
-  selectedId: string | null;
-  onSelect: (p: Prospect) => void;
+  prospects: DraftRoomProspect[];
+  selectedProspectId: string | null;
+  onSelect: (prospectId: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<'grade' | 'position'>('grade');
-  const sorted = [...prospects].sort((a, b) =>
-    sortKey === 'grade' ? b.grade - a.grade : a.position.localeCompare(b.position),
-  );
+
+  const sortedProspects = useMemo(() => {
+    const next = [...prospects];
+    next.sort((left, right) => {
+      if (sortKey === 'grade') {
+        if (right.scoutingGrade !== left.scoutingGrade) {
+          return right.scoutingGrade - left.scoutingGrade;
+        }
+        return left.name.localeCompare(right.name);
+      }
+      if (left.position !== right.position) {
+        return left.position.localeCompare(right.position);
+      }
+      return right.scoutingGrade - left.scoutingGrade;
+    });
+    return next;
+  }, [prospects, sortKey]);
 
   return (
     <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
       <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-        <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-          Available Prospects
-        </h2>
+        <div>
+          <h2 className="font-heading text-sm font-semibold text-dynasty-text">Available Prospects</h2>
+          <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            Board Sorted {sortKey === 'grade' ? 'By Grade' : 'By Position'}
+          </p>
+        </div>
         <button
-          onClick={() => setSortKey(k => (k === 'grade' ? 'position' : 'grade'))}
-          className="flex items-center gap-1 font-heading text-xs text-accent-info hover:text-accent-primary"
+          onClick={() => setSortKey((current) => (current === 'grade' ? 'position' : 'grade'))}
+          className="rounded border border-dynasty-border px-3 py-1 font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted transition-colors hover:border-accent-info hover:text-accent-info"
         >
-          Sort: {sortKey === 'grade' ? 'Grade' : 'POS'} <ChevronDown className="h-3 w-3" />
+          Sort {sortKey === 'grade' ? 'POS' : 'Grade'}
         </button>
       </div>
-      <div className="max-h-[60vh] overflow-y-auto">
+      <div className="max-h-[32rem] overflow-y-auto">
         <table className="w-full">
           <thead className="sticky top-0 bg-dynasty-surface">
-            <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-              <th className="px-3 py-2 text-left font-heading">#</th>
-              <th className="px-2 py-2 text-left font-heading">Name</th>
-              <th className="px-2 py-2 text-left font-heading">POS</th>
-              <th className="px-2 py-2 text-right font-data">Grade</th>
-              <th className="px-2 py-2 text-right font-data">Age</th>
-              <th className="px-2 py-2 text-left font-heading">Type</th>
+            <tr className="border-b border-dynasty-border text-left font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+              <th className="px-4 py-2">Rank</th>
+              <th className="px-2 py-2">Player</th>
+              <th className="px-2 py-2">POS</th>
+              <th className="px-2 py-2 text-right">Age</th>
+              <th className="px-2 py-2">Origin</th>
+              <th className="px-4 py-2 text-right">Grade</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((p, idx) => (
-              <tr
-                key={p.id}
-                onClick={() => onSelect(p)}
-                className={`cursor-pointer border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated ${
-                  selectedId === p.id ? 'bg-accent-primary/10' : ''
-                }`}
-              >
-                <td className="px-3 py-2 font-data text-dynasty-muted">{idx + 1}</td>
-                <td className="px-2 py-2 font-heading font-medium text-dynasty-text">
-                  {p.firstName} {p.lastName}
-                </td>
-                <td className="px-2 py-2 font-data text-dynasty-muted">{p.position}</td>
-                <td className={`px-2 py-2 text-right font-data font-bold ${gradeColor(p.grade)}`}>
-                  {p.grade}
-                </td>
-                <td className="px-2 py-2 text-right font-data text-dynasty-muted">{p.age}</td>
-                <td className="px-2 py-2 font-data text-dynasty-muted">{p.type}</td>
-              </tr>
-            ))}
-            {sorted.length === 0 && (
+            {sortedProspects.map((prospect, index) => {
+              const selected = selectedProspectId === prospect.id;
+              return (
+                <tr
+                  key={prospect.id}
+                  onClick={() => onSelect(prospect.id)}
+                  className={`cursor-pointer border-b border-dynasty-border/50 text-sm transition-colors ${
+                    selected ? 'bg-accent-primary/12' : 'hover:bg-dynasty-elevated'
+                  }`}
+                >
+                  <td className="px-4 py-2 font-data text-dynasty-muted">{index + 1}</td>
+                  <td className="px-2 py-2 font-heading font-medium text-dynasty-textBright">{prospect.name}</td>
+                  <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.position}</td>
+                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{prospect.age}</td>
+                  <td className="px-2 py-2 font-data text-dynasty-muted">{prospect.origin}</td>
+                  <td className={`px-4 py-2 text-right font-data font-semibold ${gradeTextClass(prospect.scoutingGrade)}`}>
+                    {prospect.scoutingGrade}
+                  </td>
+                </tr>
+              );
+            })}
+            {sortedProspects.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                  No prospects available
+                <td colSpan={6} className="px-4 py-10 text-center font-heading text-sm text-dynasty-muted">
+                  No prospects remain on the board.
                 </td>
               </tr>
             )}
@@ -120,227 +157,450 @@ function ProspectsTable({
   );
 }
 
-function SelectedCard({
-  prospect, userOnClock, isDrafting, onDraft,
+function CurrentPickPanel({
+  draft,
+  selectedProspect,
+  onDraft,
+  drafting,
 }: {
-  prospect: Prospect | null;
-  userOnClock: boolean;
-  isDrafting: boolean;
+  draft: DraftRoomView;
+  selectedProspect: DraftRoomProspect | null;
   onDraft: () => void;
+  drafting: boolean;
 }) {
-  if (!prospect) {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dynasty-border bg-dynasty-surface p-6 text-center">
-        <Users className="mb-3 h-10 w-10 text-dynasty-muted" />
-        <p className="font-heading text-sm text-dynasty-muted">
-          Select a prospect from the board
-        </p>
-      </div>
-    );
-  }
+  const userOnClock = draft.currentPick?.userOnClock ?? false;
 
   return (
-    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
-      <div className="mb-4 flex items-start justify-between">
-        <div>
-          <p className="font-heading text-lg font-semibold text-dynasty-textBright">
-            {prospect.firstName} {prospect.lastName}
-          </p>
-          <p className="font-data text-sm text-dynasty-muted">
-            {prospect.position} | {prospect.type} | Age {prospect.age}
-          </p>
-        </div>
-        <div className={`rounded px-3 py-1 text-center ${gradeBg(prospect.grade)}`}>
-          <span className="font-data text-2xl font-bold">{prospect.grade}</span>
+    <div className="space-y-4">
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-heading text-sm uppercase tracking-[0.18em] text-dynasty-muted">On The Clock</p>
+            {draft.currentPick ? (
+              <>
+                <p className="mt-2 font-heading text-xl font-semibold text-dynasty-textBright">
+                  {draft.currentPick.teamName}
+                </p>
+                <p className="mt-1 font-data text-sm text-dynasty-muted">
+                  Round {draft.currentPick.round}, Pick {draft.currentPick.pickNumber}
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 font-heading text-lg font-semibold text-dynasty-textBright">
+                Draft complete
+              </p>
+            )}
+          </div>
+          {draft.currentPick?.userOnClock && (
+            <span className="inline-flex items-center gap-1 rounded border border-accent-success/30 bg-accent-success/10 px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-accent-success">
+              <Star className="h-3 w-3" /> User Pick
+            </span>
+          )}
         </div>
       </div>
-      <button
-        onClick={onDraft}
-        disabled={!userOnClock || isDrafting}
-        className={`w-full rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
-          userOnClock && !isDrafting
-            ? 'bg-accent-primary text-white hover:bg-accent-primary/80'
-            : 'cursor-not-allowed bg-dynasty-border text-dynasty-muted'
-        }`}
-      >
-        {isDrafting ? (
-          <span className="flex items-center justify-center gap-2">
-            <Clock className="h-4 w-4 animate-spin" /> Drafting...
-          </span>
-        ) : userOnClock ? (
-          `Draft ${prospect.lastName}`
+
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-5">
+        {selectedProspect ? (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-heading text-lg font-semibold text-dynasty-textBright">{selectedProspect.name}</p>
+                <p className="mt-1 font-data text-sm text-dynasty-muted">
+                  {selectedProspect.position} · {selectedProspect.origin} · Age {selectedProspect.age}
+                </p>
+              </div>
+              <div className={`rounded border px-3 py-2 font-data text-2xl font-bold ${gradeChipClass(selectedProspect.scoutingGrade)}`}>
+                {selectedProspect.scoutingGrade}
+              </div>
+            </div>
+            <button
+              onClick={onDraft}
+              disabled={!userOnClock || drafting}
+              className={`mt-5 w-full rounded-md px-4 py-2 font-heading text-sm font-semibold transition-colors ${
+                userOnClock && !drafting
+                  ? 'bg-accent-primary text-white hover:bg-accent-primary/80'
+                  : 'cursor-not-allowed bg-dynasty-border text-dynasty-muted'
+              }`}
+            >
+              {drafting
+                ? 'Submitting Pick...'
+                : userOnClock
+                  ? `Draft ${selectedProspect.lastName}`
+                  : 'Waiting For Your Slot'}
+            </button>
+          </>
         ) : (
-          'Waiting for your pick'
+          <div className="flex min-h-40 flex-col items-center justify-center text-center">
+            <Users className="h-10 w-10 text-dynasty-muted" />
+            <p className="mt-3 font-heading text-sm text-dynasty-muted">
+              Select a prospect to set your draft board.
+            </p>
+          </div>
         )}
-      </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 text-center">
+          <div className="font-data text-xl font-semibold text-dynasty-textBright">{draft.counts.picksRemaining}</div>
+          <div className="mt-1 font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Available</div>
+        </div>
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-4 py-3 text-center">
+          <div className="font-data text-xl font-semibold text-accent-success">
+            {draft.userDraftClass?.picks.length ?? 0}
+          </div>
+          <div className="mt-1 font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Your Picks</div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function DraftLog({ picks, userTeamId }: { picks: DraftPick[]; userTeamId: string }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [picks.length]);
+function DraftTicker({
+  picks,
+  progressLabel,
+}: {
+  picks: DraftRoomPick[];
+  progressLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+      <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Radio className="h-4 w-4 text-accent-info" />
+          <div>
+            <h2 className="font-heading text-sm font-semibold text-dynasty-text">Draft Ticker</h2>
+            <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+              {progressLabel}
+            </p>
+          </div>
+        </div>
+        <span className="font-data text-xs text-dynasty-muted">{picks.length} picks shown</span>
+      </div>
+      <div className="max-h-[32rem] overflow-y-auto px-2 py-2">
+        {picks.length === 0 ? (
+          <p className="px-2 py-10 text-center font-heading text-sm text-dynasty-muted">
+            Start the draft to begin the ticker.
+          </p>
+        ) : (
+          picks.map((pick) => (
+            <div
+              key={`${pick.pickNumber}-${pick.playerId}`}
+              className={`mb-2 rounded border px-3 py-2 ${toneClasses(pick.tone)}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                    Round {pick.round} · Pick {pick.pickNumber}
+                  </p>
+                  <p className="mt-1 font-heading text-sm font-semibold">
+                    {pick.teamAbbreviation} selected {pick.playerName}
+                  </p>
+                  <p className="mt-1 font-data text-xs text-dynasty-muted">
+                    {pick.position} · {pick.origin}
+                  </p>
+                </div>
+                <span className={`rounded border px-2 py-1 font-data text-sm font-semibold ${gradeChipClass(pick.scoutingGrade)}`}>
+                  {pick.scoutingGrade}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DraftBoard({ draft, visibleCount }: { draft: DraftRoomView; visibleCount: number }) {
+  const visiblePickNumbers = new Set(
+    draft.completedPicks.slice(0, visibleCount).map((pick) => pick.pickNumber),
+  );
 
   return (
     <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
       <div className="flex items-center gap-2 border-b border-dynasty-border px-4 py-3">
-        <FileText className="h-4 w-4 text-dynasty-muted" />
-        <h2 className="font-heading text-sm font-semibold text-dynasty-text">Draft Log</h2>
-      </div>
-      <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
-        {picks.length === 0 && (
-          <p className="px-2 py-6 text-center font-heading text-sm text-dynasty-muted">
-            No picks yet
+        <LayoutGrid className="h-4 w-4 text-dynasty-muted" />
+        <div>
+          <h2 className="font-heading text-sm font-semibold text-dynasty-text">Draft Board</h2>
+          <p className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+            User picks in green, division rivals in amber
           </p>
-        )}
-        {picks.map((pk, idx) => {
-          const isUser = pk.teamAbbr.toLowerCase() === userTeamId.toLowerCase();
-          return (
-            <div
-              key={idx}
-              className={`mb-1 rounded px-3 py-2 font-data text-xs ${
-                isUser
-                  ? 'border-l-2 border-accent-primary bg-accent-primary/10 text-dynasty-textBright'
-                  : 'text-dynasty-text hover:bg-dynasty-elevated'
-              }`}
-            >
-              <span className="text-dynasty-muted">
-                R{pk.round} P{pk.pick}
-              </span>
-              {' -- '}
-              <span className="font-semibold">{pk.teamAbbr}</span>:{' '}
-              {pk.prospect.firstName} {pk.prospect.lastName}{' '}
-              <span className="text-dynasty-muted">
-                ({pk.prospect.position}, {pk.prospect.grade})
-              </span>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-[96rem] border-separate border-spacing-0">
+          <thead>
+            <tr className="bg-dynasty-surface">
+              <th className="sticky left-0 z-20 border-b border-r border-dynasty-border bg-dynasty-surface px-3 py-2 text-left font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Rd
+              </th>
+              {draft.board.teams.map((team) => (
+                <th
+                  key={team.teamId}
+                  className="border-b border-dynasty-border px-2 py-2 text-center font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted"
+                >
+                  {team.abbreviation}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {draft.board.rounds.map((row) => (
+              <tr key={row.round}>
+                <td className="sticky left-0 z-10 border-r border-dynasty-border bg-dynasty-surface px-3 py-2 font-data text-xs text-dynasty-muted">
+                  {row.round}
+                </td>
+                {row.cells.map((cell) => {
+                  const visiblePick = cell.pick && visiblePickNumbers.has(cell.pick.pickNumber) ? cell.pick : null;
+                  return (
+                    <td key={`${row.round}-${cell.teamId}`} className="border-b border-r border-dynasty-border/60 p-1 align-top">
+                      <div className={`min-h-14 rounded border px-2 py-1 ${visiblePick ? toneClasses(cell.tone) : 'border-dynasty-border bg-dynasty-elevated/60 text-dynasty-muted'}`}>
+                        {visiblePick ? (
+                          <>
+                            <div className="font-data text-[10px] uppercase tracking-[0.18em]">{visiblePick.pickNumber}</div>
+                            <div className="mt-1 font-heading text-xs font-semibold leading-tight">
+                              {visiblePick.playerName}
+                            </div>
+                            <div className="mt-1 font-data text-[10px] text-dynasty-muted">
+                              {visiblePick.position} · {visiblePick.scoutingGrade}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="font-data text-[10px] uppercase tracking-[0.18em] text-dynasty-muted/70">
+                            {cell.teamAbbreviation}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Page
-// ---------------------------------------------------------------------------
+function DraftSummary({ draft }: { draft: DraftRoomView }) {
+  if (draft.status !== 'complete' || !draft.userDraftClass) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-accent-success/25 bg-accent-success/8 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-heading text-sm uppercase tracking-[0.18em] text-accent-success">Your Draft Class</p>
+          <h2 className="mt-1 font-heading text-xl font-semibold text-dynasty-textBright">
+            Overall Grade {draft.userDraftClass.overallGrade}
+          </h2>
+          <p className="mt-1 font-data text-sm text-dynasty-muted">
+            Average scouting grade {draft.userDraftClass.averageScoutingGrade}
+          </p>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded border border-accent-success/30 bg-accent-success/10 px-3 py-2 font-data text-sm text-accent-success">
+          <Check className="h-4 w-4" /> Draft Complete
+        </div>
+      </div>
+      <div className="mt-4 space-y-3">
+        {draft.userDraftClass.picks.map((pick) => (
+          <div key={pick.playerId} className="rounded border border-dynasty-border bg-dynasty-surface px-4 py-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-heading text-sm font-semibold text-dynasty-textBright">{pick.playerName}</p>
+                <p className="mt-1 font-data text-xs text-dynasty-muted">
+                  {pick.position} · {pick.origin}
+                </p>
+              </div>
+              <span className={`rounded border px-2 py-1 font-data text-sm font-semibold ${gradeChipClass(pick.scoutingGrade)}`}>
+                {pick.scoutingGrade}
+              </span>
+            </div>
+            <p className="mt-2 font-heading text-sm text-dynasty-text">{pick.assessment}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function DraftPage() {
   const worker = useWorker();
-  const api = worker as any; // Temporary until worker API is extended
-  const { phase, season, isInitialized, userTeamId } = useGameStore();
+  const {
+    getDraftClass,
+    startDraft,
+    makeDraftPick,
+    simulateRemainingDraft,
+  } = worker;
+  const { phase, season, isInitialized } = useGameStore();
 
-  const [prospects, setProspects] = useState<Prospect[]>([]);
-  const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
-  const [draftLog, setDraftLog] = useState<DraftPick[]>([]);
-  const [isDrafting, setIsDrafting] = useState(false);
-  const [userOnClock, setUserOnClock] = useState(false);
-  const [draftStarted, setDraftStarted] = useState(false);
+  const [draft, setDraft] = useState<DraftRoomView | null>(null);
+  const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [watchTargetCount, setWatchTargetCount] = useState<number | null>(null);
+  const [revealedPickCount, setRevealedPickCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // Attempt to load draft class
-  const loadDraftClass = useCallback(async () => {
+  const loadDraft = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
     try {
-      const data = await api.getDraftClass();
-      if (Array.isArray(data) && data.length > 0) {
-        setProspects(data);
-      }
+      const data = await getDraftClass();
+      setDraft(data as DraftRoomView | null);
     } catch {
-      // Worker method not available yet — that's OK
+      setDraft(null);
     }
-  }, [isInitialized, worker.isReady, api]);
+  }, [getDraftClass, isInitialized, worker.isReady]);
 
   useEffect(() => {
-    loadDraftClass();
-  }, [loadDraftClass, phase, season]);
+    loadDraft();
+  }, [loadDraft, phase, season]);
+
+  useEffect(() => {
+    if (!draft) {
+      setRevealedPickCount(0);
+      setSelectedProspectId(null);
+      return;
+    }
+
+    if (watchTargetCount == null) {
+      setRevealedPickCount(draft.completedPicks.length);
+    }
+
+    if (!selectedProspectId || !draft.availableProspects.some((prospect) => prospect.id === selectedProspectId)) {
+      setSelectedProspectId(draft.availableProspects[0]?.id ?? null);
+    }
+  }, [draft, selectedProspectId, watchTargetCount]);
+
+  useEffect(() => {
+    if (watchTargetCount == null) return;
+    if (revealedPickCount >= watchTargetCount) {
+      setWatchTargetCount(null);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setRevealedPickCount((current) => Math.min(current + 1, watchTargetCount));
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [revealedPickCount, watchTargetCount]);
+
+  const selectedProspect = draft?.availableProspects.find((prospect) => prospect.id === selectedProspectId) ?? null;
+  const visiblePicks = draft?.completedPicks.slice(0, watchTargetCount == null ? draft.completedPicks.length : revealedPickCount) ?? [];
+  const watching = watchTargetCount != null;
+
+  const applyDraftResult = (result: DraftActionResult | null, options?: { watch?: boolean }) => {
+    if (!result?.success || !result.draft) {
+      if (result?.error) {
+        setError(result.error);
+      }
+      return;
+    }
+
+    setDraft(result.draft);
+    setError(null);
+
+    if (options?.watch) {
+      const finalCount = result.draft.completedPicks.length;
+      const startCount = Math.max(0, finalCount - result.newPicks.length);
+      setRevealedPickCount(startCount);
+      setWatchTargetCount(finalCount);
+    } else {
+      setWatchTargetCount(null);
+      setRevealedPickCount(result.draft.completedPicks.length);
+    }
+  };
 
   const handleStartDraft = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setError(null);
-      await api.startDraft();
-      setDraftStarted(true);
-      setUserOnClock(true);
-      await loadDraftClass();
+      const result = await startDraft();
+      applyDraftResult(result as DraftActionResult);
     } catch {
-      setError('Draft system not available yet. Check back during the offseason phase.');
-    }
-  };
-
-  const handleDraftPick = async () => {
-    if (!selectedProspect || isDrafting) return;
-    setIsDrafting(true);
-    try {
-      const result = await api.makeDraftPick(selectedProspect.id);
-      if (result) {
-        setDraftLog(prev => [...prev, result as DraftPick]);
-        setProspects(prev => prev.filter(p => p.id !== selectedProspect.id));
-        setSelectedProspect(null);
-      }
-    } catch {
-      setError('Failed to make pick. Draft system may not be ready.');
+      setError('Draft system unavailable.');
     } finally {
-      setIsDrafting(false);
+      setLoading(false);
     }
   };
 
-  const handleSimRemaining = async () => {
+  const handleMakePick = async () => {
+    if (!selectedProspect) return;
+    setLoading(true);
+    setError(null);
     try {
-      setError(null);
-      setUserOnClock(false);
-      const results = await api.simulateRemainingDraft();
-      if (Array.isArray(results)) {
-        setDraftLog(prev => [...prev, ...results]);
-        setProspects([]);
-      }
+      const result = await makeDraftPick(selectedProspect.id);
+      applyDraftResult(result as DraftActionResult);
     } catch {
-      setError('Auto-draft not available yet.');
+      setError('Failed to submit draft pick.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // -----------------------------------------------------------------------
-  // Pre-Draft state
-  // -----------------------------------------------------------------------
-  const showPreDraft = phase !== 'offseason' || (prospects.length === 0 && !draftStarted);
+  const handleWatchDraft = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await simulateRemainingDraft();
+      applyDraftResult(result as DraftActionResult, { watch: true });
+    } catch {
+      setError('Failed to simulate the remaining draft.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (showPreDraft && !draftStarted) {
+  const status = statusText(draft, phase);
+  const progressLabel = formatProgress(draft, visiblePicks);
+
+  if (phase !== 'offseason') {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
-            Draft Room
-          </h1>
-          <p className="mt-1 font-heading text-sm text-dynasty-muted">
-            Season {season} Amateur Draft
-          </p>
+          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+          <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
         </div>
 
         <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
           <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-            <FileText className="h-12 w-12 text-dynasty-muted" />
-            <h2 className="font-heading text-lg font-semibold text-dynasty-text">
-              {phase === 'offseason'
-                ? 'Draft Class Loading...'
-                : 'Draft Available During Offseason'}
-            </h2>
+            <Users className="h-12 w-12 text-dynasty-muted" />
+            <h2 className="font-heading text-lg font-semibold text-dynasty-text">Draft Available During Offseason</h2>
             <p className="max-w-md font-heading text-sm text-dynasty-muted">
-              {phase === 'offseason'
-                ? 'The amateur draft class is being scouted. Start the draft when you are ready.'
-                : `The current phase is ${phase.toUpperCase()}. Advance through the season to reach the offseason, where the amateur draft takes place.`}
+              The draft room opens after the regular season and playoffs are finished.
             </p>
-            {phase === 'offseason' && (
-              <button
-                onClick={handleStartDraft}
-                className="mt-4 rounded-md bg-accent-primary px-6 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80"
-              >
-                Start Draft
-              </button>
-            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!draft || draft.status === 'available') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+          <p className="mt-1 font-heading text-sm text-dynasty-muted">Season {season} Amateur Draft</p>
+        </div>
+
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8">
+          <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+            <Users className="h-12 w-12 text-dynasty-muted" />
+            <h2 className="font-heading text-lg font-semibold text-dynasty-text">{status}</h2>
+            <p className="max-w-md font-heading text-sm text-dynasty-muted">
+              Start the draft to load the class, reveal the first picks, and put your front office on the clock.
+            </p>
+            <button
+              onClick={handleStartDraft}
+              disabled={loading}
+              className="rounded-md bg-accent-primary px-6 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:bg-dynasty-border disabled:text-dynasty-muted"
+            >
+              {loading ? 'Preparing Draft...' : 'Start Draft'}
+            </button>
             {error && (
-              <p className="mt-2 font-data text-xs text-accent-danger">{error}</p>
+              <p className="font-data text-xs text-accent-danger">{error}</p>
             )}
           </div>
         </div>
@@ -348,32 +608,31 @@ export default function DraftPage() {
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Draft Board
-  // -----------------------------------------------------------------------
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">
-            Draft Room
-          </h1>
-          <p className="mt-1 font-heading text-sm text-dynasty-muted">
-            Season {season} Amateur Draft
-            {userOnClock && (
-              <span className="ml-3 inline-flex items-center gap-1 rounded bg-accent-primary/20 px-2 py-0.5 font-data text-xs text-accent-primary">
-                <Star className="h-3 w-3" /> You are on the clock
+          <h1 className="font-brand text-4xl tracking-wide text-dynasty-textBright">Draft Room</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="rounded border border-dynasty-border bg-dynasty-surface px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+              {status}
+            </span>
+            {draft.currentPick?.userOnClock && (
+              <span className="inline-flex items-center gap-1 rounded border border-accent-success/30 bg-accent-success/10 px-2 py-1 font-data text-[11px] uppercase tracking-[0.18em] text-accent-success">
+                <Star className="h-3 w-3" /> You Are On The Clock
               </span>
             )}
-          </p>
+          </div>
+          <p className="mt-2 font-heading text-sm text-dynasty-muted">{progressLabel}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={handleSimRemaining}
-            className="flex items-center gap-1 rounded-md border border-dynasty-border bg-dynasty-elevated px-3 py-1.5 font-heading text-xs text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info"
+            onClick={handleWatchDraft}
+            disabled={loading || watching || draft.status === 'complete'}
+            className="inline-flex items-center gap-2 rounded-md border border-dynasty-border bg-dynasty-surface px-3 py-2 font-heading text-xs font-semibold uppercase tracking-[0.18em] text-dynasty-text transition-colors hover:border-accent-info hover:text-accent-info disabled:cursor-not-allowed disabled:text-dynasty-muted"
           >
-            <Zap className="h-3 w-3" /> Auto-Draft Remaining
+            {watching ? <Clock3 className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
+            {watching ? 'Watching Draft' : 'Watch Draft'}
           </button>
         </div>
       </div>
@@ -384,57 +643,29 @@ export default function DraftPage() {
         </div>
       )}
 
-      {/* 3-Column Layout */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {/* Left — Prospects */}
-        <div className="lg:col-span-5">
-          <ProspectsTable
-            prospects={prospects}
-            selectedId={selectedProspect?.id ?? null}
-            onSelect={setSelectedProspect}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <div className="xl:col-span-5">
+          <ProspectsPanel
+            prospects={draft.availableProspects}
+            selectedProspectId={selectedProspectId}
+            onSelect={setSelectedProspectId}
           />
         </div>
-
-        {/* Center — Your Pick */}
-        <div className="lg:col-span-3">
-          <SelectedCard
-            prospect={selectedProspect}
-            userOnClock={userOnClock}
-            isDrafting={isDrafting}
-            onDraft={handleDraftPick}
+        <div className="xl:col-span-3">
+          <CurrentPickPanel
+            draft={draft}
+            selectedProspect={selectedProspect}
+            onDraft={handleMakePick}
+            drafting={loading}
           />
-          {/* Quick stats */}
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-3 py-2 text-center">
-              <div className="font-data text-xl font-bold text-dynasty-textBright">
-                {prospects.length}
-              </div>
-              <div className="font-heading text-[10px] uppercase text-dynasty-muted">Available</div>
-            </div>
-            <div className="rounded-lg border border-dynasty-border bg-dynasty-surface px-3 py-2 text-center">
-              <div className="font-data text-xl font-bold text-accent-primary">
-                {draftLog.filter(p => p.teamAbbr.toLowerCase() === userTeamId.toLowerCase()).length}
-              </div>
-              <div className="font-heading text-[10px] uppercase text-dynasty-muted">Your Picks</div>
-            </div>
-          </div>
         </div>
-
-        {/* Right — Draft Log */}
-        <div className="lg:col-span-4">
-          <DraftLog picks={draftLog} userTeamId={userTeamId} />
+        <div className="xl:col-span-4">
+          <DraftTicker picks={visiblePicks} progressLabel={progressLabel} />
         </div>
       </div>
 
-      {/* Completed banner */}
-      {draftStarted && prospects.length === 0 && draftLog.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-accent-success/30 bg-accent-success/10 px-4 py-3">
-          <Check className="h-5 w-5 text-accent-success" />
-          <p className="font-heading text-sm text-accent-success">
-            Draft complete. {draftLog.length} total selections made.
-          </p>
-        </div>
-      )}
+      <DraftBoard draft={draft} visibleCount={visiblePicks.length} />
+      <DraftSummary draft={draft} />
     </div>
   );
 }

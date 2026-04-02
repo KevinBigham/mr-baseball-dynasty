@@ -9,7 +9,6 @@ import {
   getTeamById,
   getTopFreeAgents,
   getUnreadNews,
-  rankProspects,
   scoutPlayer,
 } from '@mbd/sim-core';
 import type {
@@ -24,6 +23,7 @@ import type {
 } from '@mbd/sim-core';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
+  buildDraftRoomView,
   buildOffseasonStateView,
   getTeamPlayers,
   requireState,
@@ -243,20 +243,7 @@ export const queryApi = {
   },
 
   getDraftClass() {
-    const s = requireState();
-    if (!s.draftClass) {
-      return null;
-    }
-
-    return {
-      prospects: rankProspects(s.draftClass.prospects).map((prospect) => ({
-        id: prospect.player.id,
-        name: `${prospect.player.firstName} ${prospect.player.lastName}`,
-        position: prospect.player.position,
-        grade: prospect.scoutingGrade,
-        college: prospect.collegeOrHS === 'college' ? 'College' : 'HS',
-      })),
-    };
+    return buildDraftRoomView(requireState());
   },
 
   getPlayerTradeValue(playerId: string): PlayerTradeValue | null {

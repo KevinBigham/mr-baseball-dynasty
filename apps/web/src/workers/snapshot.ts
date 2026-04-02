@@ -15,7 +15,6 @@ import {
 import {
   GameRNG,
   StandingsTracker,
-  type DraftClass,
   type FreeAgencyMarket,
   type GMPersonality,
   type GeneratedPlayer,
@@ -33,7 +32,9 @@ import {
 } from '@mbd/sim-core';
 import {
   createEmptyTradeState,
+  normalizeDraftSessionState,
   normalizeOffseasonState,
+  type DraftSessionState,
   type FullGameState,
 } from './sim.worker.helpers';
 
@@ -127,6 +128,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
   const snapshot = validateSnapshot(snapshotLike);
   const players = snapshot.players as GeneratedPlayer[];
   const serviceTime = fromEntries(snapshot.serviceTime);
+  const seasonState = deserializeSeasonState(snapshot.seasonState);
 
   return {
     rng: GameRNG.fromState(snapshot.rng),
@@ -135,7 +137,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     phase: snapshot.phase,
     players,
     schedule: snapshot.schedule as ScheduledGame[],
-    seasonState: deserializeSeasonState(snapshot.seasonState),
+    seasonState,
     userTeamId: snapshot.userTeamId,
     playoffBracket: snapshot.playoffBracket as PlayoffBracket | null,
     injuries: fromEntries(snapshot.injuries as [string, Injury][]),
@@ -147,7 +149,11 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
       players,
       serviceTime,
     ),
-    draftClass: snapshot.draftClass as DraftClass | null,
+    draftClass: normalizeDraftSessionState(
+      snapshot.draftClass as DraftSessionState | null,
+      seasonState,
+      snapshot.userTeamId,
+    ),
     freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,
     news: snapshot.news as NewsItem[],
     rosterStates: fromEntries(snapshot.rosterStates as [string, RosterState][]),

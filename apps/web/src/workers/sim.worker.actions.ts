@@ -5,7 +5,6 @@ import {
   buildRosterState,
   createSeasonState,
   demotePlayer,
-  determineDraftOrder,
   determinePlayoffSeeds,
   determineRetirements,
   developAllPlayers,
@@ -23,25 +22,25 @@ import {
   simulateDay,
   simulateMonth,
   simulatePlayoffs,
-  simulateFullDraft,
   simulateWeek,
   generateTradeId,
   createFreeAgencyMarket,
 } from '@mbd/sim-core';
 import type {
   ContractOffer,
-  DraftResult,
-  StandingsEntry,
   TradeProposal,
 } from '@mbd/sim-core';
 import {
   buildOffseasonStateView,
   createEmptyTradeState,
   getTeamPlayers,
+  makeUserDraftSelection,
   processDayInjuriesAndNews,
   requireState,
+  startDraftSession,
   setState,
   skipOffseasonPhaseWithAI,
+  simulateRemainingDraftSession,
   timestamp,
   advanceOffseasonOnce,
 } from './sim.worker.helpers.js';
@@ -348,55 +347,15 @@ export const actionApi = {
 
   startDraft() {
     const s = requireState();
-    s.draftClass = generateDraftClass(s.rng.fork(), s.season);
+    return startDraftSession(s, generateDraftClass(s.rng.fork(), s.season));
   },
 
   makeDraftPick(prospectId: string) {
-    const s = requireState();
-    if (!s.draftClass) {
-      return { success: false, pick: null };
-    }
-
-    const prospect = s.draftClass.prospects.find((candidate) => candidate.player.id === prospectId);
-    if (!prospect) {
-      return { success: false, pick: null };
-    }
-
-    s.draftClass = {
-      ...s.draftClass,
-      prospects: s.draftClass.prospects.filter((candidate) => candidate.player.id !== prospectId),
-    };
-    return {
-      success: true,
-      pick: {
-        prospectId: prospect.player.id,
-        name: `${prospect.player.firstName} ${prospect.player.lastName}`,
-        position: prospect.player.position,
-        grade: prospect.scoutingGrade,
-        teamId: s.userTeamId,
-      },
-    };
+    return makeUserDraftSelection(requireState(), prospectId);
   },
 
-  simulateRemainingDraft(): DraftResult | null {
-    const s = requireState();
-    if (!s.draftClass) {
-      return null;
-    }
-
-    const records: { teamId: string; wins: number; losses: number }[] = [];
-    for (const entries of Object.values(s.seasonState.standings.getFullStandings())) {
-      for (const entry of entries as StandingsEntry[]) {
-        records.push({ teamId: entry.teamId, wins: entry.wins, losses: entry.losses });
-      }
-    }
-
-    const draftOrder = determineDraftOrder(records);
-    const teamRosters = new Map<string, ReturnType<typeof getTeamPlayers>>();
-    for (const teamId of TEAMS.map((team) => team.id)) {
-      teamRosters.set(teamId, getTeamPlayers(teamId));
-    }
-    return simulateFullDraft(s.rng.fork(), s.draftClass, draftOrder, teamRosters, s.userTeamId);
+  simulateRemainingDraft() {
+    return simulateRemainingDraftSession(requireState());
   },
 
   proposeTrade(offered: string[], requested: string[], toTeamId: string) {

@@ -496,6 +496,124 @@ describe('sim worker narrative APIs', () => {
     expect(finalized.notableRetirements[0]?.seasonsPlayed).toBeGreaterThanOrEqual(10);
   });
 
+  it('records draft picks with structured detail and auto-advances to the next user turn', () => {
+    api.newGame(338, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    const start = api.startDraft() as {
+      success: boolean;
+      draft: {
+        currentPick: { teamId: string; userOnClock: boolean } | null;
+        completedPicks: Array<{ playerId: string }>;
+        availableProspects: Array<{ id: string }>;
+      } | null;
+      newPicks: Array<{ playerId: string }>;
+    };
+
+    expect(start.success).toBe(true);
+    expect(start.draft?.currentPick?.teamId).toBe('nyy');
+    expect(start.draft?.currentPick?.userOnClock).toBe(true);
+    expect(start.draft?.completedPicks.length).toBe(start.newPicks.length);
+
+    const selectedProspectId = start.draft?.availableProspects[0]?.id;
+    expect(selectedProspectId).toBeTruthy();
+
+    const result = api.makeDraftPick(selectedProspectId!) as {
+      success: boolean;
+      draft: {
+        completedPicks: Array<{ playerId: string; playerName: string }>;
+      } | null;
+      newPicks: Array<{
+        teamId: string;
+        playerId: string;
+        playerName: string;
+        position: string;
+        scoutingGrade: number;
+        origin: string;
+      }>;
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.newPicks[0]?.teamId).toBe('nyy');
+    expect(requireState().players.find((player) => player.id === result.newPicks[0]?.playerId)?.teamId).toBe('nyy');
+
+    const offseasonPick = requireState().offseasonState?.phaseResults.draftPicks.find(
+      (entry) => entry.playerId === result.newPicks[0]?.playerId,
+    );
+    expect(offseasonPick?.position).toBe(result.newPicks[0]?.position);
+    expect(offseasonPick?.scoutingGrade).toBe(result.newPicks[0]?.scoutingGrade);
+    expect(offseasonPick?.origin).toBe(result.newPicks[0]?.origin);
+
+    const draftGroup = api.getOffseasonState()?.transactionGroups.find((group) => group.phase === 'draft');
+    expect(draftGroup?.rows.some((row) => row.summary.includes(result.newPicks[0]!.playerName))).toBe(true);
+  });
+
+  it('simulates the remaining draft deterministically and builds a user draft summary', () => {
+    api.newGame(339, 'nyy');
+    let state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    api.startDraft();
+    const firstRun = api.simulateRemainingDraft() as {
+      success: boolean;
+      draft: {
+        status: string;
+        completedPicks: Array<{ pickNumber: number; teamId: string; playerId: string; scoutingGrade: number }>;
+        userDraftClass: { overallGrade: string; picks: Array<{ playerId: string }> } | null;
+      } | null;
+    };
+
+    const firstSequence = firstRun.draft?.completedPicks.map(
+      (pick) => `${pick.pickNumber}:${pick.teamId}:${pick.playerId}:${pick.scoutingGrade}`,
+    );
+
+    setState(null);
+
+    api.newGame(339, 'nyy');
+    state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'draft',
+      phaseDay: 1,
+      totalDay: 40,
+    };
+
+    api.startDraft();
+    const secondRun = api.simulateRemainingDraft() as {
+      success: boolean;
+      draft: {
+        status: string;
+        completedPicks: Array<{ pickNumber: number; teamId: string; playerId: string; scoutingGrade: number }>;
+        userDraftClass: { overallGrade: string; picks: Array<{ playerId: string }> } | null;
+      } | null;
+    };
+
+    const secondSequence = secondRun.draft?.completedPicks.map(
+      (pick) => `${pick.pickNumber}:${pick.teamId}:${pick.playerId}:${pick.scoutingGrade}`,
+    );
+
+    expect(firstRun.success).toBe(true);
+    expect(secondRun.success).toBe(true);
+    expect(firstSequence).toEqual(secondSequence);
+    expect(secondRun.draft?.status).toBe('complete');
+    expect(secondRun.draft?.userDraftClass?.overallGrade).toMatch(/^[A-F]/);
+    expect(secondRun.draft?.userDraftClass?.picks.length).toBeGreaterThan(0);
+  });
+
   it('builds a unified press room feed with duplicate news wrappers removed and deterministic ordering', () => {
     api.newGame(777, 'nyy');
     const state = requireState();
