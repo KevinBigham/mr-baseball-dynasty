@@ -52,7 +52,7 @@ export interface PhaseResults {
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
   freeAgentSignings: FASigningResult[];
   draftPicks: DraftPickResult[];
-  retiredPlayers: string[];           // Player IDs that retired
+  retiredPlayers: RetirementResult[];
 }
 
 export interface ArbitrationResult {
@@ -77,6 +77,17 @@ export interface DraftPickResult {
   teamId: string;
   playerId: string;
   playerName: string;
+  position: string;
+  scoutingGrade: number;
+  origin: string;
+}
+
+export interface RetirementResult {
+  playerId: string;
+  teamId: string;
+  playerName: string;
+  seasonsPlayed: number;
+  summary: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,13 +268,13 @@ export function recordDraftPicks(
 /** Record retired players. */
 export function recordRetirements(
   state: OffseasonState,
-  retiredPlayerIds: string[],
+  retiredPlayers: RetirementResult[],
 ): OffseasonState {
   return {
     ...state,
     phaseResults: {
       ...state.phaseResults,
-      retiredPlayers: [...state.phaseResults.retiredPlayers, ...retiredPlayerIds],
+      retiredPlayers: [...state.phaseResults.retiredPlayers, ...retiredPlayers],
     },
   };
 }

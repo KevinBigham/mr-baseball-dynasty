@@ -59,6 +59,7 @@ export type {
   ArbitrationResult,
   FASigningResult,
   DraftPickResult,
+  RetirementResult,
   OffseasonSummary,
 } from './offseason.js';
 

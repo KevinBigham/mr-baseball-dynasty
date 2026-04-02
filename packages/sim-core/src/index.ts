@@ -271,6 +271,7 @@ export type {
   ArbitrationResult,
   FASigningResult,
   DraftPickResult,
+  RetirementResult,
   OffseasonSummary,
 } from './roster/index.js';
 

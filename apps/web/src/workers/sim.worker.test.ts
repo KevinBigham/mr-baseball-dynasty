@@ -269,6 +269,47 @@ describe('sim worker narrative APIs', () => {
     expect(requireState().offseasonState?.phaseResults.tenderedPlayers).toEqual(tendered);
   });
 
+  it('records arbitration results and exposes formatted transaction groups for the offseason ledger', () => {
+    api.newGame(336, 'nyy');
+    const state = requireState();
+    const [arbCandidate] = state.players
+      .filter((player) => player.teamId === 'nyy' && player.rosterStatus === 'MLB')
+      .slice(0, 1);
+
+    expect(arbCandidate).toBeTruthy();
+
+    arbCandidate!.firstName = 'Juan';
+    arbCandidate!.lastName = 'Soto';
+    arbCandidate!.contract.annualSalary = 9.4;
+    state.serviceTime.set(arbCandidate!.id, 4);
+
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'arbitration',
+      phaseDay: 7,
+      totalDay: 10,
+    };
+
+    const result = api.advanceOffseason();
+    const formatted = api.getOffseasonState() as {
+      phaseResults: { arbitrationResolved: Array<{ playerId: string; newSalary: number }> };
+      transactionGroups: Array<{ phase: string; rows: Array<{ summary: string; tone: string }> }>;
+    };
+    const arbitrationResult = formatted.phaseResults.arbitrationResolved.find(
+      (entry) => entry.playerId === arbCandidate!.id,
+    );
+    const arbitrationGroup = formatted.transactionGroups.find((group) => group.phase === 'arbitration');
+    const userRow = arbitrationGroup?.rows.find((row) => row.summary.includes('Juan Soto'));
+
+    expect(result?.currentPhase).toBe('tender_nontender');
+    expect(formatted.phaseResults.arbitrationResolved.length).toBeGreaterThan(0);
+    expect(arbitrationResult?.playerId).toBe(arbCandidate!.id);
+    expect(arbitrationResult?.newSalary).toBeGreaterThan(0);
+    expect(userRow?.summary).toContain('Juan Soto');
+    expect(userRow?.tone).toBe('user');
+  });
+
   it('fast-forwards AI free agency, records rival signings, and emits press coverage', () => {
     api.newGame(334, 'nyy');
     const state = requireState();

@@ -44,6 +44,7 @@ import {
   makeUserOffer,
   getUnreadNews,
   markAsRead,
+  recordRetirements,
 } from '@mbd/sim-core';
 import type {
   GeneratedPlayer,
@@ -61,9 +62,16 @@ import type {
 import {
   state, setState,
   requireState, timestamp, getTeamPlayers,
+  buildOffseasonStateView,
+  createEmptyTradeState,
   toPlayerDTO, processDayInjuriesAndNews, advanceOffseasonOnce, skipOffseasonPhaseWithAI,
 } from './sim.worker.helpers.js';
-import type { SimResultDTO, TeamStandingsDTO, PlayerDTO } from './sim.worker.helpers.js';
+import type {
+  OffseasonStateView,
+  SimResultDTO,
+  TeamStandingsDTO,
+  PlayerDTO,
+} from './sim.worker.helpers.js';
 import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
@@ -133,6 +141,7 @@ export const api = {
       rivalries: new Map(),
       awardHistory: [],
       seasonHistory: [],
+      tradeState: createEmptyTradeState(),
     });
     ensureNarrativeState(requireState());
 
@@ -192,6 +201,23 @@ export const api = {
         recordBreakoutNarratives(s, beforePlayers, developedPlayers);
         s.players = developedPlayers;
         const retired = determineRetirements(s.rng.fork(), s.players);
+        if (s.offseasonState) {
+          s.offseasonState = recordRetirements(
+            s.offseasonState,
+            retired.map((playerId) => {
+              const player = s.players.find((candidate) => candidate.id === playerId);
+              const seasonsPlayed = s.serviceTime.get(playerId) ?? 0;
+              const playerName = player ? `${player.firstName} ${player.lastName}` : playerId;
+              return {
+                playerId,
+                teamId: player?.teamId ?? '',
+                playerName,
+                seasonsPlayed,
+                summary: `${playerName} retired after ${seasonsPlayed} seasons.`,
+              };
+            }),
+          );
+        }
         applyRetirementConsequences(s, retired);
         finalizeSeasonHistoryRetirements(s, retired);
         s.players = s.players.filter(p => !retired.includes(p.id));
@@ -572,9 +598,9 @@ export const api = {
   // Offseason (Phase 2)
   // -----------------------------------------------------------------------
 
-  getOffseasonState(): OffseasonState | null { return requireState().offseasonState; },
+  getOffseasonState() { return buildOffseasonStateView(requireState()); },
 
-  advanceOffseason(): OffseasonState | null {
+  advanceOffseason(): OffseasonStateView | null {
     const s = requireState();
     const progress = advanceOffseasonOnce(s);
     for (const signing of progress.aiSignings) {
@@ -587,10 +613,10 @@ export const api = {
         signing.marketValue,
       );
     }
-    return s.offseasonState;
+    return buildOffseasonStateView(s);
   },
 
-  skipOffseasonPhase(): OffseasonState | null {
+  skipOffseasonPhase(): OffseasonStateView | null {
     const s = requireState();
     const progress = skipOffseasonPhaseWithAI(s);
     for (const signing of progress.aiSignings) {
@@ -603,7 +629,7 @@ export const api = {
         signing.marketValue,
       );
     }
-    return s.offseasonState;
+    return buildOffseasonStateView(s);
   },
 
   // -----------------------------------------------------------------------

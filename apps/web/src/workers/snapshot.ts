@@ -31,7 +31,11 @@ import {
   type GameBoxScore,
   type NewsItem,
 } from '@mbd/sim-core';
-import type { FullGameState } from './sim.worker.helpers';
+import {
+  createEmptyTradeState,
+  normalizeOffseasonState,
+  type FullGameState,
+} from './sim.worker.helpers';
 
 function serializeSeasonState(seasonState: SeasonState): GameSnapshot['seasonState'] {
   return {
@@ -71,6 +75,7 @@ function validateSnapshot(snapshot: unknown): GameSnapshot {
     snapshot !== null &&
     'schemaVersion' in snapshot &&
     snapshot.schemaVersion !== 2 &&
+    snapshot.schemaVersion !== 3 &&
     snapshot.schemaVersion !== CURRENT_GAME_SNAPSHOT_VERSION
   ) {
     throw new Error(`Unsupported snapshot schema version: ${String(snapshot.schemaVersion)}`);
@@ -114,27 +119,34 @@ export function exportGameSnapshot(state: FullGameState): GameSnapshot {
       awardHistory: state.awardHistory,
       seasonHistory: state.seasonHistory,
     },
+    tradeState: state.tradeState,
   });
 }
 
 export function importGameSnapshot(snapshotLike: unknown): FullGameState {
   const snapshot = validateSnapshot(snapshotLike);
+  const players = snapshot.players as GeneratedPlayer[];
+  const serviceTime = fromEntries(snapshot.serviceTime);
 
   return {
     rng: GameRNG.fromState(snapshot.rng),
     season: snapshot.season,
     day: snapshot.day,
     phase: snapshot.phase,
-    players: snapshot.players as GeneratedPlayer[],
+    players,
     schedule: snapshot.schedule as ScheduledGame[],
     seasonState: deserializeSeasonState(snapshot.seasonState),
     userTeamId: snapshot.userTeamId,
     playoffBracket: snapshot.playoffBracket as PlayoffBracket | null,
     injuries: fromEntries(snapshot.injuries as [string, Injury][]),
-    serviceTime: fromEntries(snapshot.serviceTime),
+    serviceTime,
     scoutingStaffs: fromEntries(snapshot.scoutingStaffs as [string, Scout[]][]),
     gmPersonalities: fromEntries(snapshot.gmPersonalities as [string, GMPersonality][]),
-    offseasonState: snapshot.offseasonState as OffseasonState | null,
+    offseasonState: normalizeOffseasonState(
+      snapshot.offseasonState as OffseasonState | null,
+      players,
+      serviceTime,
+    ),
     draftClass: snapshot.draftClass as DraftClass | null,
     freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,
     news: snapshot.news as NewsItem[],
@@ -147,5 +159,6 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     rivalries: fromEntries(snapshot.narrative.rivalries as [string, Rivalry][]),
     awardHistory: snapshot.narrative.awardHistory as AwardHistoryEntry[],
     seasonHistory: snapshot.narrative.seasonHistory as SeasonHistoryEntry[],
+    tradeState: snapshot.tradeState ?? createEmptyTradeState(),
   };
 }

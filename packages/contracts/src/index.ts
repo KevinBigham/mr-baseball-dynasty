@@ -59,11 +59,17 @@ export {
   TradeStatusEnum,
   TradePackageSchema,
   TradeProposalSchema,
+  PersistentTradeOfferSchema,
+  TradeHistoryEntrySchema,
+  TradeStateSchema,
 } from "./schemas/trade.js";
 export type {
   TradeStatus,
   TradePackage,
   TradeProposal,
+  PersistentTradeOffer,
+  TradeHistoryEntry,
+  TradeState,
 } from "./schemas/trade.js";
 
 export { ContractDetailSchema } from "./schemas/finance.js";
@@ -138,6 +144,7 @@ export {
   SerializedSeasonStateSchema,
   NarrativeSnapshotSchema,
   GameSnapshotV2Schema,
+  GameSnapshotV3Schema,
   GameSnapshotSchema,
   migrateGameSnapshot,
   parseGameSnapshot,
@@ -154,6 +161,7 @@ export type {
   SerializedSeasonState,
   NarrativeSnapshot,
   GameSnapshotV2,
+  GameSnapshotV3,
   GameSnapshot,
 } from "./schemas/save.js";
 

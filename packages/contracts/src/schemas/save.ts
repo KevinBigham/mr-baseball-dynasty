@@ -18,6 +18,7 @@ import {
   TeamChemistrySchema,
   SeasonHistoryEntrySchema,
 } from "./narrative.js";
+import { TradeStateSchema } from "./trade.js";
 
 export const SaveMetaSchema = z.object({
   id: z.string().uuid(),
@@ -203,7 +204,7 @@ const LegacyNarrativeSnapshotSchema = z.object({
   seasonHistory: z.array(LegacySeasonHistoryEntrySchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 3;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 4;
 
 export const GameSnapshotSchema = z.object({
   schemaVersion: z.literal(CURRENT_GAME_SNAPSHOT_VERSION),
@@ -226,8 +227,33 @@ export const GameSnapshotSchema = z.object({
   news: z.array(NewsItemSchema),
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV3Schema = z.object({
+  schemaVersion: z.literal(3),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(SnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  narrative: NarrativeSnapshotSchema,
+});
+export type GameSnapshotV3 = z.infer<typeof GameSnapshotV3Schema>;
 
 export const GameSnapshotV2Schema = z.object({
   schemaVersion: z.literal(2),
@@ -275,6 +301,13 @@ function createEmptyStatLeaders() {
   };
 }
 
+function createEmptyTradeState() {
+  return {
+    pendingOffers: [],
+    tradeHistory: [],
+  };
+}
+
 export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
@@ -301,8 +334,17 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
         notableRetirements: [],
         blockbusterTrades: [],
         userSeason: null,
-      })),
+        })),
     },
+    tradeState: createEmptyTradeState(),
+  });
+}
+
+function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    tradeState: createEmptyTradeState(),
   });
 }
 
@@ -314,6 +356,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 2
   ) {
     return migrateGameSnapshot(GameSnapshotV2Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 3
+  ) {
+    return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
   }
 
   return GameSnapshotSchema.parse(snapshotLike);

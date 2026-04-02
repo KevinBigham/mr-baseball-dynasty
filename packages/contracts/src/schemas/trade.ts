@@ -26,3 +26,33 @@ export const TradeProposalSchema = z.object({
   counterOfferCount: z.number().int().min(0),
 });
 export type TradeProposal = z.infer<typeof TradeProposalSchema>;
+
+export const PersistentTradeOfferSchema = z.object({
+  id: z.string(),
+  fromTeamId: z.string(),
+  toTeamId: z.string(),
+  offeringPlayerIds: z.array(z.string()),
+  requestingPlayerIds: z.array(z.string()),
+  fairnessScore: z.number(),
+  message: z.string(),
+  createdAt: z.string(),
+});
+export type PersistentTradeOffer = z.infer<typeof PersistentTradeOfferSchema>;
+
+export const TradeHistoryEntrySchema = z.object({
+  id: z.string(),
+  fromTeamId: z.string(),
+  toTeamId: z.string(),
+  offeringPlayerIds: z.array(z.string()),
+  requestingPlayerIds: z.array(z.string()),
+  fairnessScore: z.number(),
+  summary: z.string(),
+  timestamp: z.string(),
+});
+export type TradeHistoryEntry = z.infer<typeof TradeHistoryEntrySchema>;
+
+export const TradeStateSchema = z.object({
+  pendingOffers: z.array(PersistentTradeOfferSchema),
+  tradeHistory: z.array(TradeHistoryEntrySchema),
+});
+export type TradeState = z.infer<typeof TradeStateSchema>;

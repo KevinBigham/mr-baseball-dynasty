@@ -142,6 +142,10 @@ function createState(): FullGameState {
     news: [],
     rosterStates,
     ...createNarrativeSample('nyy'),
+    tradeState: {
+      pendingOffers: [],
+      tradeHistory: [],
+    },
   };
 }
 
@@ -152,7 +156,7 @@ describe('snapshot helpers', () => {
     const snapshot = exportGameSnapshot(original);
     const restored = importGameSnapshot(snapshot);
 
-    expect(snapshot.schemaVersion).toBe(3);
+    expect(snapshot.schemaVersion).toBe(4);
     expect(snapshot.day).toBe(original.day);
     expect(snapshot.narrative.playerMorale).toHaveLength(1);
     expect(snapshot.narrative.teamChemistry).toHaveLength(1);
@@ -170,9 +174,11 @@ describe('snapshot helpers', () => {
     expect(restored.briefingQueue[0]?.headline).toContain('Ownership');
     expect(restored.storyFlags.get('nyy')).toContain('owner_hot_seat');
     expect(restored.rivalries.get('nyy:bos')?.intensity).toBe(63);
+    expect(restored.tradeState.pendingOffers).toEqual([]);
+    expect(restored.tradeState.tradeHistory).toEqual([]);
   });
 
-  it('migrates v2 snapshots into the v3 narrative and stat shape', () => {
+  it('migrates v2 snapshots into the v4 narrative, stat, and trade shape', () => {
     const snapshot = exportGameSnapshot(createState());
     const v2Snapshot = {
       ...snapshot,
@@ -233,6 +239,21 @@ describe('snapshot helpers', () => {
     expect(restored.awardHistory[0]?.league).toBe('MLB');
     expect(restored.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(restored.seasonHistory[0]?.statLeaders.hr).toEqual([]);
+    expect(restored.tradeState.pendingOffers).toEqual([]);
+    expect(restored.tradeState.tradeHistory).toEqual([]);
+  });
+
+  it('migrates v3 snapshots into the v4 trade state shape', () => {
+    const snapshot = exportGameSnapshot(createState());
+    const v3Snapshot = {
+      ...snapshot,
+      schemaVersion: 3,
+    } as unknown as GameSnapshot;
+
+    const restored = importGameSnapshot(v3Snapshot);
+
+    expect(restored.tradeState.pendingOffers).toEqual([]);
+    expect(restored.tradeState.tradeHistory).toEqual([]);
   });
 
   it('rejects unsupported snapshot schema versions', () => {

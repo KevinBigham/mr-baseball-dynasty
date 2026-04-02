@@ -55,8 +55,17 @@ interface OffseasonData {
     nonTenderedPlayers: string[];
     freeAgentSignings: unknown[];
     draftPicks: unknown[];
-    retiredPlayers: string[];
+    retiredPlayers: unknown[];
   };
+  transactionGroups?: Array<{
+    phase: string;
+    label: string;
+    rows: Array<{
+      id: string;
+      tone: 'user' | 'division_rival' | 'neutral';
+      summary: string;
+    }>;
+  }>;
 }
 
 export default function OffseasonPage() {
@@ -65,6 +74,7 @@ export default function OffseasonPage() {
   const { phase, season, isInitialized } = useGameStore();
   const [offseason, setOffseason] = useState<OffseasonData | null>(null);
   const [advancing, setAdvancing] = useState(false);
+  const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({});
 
   const fetchOffseason = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return;
@@ -72,7 +82,12 @@ export default function OffseasonPage() {
       const api = worker as Record<string, unknown>;
       if (typeof api.getOffseasonState === 'function') {
         const data = await (api.getOffseasonState as () => Promise<OffseasonData | null>)();
-        if (data) setOffseason(data);
+        if (data) {
+          setOffseason(data);
+          setExpandedPhases(
+            Object.fromEntries((data.transactionGroups ?? []).map((group) => [group.phase, true])),
+          );
+        }
       }
     } catch {
       // Not available yet
@@ -87,7 +102,9 @@ export default function OffseasonPage() {
       const api = worker as Record<string, unknown>;
       if (typeof api.advanceOffseason === 'function') {
         const data = await (api.advanceOffseason as () => Promise<OffseasonData | null>)();
-        if (data) setOffseason(data);
+        if (data) {
+          setOffseason(data);
+        }
       }
     } catch {
       // Not available yet
@@ -101,7 +118,9 @@ export default function OffseasonPage() {
       const api = worker as Record<string, unknown>;
       if (typeof api.skipOffseasonPhase === 'function') {
         const data = await (api.skipOffseasonPhase as () => Promise<OffseasonData | null>)();
-        if (data) setOffseason(data);
+        if (data) {
+          setOffseason(data);
+        }
       }
     } catch {
       // Not available yet
@@ -144,6 +163,26 @@ export default function OffseasonPage() {
   const currentPhaseIdx = offseason
     ? ALL_PHASES.indexOf(offseason.currentPhase)
     : 0;
+
+  const transactionGroups = offseason?.transactionGroups ?? [];
+
+  const rowToneClasses = (tone: 'user' | 'division_rival' | 'neutral') => {
+    switch (tone) {
+      case 'user':
+        return 'border-l-2 border-accent-success bg-accent-success/10 text-accent-success';
+      case 'division_rival':
+        return 'border-l-2 border-accent-warning bg-accent-warning/10 text-accent-warning';
+      default:
+        return 'border-l-2 border-dynasty-border bg-dynasty-elevated text-dynasty-text';
+    }
+  };
+
+  const toggleGroup = (groupPhase: string) => {
+    setExpandedPhases((current) => ({
+      ...current,
+      [groupPhase]: !current[groupPhase],
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -264,6 +303,52 @@ export default function OffseasonPage() {
             value={offseason.phaseResults.retiredPlayers.length}
             icon={Calendar}
           />
+        </div>
+      )}
+
+      {transactionGroups.length > 0 && (
+        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
+          <div className="border-b border-dynasty-border px-4 py-3">
+            <h2 className="font-heading text-sm font-semibold uppercase tracking-[0.18em] text-dynasty-text">
+              Completed Transactions
+            </h2>
+          </div>
+          <div className="space-y-3 p-4">
+            {transactionGroups.map((group) => {
+              const expanded = expandedPhases[group.phase] ?? true;
+              return (
+                <div key={group.phase} className="rounded border border-dynasty-border bg-dynasty-elevated/40">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.phase)}
+                    className="flex w-full items-center justify-between px-3 py-2 text-left"
+                  >
+                    <div>
+                      <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+                        {group.label}
+                      </div>
+                      <div className="font-data text-[11px] uppercase tracking-[0.16em] text-dynasty-muted">
+                        {group.rows.length} transaction{group.rows.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <ChevronRight className={`h-4 w-4 text-dynasty-muted transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                  </button>
+                  {expanded && (
+                    <div className="space-y-2 border-t border-dynasty-border px-3 py-3">
+                      {group.rows.map((row) => (
+                        <div
+                          key={row.id}
+                          className={`rounded px-3 py-2 font-data text-xs ${rowToneClasses(row.tone)}`}
+                        >
+                          {row.summary}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

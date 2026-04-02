@@ -9,7 +9,7 @@ import {
 
 function createSnapshot(): GameSnapshot {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
@@ -66,11 +66,15 @@ function createSnapshot(): GameSnapshot {
         },
       ],
     },
-  };
+    tradeState: {
+      pendingOffers: [],
+      tradeHistory: [],
+    },
+  } as unknown as GameSnapshot;
 }
 
 describe('saveSystem helpers', () => {
-  it('builds a v3 save record from a canonical snapshot', () => {
+  it('builds a v4 save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -80,11 +84,12 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(3);
+    expect(record.schemaVersion).toBe(4);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(3);
+    expect(record.snapshot?.schemaVersion).toBe(4);
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
+    expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
     expect(record.legacyState).toBeNull();
   });
 
@@ -107,7 +112,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v3 on load', () => {
+  it('migrates v2 snapshots to v4 on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -190,12 +195,32 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(3);
-    expect(normalized.snapshot?.schemaVersion).toBe(3);
+    expect(normalized.schemaVersion).toBe(4);
+    expect(normalized.snapshot?.schemaVersion).toBe(4);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
     expect(normalized.snapshot?.narrative.awardHistory[0]?.league).toBe('MLB');
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.statLeaders.w).toEqual([]);
+    expect(normalized.snapshot?.tradeState.pendingOffers).toEqual([]);
+  });
+
+  it('migrates v3 snapshots to v4 on load', () => {
+    const snapshot = createSnapshot();
+    const normalized = normalizeLoadedSaveRecord({
+      id: 'save-slot-5',
+      slotNumber: 5,
+      name: 'Phase 3 Save',
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+      snapshot: {
+        ...snapshot,
+        schemaVersion: 3,
+      },
+    } as any);
+
+    expect(normalized.schemaVersion).toBe(4);
+    expect(normalized.snapshot?.schemaVersion).toBe(4);
+    expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
   });
 });
