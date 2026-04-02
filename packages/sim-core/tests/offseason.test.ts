@@ -36,6 +36,7 @@ describe('advanceOffseasonDay', () => {
       'draft',
       'protection_audit',
       'rule5_draft',
+      'international_signing',
       'spring_training',
     ]);
   });

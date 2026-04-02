@@ -8,6 +8,7 @@ import {
   DollarSign,
   FileText,
   Gavel,
+  Globe2,
   ShieldAlert,
   ShieldCheck,
   SkipForward,
@@ -55,6 +56,11 @@ const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; descr
     icon: Gavel,
     description: 'Manage the major-league Rule 5 board and active roster obligations.',
   },
+  international_signing: {
+    label: 'International Signing',
+    icon: Globe2,
+    description: 'Scout and sign the current international amateur class.',
+  },
   spring_training: {
     label: 'Spring Training',
     icon: Tent,
@@ -70,6 +76,7 @@ const ALL_PHASES = [
   'draft',
   'protection_audit',
   'rule5_draft',
+  'international_signing',
   'spring_training',
 ];
 
@@ -133,6 +140,7 @@ interface OffseasonData {
     nonTenderedPlayers: string[];
     freeAgentSignings: unknown[];
     draftPicks: unknown[];
+    ifaSignings: unknown[];
     retiredPlayers: unknown[];
   };
   transactionGroups?: Array<{

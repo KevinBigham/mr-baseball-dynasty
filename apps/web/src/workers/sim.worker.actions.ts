@@ -39,6 +39,9 @@ import type {
   TradeProposal,
 } from '@mbd/sim-core';
 import {
+  createEmptyDraftState,
+  createEmptyInternationalScoutingState,
+  createEmptyMinorLeagueState,
   buildOffseasonStateView,
   createEmptyTradeState,
   enforceRule5RosterRestriction,
@@ -51,9 +54,12 @@ import {
   requireState,
   resolveRule5OfferBackDecision,
   passUserRule5Turn,
+  scoutUserIFAPlayer,
+  signUserIFAPlayer,
   startDraftSession,
   setState,
   skipOffseasonPhaseWithAI,
+  tradeUserIFABonusPool,
   simulateRemainingDraftSession,
   timestamp,
   toggleUserRule5Protection,
@@ -437,6 +443,9 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.draftClass = null;
   s.freeAgencyMarket = null;
   s.tradeState = createEmptyTradeState();
+  s.internationalScoutingState = createEmptyInternationalScoutingState(s.season);
+  s.draftState = createEmptyDraftState();
+  s.minorLeagueState = createEmptyMinorLeagueState();
   const teamIds = TEAMS.map((team) => team.id);
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
@@ -539,7 +548,9 @@ export const actionApi = {
     const serviceTime = new Map<string, number>();
     for (const player of players) {
       if (player.rosterStatus === 'MLB') {
-        serviceTime.set(player.id, rng.nextInt(0, 8));
+        const yearsOfService = rng.nextInt(0, 8);
+        serviceTime.set(player.id, yearsOfService);
+        player.serviceTimeDays = yearsOfService * 172;
       }
     }
 
@@ -574,6 +585,9 @@ export const actionApi = {
       freeAgencyMarket: null,
       news: [],
       rosterStates,
+      internationalScoutingState: createEmptyInternationalScoutingState(1),
+      draftState: createEmptyDraftState(),
+      minorLeagueState: createEmptyMinorLeagueState(),
       playerMorale: new Map(),
       teamChemistry: new Map(),
       ownerState: new Map(),
@@ -973,6 +987,20 @@ export const actionApi = {
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
     return view ? { ...view, flowStateChanged: true } : null;
+  },
+
+  scoutIFAPlayer(playerId: string) {
+    return scoutUserIFAPlayer(requireState(), playerId);
+  },
+
+  signIFAPlayer(playerId: string, bonusAmount: number) {
+    const result = signUserIFAPlayer(requireState(), playerId, bonusAmount);
+    return result.success ? { ...result, flowStateChanged: true as const } : result;
+  },
+
+  tradeIFAPoolSpace(toTeamId: string, amount: number) {
+    const result = tradeUserIFABonusPool(requireState(), toTeamId, amount);
+    return result.success ? { ...result, flowStateChanged: true as const } : result;
   },
 
   toggleRule5Protection(playerId: string) {

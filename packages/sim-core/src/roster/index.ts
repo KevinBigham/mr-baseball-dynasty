@@ -47,6 +47,7 @@ export {
   recordTenderDecisions,
   recordFASigning,
   recordDraftPicks,
+  recordIFASigning,
   recordRetirements,
   autoResolveTenderNonTender,
   determineRetirements,
@@ -59,6 +60,7 @@ export type {
   ArbitrationResult,
   FASigningResult,
   DraftPickResult,
+  IFASigningResult,
   RetirementResult,
   OffseasonSummary,
 } from './offseason.js';

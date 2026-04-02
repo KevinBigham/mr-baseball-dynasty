@@ -22,6 +22,7 @@ import type {
 } from '@mbd/sim-core';
 import { calculateAwardRaces } from '../../../../packages/sim-core/src/league/awards';
 import {
+  buildIFAPoolView,
   buildSeasonFlowStateView,
   buildDraftRoomView,
   buildOffseasonStateView,
@@ -470,6 +471,10 @@ export const queryApi = {
   getScoutingStaff() {
     const s = requireState();
     return s.scoutingStaffs.get(s.userTeamId) ?? [];
+  },
+
+  getIFAPool() {
+    return buildIFAPoolView(requireState());
   },
 
   getDraftClass() {

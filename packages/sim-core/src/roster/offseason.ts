@@ -1,7 +1,7 @@
 /**
  * @module offseason
  * Offseason phase sequencing: arbitration → tender/non-tender → extensions →
- * free agency → draft → rule 5 → spring training.
+ * free agency → draft → rule 5 → international signing → spring training.
  * Pure engine logic — no React, no DOM.
  */
 
@@ -20,6 +20,7 @@ export const OFFSEASON_PHASES = [
   'draft',
   'protection_audit',
   'rule5_draft',
+  'international_signing',
   'spring_training',
 ] as const;
 
@@ -34,6 +35,7 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   draft: 3,
   protection_audit: 4,
   rule5_draft: 3,
+  international_signing: 10,
   spring_training: 12,
 };
 
@@ -56,6 +58,7 @@ export interface PhaseResults {
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
   freeAgentSignings: FASigningResult[];
   draftPicks: DraftPickResult[];
+  ifaSignings: IFASigningResult[];
   retiredPlayers: RetirementResult[];
 }
 
@@ -86,6 +89,15 @@ export interface DraftPickResult {
   origin: string;
 }
 
+export interface IFASigningResult {
+  playerId: string;
+  teamId: string;
+  playerName: string;
+  position: string;
+  country: string;
+  bonusAmount: number;
+}
+
 export interface RetirementResult {
   playerId: string;
   teamId: string;
@@ -112,6 +124,7 @@ export function createOffseasonState(season: number): OffseasonState {
       nonTenderedPlayers: [],
       freeAgentSignings: [],
       draftPicks: [],
+      ifaSignings: [],
       retiredPlayers: [],
     },
   };
@@ -265,6 +278,19 @@ export function recordDraftPicks(
     phaseResults: {
       ...state.phaseResults,
       draftPicks: [...state.phaseResults.draftPicks, ...picks],
+    },
+  };
+}
+
+export function recordIFASigning(
+  state: OffseasonState,
+  signing: IFASigningResult,
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      ifaSignings: [...state.phaseResults.ifaSignings, signing],
     },
   };
 }

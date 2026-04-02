@@ -862,6 +862,79 @@ describe('sim worker narrative APIs', () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.teamId).toBe('bos');
   });
 
+  it('opens the international signing phase after the Rule 5 draft and seeds the IFA pool', () => {
+    api.newGame(342, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'rule5_draft',
+      phaseDay: 3,
+      totalDay: 43,
+    };
+
+    const entered = api.advanceOffseason() as { currentPhase: string } | null;
+    const pool = (api as typeof api & {
+      getIFAPool: () => { signingWindowOpen: boolean; prospects: Array<{ id: string }> };
+    }).getIFAPool();
+
+    expect(entered?.currentPhase).toBe('international_signing');
+    expect(pool.signingWindowOpen).toBe(true);
+    expect(pool.prospects.length).toBeGreaterThanOrEqual(80);
+  });
+
+  it('scouts, signs, and trades IFA pool space during the international signing window', () => {
+    api.newGame(343, 'nyy');
+    const state = requireState();
+    state.phase = 'offseason';
+    state.offseasonState = {
+      ...createOffseasonState(state.season),
+      currentPhase: 'international_signing',
+      phaseDay: 1,
+      totalDay: 44,
+    };
+
+    const poolBefore = (api as typeof api & {
+      getIFAPool: () => {
+        budget: { remaining: number };
+        prospects: Array<{ id: string; expectedBonus: number; status: string }>;
+      };
+    }).getIFAPool();
+    const target = poolBefore.prospects.find((prospect) => prospect.status === 'available')!;
+
+    const reportResult = (api as typeof api & {
+      scoutIFAPlayer: (playerId: string) => { success: boolean; report?: { looks: number; overall: number } };
+    }).scoutIFAPlayer(target.id);
+
+    expect(reportResult.success).toBe(true);
+    if (!reportResult.success) {
+      throw new Error(reportResult.error);
+    }
+    expect(reportResult.report.looks).toBe(1);
+    expect(reportResult.report.overall).toBeGreaterThan(20);
+
+    const signResult = (api as typeof api & {
+      signIFAPlayer: (playerId: string, bonusAmount: number) => { success: boolean; remainingBudget?: number };
+    }).signIFAPlayer(target.id, target.expectedBonus);
+
+    expect(signResult.success).toBe(true);
+    if (!signResult.success) {
+      throw new Error(signResult.error);
+    }
+    expect(signResult.remainingBudget).toBeLessThan(poolBefore.budget.remaining);
+    expect(state.players.some((player) => player.id === target.id && player.teamId === 'nyy' && player.rosterStatus === 'ROOKIE')).toBe(true);
+
+    const tradeResult = (api as typeof api & {
+      tradeIFAPoolSpace: (toTeamId: string, amount: number) => { success: boolean; remainingBudget?: number };
+    }).tradeIFAPoolSpace('bos', 0.25);
+
+    expect(tradeResult.success).toBe(true);
+    if (!tradeResult.success) {
+      throw new Error(tradeResult.error);
+    }
+    expect(tradeResult.remainingBudget).toBeLessThan(signResult.remainingBudget);
+  });
+
   it('closes the trade market after day 120 and clears pending offers', () => {
     api.newGame(340, 'nyy');
     const state = requireState();

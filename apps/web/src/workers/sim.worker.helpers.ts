@@ -9,6 +9,8 @@ import {
   FORTY_MAN_LIMIT,
   aiSelectPick,
   buildPlayoffPreview,
+  createInternationalScoutingState as createInternationalScoutingStateCore,
+  type InternationalScoutingState,
   determinePlayoffSeeds,
   determineDraftOrder,
   generateDraftClass,
@@ -34,19 +36,29 @@ import {
   evaluateTeamNeeds,
   generateArbitrationCase,
   getArbEligiblePlayers,
+  getAvailableIFAProspects,
+  getInternationalScoutAccuracy,
+  getRemainingIFABudget,
   getTeamBudget,
   recordArbitration,
   recordDraftPicks,
   recordFASigning,
+  recordIFASigning,
   recordTenderDecisions,
   resolveArbitration,
+  scoutIFAProspect,
+  signIFAProspect as signIFAProspectCore,
   simulateFADay,
+  tradeIFABonusPool as tradeIFABonusPoolCore,
   lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
   makeRule5Selection as makeRule5SelectionCore,
   passRule5DraftTurn as passRule5DraftTurnCore,
   toggleRule5Protection as toggleRule5ProtectionCore,
   type DraftPickResult,
   type FASigningResult,
+  type IFAScoutingHistoryEntry,
+  type InternationalProspect,
+  type InternationalScoutingReport,
   type RetirementResult,
   type Rule5EligiblePlayer,
   type Rule5Obligation,
@@ -79,6 +91,8 @@ import type {
   FranchiseTimelineEntry,
   HallOfFameBallotEntry,
   HallOfFameEntry,
+  DraftState as PersistentDraftState,
+  MinorLeagueState,
   OwnerState,
   PlayerMorale,
   Rivalry,
@@ -114,6 +128,9 @@ export interface FullGameState {
   freeAgencyMarket: FreeAgencyMarket | null;
   news: NewsItem[];
   rosterStates: Map<string, RosterState>;
+  internationalScoutingState: InternationalScoutingState;
+  draftState: PersistentDraftState;
+  minorLeagueState: MinorLeagueState;
   playerMorale: Map<string, PlayerMorale>;
   teamChemistry: Map<string, TeamChemistry>;
   ownerState: Map<string, OwnerState>;
@@ -284,6 +301,58 @@ export interface DraftBoardRow {
   cells: DraftBoardCell[];
 }
 
+export interface IFAProspectView {
+  id: string;
+  playerName: string;
+  age: number;
+  position: string;
+  region: string;
+  country: string;
+  expectedBonus: number;
+  status: 'available' | 'signed';
+  signedTeamId: string | null;
+  signedBonus: number | null;
+  looks: number;
+  overall: number | null;
+  confidence: number | null;
+  ceiling: number | null;
+  floor: number | null;
+  notes: string | null;
+}
+
+export interface IFAPoolView {
+  season: number;
+  currentPhase: string | null;
+  signingWindowOpen: boolean;
+  budget: {
+    baseAllocation: number;
+    tradedIn: number;
+    tradedOut: number;
+    committed: number;
+    remaining: number;
+  };
+  staffAccuracy: number;
+  prospects: IFAProspectView[];
+}
+
+export interface IFAReportView {
+  playerId: string;
+  playerName: string;
+  position: string;
+  age: number;
+  region: string;
+  country: string;
+  expectedBonus: number;
+  looks: number;
+  grades: Record<string, number>;
+  overall: number;
+  confidence: number;
+  ceiling: number;
+  floor: number;
+  notes: string;
+  reliability: number;
+}
+
 export type SeasonFlowStatus =
   | 'preseason'
   | 'regular'
@@ -441,6 +510,131 @@ export function createEmptyTradeState(): TradeState {
   };
 }
 
+export function createEmptyInternationalScoutingState(season: number): InternationalScoutingState {
+  return {
+    season,
+    ifaPool: [],
+    budgets: new Map(),
+    scoutingHistory: new Map(),
+  };
+}
+
+export function createEmptyDraftState(): PersistentDraftState {
+  return {
+    scoutingReports: [],
+    signability: [],
+    compensatoryPicks: [],
+    pickOwnership: [],
+    bigBoards: [],
+  };
+}
+
+export function createEmptyMinorLeagueState(): MinorLeagueState {
+  return {
+    serviceTimeLedger: [],
+    optionUsage: [],
+    waiverClaims: [],
+    affiliateStates: [],
+    affiliateBoxScores: [],
+  };
+}
+
+function ensureInternationalScoutingStateForSeason(s: FullGameState): InternationalScoutingState {
+  const currentState = s.internationalScoutingState;
+  if (
+    currentState.season === s.season &&
+    currentState.budgets.size === TEAMS.length
+  ) {
+    return currentState;
+  }
+
+  const nextState = createInternationalScoutingStateCore(
+    s.rng.fork(),
+    TEAMS.map((team) => team.id),
+    s.season,
+  );
+  s.internationalScoutingState = nextState;
+  return nextState;
+}
+
+function getTeamIFAScoutingHistory(
+  s: FullGameState,
+  teamId: string,
+): IFAScoutingHistoryEntry[] {
+  return s.internationalScoutingState.scoutingHistory.get(teamId) ?? [];
+}
+
+function upsertIFAScoutingHistory(
+  s: FullGameState,
+  teamId: string,
+  nextEntry: IFAScoutingHistoryEntry,
+) {
+  const history = getTeamIFAScoutingHistory(s, teamId);
+  const nextHistory = history.some((entry) => entry.playerId === nextEntry.playerId)
+    ? history.map((entry) => (entry.playerId === nextEntry.playerId ? nextEntry : entry))
+    : [...history, nextEntry];
+  s.internationalScoutingState.scoutingHistory.set(teamId, nextHistory);
+}
+
+function applyIFASigningToLeague(
+  s: FullGameState,
+  prospect: InternationalProspect,
+  teamId: string,
+  bonusAmount: number,
+) {
+  const signingResult = signIFAProspectCore(
+    s.internationalScoutingState,
+    teamId,
+    prospect.id,
+    bonusAmount,
+  );
+  s.internationalScoutingState = signingResult.state;
+  s.players.push(signingResult.signedPlayer);
+  s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+
+  if (s.offseasonState) {
+    s.offseasonState = recordIFASigning(s.offseasonState, {
+      playerId: prospect.id,
+      teamId,
+      playerName: `${prospect.firstName} ${prospect.lastName}`,
+      position: prospect.position,
+      country: prospect.country,
+      bonusAmount,
+    });
+  }
+}
+
+function simulateInternationalSigningDay(s: FullGameState) {
+  ensureInternationalScoutingStateForSeason(s);
+
+  for (const teamId of TEAMS.map((team) => team.id)) {
+    if (teamId === s.userTeamId) continue;
+    if (s.rng.nextFloat() > 0.18) continue;
+
+    const budget = s.internationalScoutingState.budgets.get(teamId);
+    if (!budget || getRemainingIFABudget(budget) < 0.2) continue;
+
+    const affordableProspects = getAvailableIFAProspects(s.internationalScoutingState)
+      .filter((prospect) => prospect.expectedBonus <= getRemainingIFABudget(budget) * 1.1)
+      .sort((left, right) => right.potentialRating - left.potentialRating)
+      .slice(0, 8);
+
+    if (affordableProspects.length === 0) continue;
+
+    const selectionIndex = Math.min(
+      affordableProspects.length - 1,
+      Math.floor(s.rng.nextFloat() * Math.min(3, affordableProspects.length)),
+    );
+    const prospect = affordableProspects[selectionIndex]!;
+    const bonusAmount = Math.min(
+      getRemainingIFABudget(budget),
+      Math.max(0.15, Math.round((prospect.expectedBonus * (0.92 + (s.rng.nextFloat() * 0.18))) * 100) / 100),
+    );
+
+    applyIFASigningToLeague(s, prospect, teamId, bonusAmount);
+  }
+}
+
 function playerLabel(player: GeneratedPlayer | null | undefined): string {
   return player ? `${player.firstName} ${player.lastName}` : 'Unknown player';
 }
@@ -478,6 +672,7 @@ function phaseLabel(phase: string): string {
     case 'draft': return 'Amateur Draft';
     case 'protection_audit': return 'Protection Audit';
     case 'rule5_draft': return 'Rule 5 Draft';
+    case 'international_signing': return 'International Signing';
     case 'spring_training': return 'Spring Training';
     default: return phase;
   }
@@ -841,6 +1036,185 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
   };
 }
 
+export function buildIFAPoolView(s: FullGameState): IFAPoolView {
+  const internationalState = ensureInternationalScoutingStateForSeason(s);
+  const userBudget = internationalState.budgets.get(s.userTeamId) ?? {
+    baseAllocation: 0,
+    tradedIn: 0,
+    tradedOut: 0,
+    committed: 0,
+  };
+  const scoutingHistory = getTeamIFAScoutingHistory(s, s.userTeamId);
+  const reportsByPlayerId = new Map(
+    scoutingHistory.map((entry) => [entry.playerId, entry] as const),
+  );
+  const staffAccuracy = getInternationalScoutAccuracy(
+    s.scoutingStaffs.get(s.userTeamId) ?? [],
+  );
+
+  return {
+    season: internationalState.season,
+    currentPhase: s.offseasonState?.currentPhase ?? null,
+    signingWindowOpen: s.phase === 'offseason' && s.offseasonState?.currentPhase === 'international_signing',
+    budget: {
+      baseAllocation: userBudget.baseAllocation,
+      tradedIn: userBudget.tradedIn,
+      tradedOut: userBudget.tradedOut,
+      committed: userBudget.committed,
+      remaining: getRemainingIFABudget(userBudget),
+    },
+    staffAccuracy,
+    prospects: [...internationalState.ifaPool]
+      .sort((left, right) => {
+        if (left.status !== right.status) {
+          return left.status === 'available' ? -1 : 1;
+        }
+        return right.potentialRating - left.potentialRating;
+      })
+      .map((prospect) => {
+        const historyEntry = reportsByPlayerId.get(prospect.id);
+        const report = historyEntry?.report;
+        return {
+          id: prospect.id,
+          playerName: `${prospect.firstName} ${prospect.lastName}`,
+          age: prospect.age,
+          position: prospect.position,
+          region: prospect.region,
+          country: prospect.country,
+          expectedBonus: prospect.expectedBonus,
+          status: prospect.status,
+          signedTeamId: prospect.signedTeamId,
+          signedBonus: prospect.signedBonus,
+          looks: historyEntry?.looks ?? 0,
+          overall: report?.overallGrade ?? null,
+          confidence: report?.confidence ?? null,
+          ceiling: report?.ceiling ?? null,
+          floor: report?.floor ?? null,
+          notes: report?.notes ?? null,
+        };
+      }),
+  };
+}
+
+export function scoutUserIFAPlayer(
+  s: FullGameState,
+  playerId: string,
+): { success: true; report: IFAReportView } | { success: false; error: string } {
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'international_signing') {
+    return { success: false, error: 'International signing is not active.' };
+  }
+
+  ensureInternationalScoutingStateForSeason(s);
+  const prospect = s.internationalScoutingState.ifaPool.find((entry) => entry.id === playerId);
+  if (!prospect) {
+    return { success: false, error: 'International prospect not found.' };
+  }
+  if (prospect.status !== 'available') {
+    return { success: false, error: 'This prospect has already signed.' };
+  }
+
+  const historyEntry = getTeamIFAScoutingHistory(s, s.userTeamId)
+    .find((entry) => entry.playerId === playerId);
+  const looks = (historyEntry?.looks ?? 0) + 1;
+  const accuracy = getInternationalScoutAccuracy(
+    s.scoutingStaffs.get(s.userTeamId) ?? [],
+  );
+  const report = scoutIFAProspect(
+    s.rng.fork(),
+    prospect,
+    accuracy,
+    looks,
+  );
+
+  upsertIFAScoutingHistory(s, s.userTeamId, {
+    playerId,
+    looks,
+    report,
+  });
+
+  return {
+    success: true,
+    report: {
+      playerId,
+      playerName: `${prospect.firstName} ${prospect.lastName}`,
+      position: prospect.position,
+      age: prospect.age,
+      region: prospect.region,
+      country: prospect.country,
+      expectedBonus: prospect.expectedBonus,
+      looks,
+      grades: report.observedRatings,
+      overall: report.overallGrade,
+      confidence: report.confidence,
+      ceiling: report.ceiling,
+      floor: report.floor,
+      notes: report.notes,
+      reliability: Math.max(1, Math.min(5, Math.round(report.reliability * 5))),
+    },
+  };
+}
+
+export function signUserIFAPlayer(
+  s: FullGameState,
+  playerId: string,
+  bonusAmount: number,
+): { success: true; remainingBudget: number } | { success: false; error: string } {
+  if (s.phase !== 'offseason' || s.offseasonState?.currentPhase !== 'international_signing') {
+    return { success: false, error: 'International signing is not active.' };
+  }
+
+  ensureInternationalScoutingStateForSeason(s);
+  const prospect = s.internationalScoutingState.ifaPool.find((entry) => entry.id === playerId);
+  if (!prospect) {
+    return { success: false, error: 'International prospect not found.' };
+  }
+
+  try {
+    applyIFASigningToLeague(s, prospect, s.userTeamId, bonusAmount);
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unable to complete IFA signing.',
+    };
+  }
+
+  return {
+    success: true,
+    remainingBudget: getRemainingIFABudget(
+      s.internationalScoutingState.budgets.get(s.userTeamId)!,
+    ),
+  };
+}
+
+export function tradeUserIFABonusPool(
+  s: FullGameState,
+  toTeamId: string,
+  amount: number,
+): { success: true; remainingBudget: number } | { success: false; error: string } {
+  ensureInternationalScoutingStateForSeason(s);
+
+  try {
+    s.internationalScoutingState = tradeIFABonusPoolCore(
+      s.internationalScoutingState,
+      s.userTeamId,
+      toTeamId,
+      amount,
+    );
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unable to trade IFA pool space.',
+    };
+  }
+
+  return {
+    success: true,
+    remainingBudget: getRemainingIFABudget(
+      s.internationalScoutingState.budgets.get(s.userTeamId)!,
+    ),
+  };
+}
+
 export function startDraftSession(s: FullGameState, draftClass?: DraftClass): DraftActionResult {
   if (draftClass) {
     s.draftClass = createDraftSessionState(draftClass, s.seasonState);
@@ -963,6 +1337,14 @@ export function normalizeOffseasonState(
 
   const phaseResults = offseasonState.phaseResults as Partial<OffseasonState['phaseResults']> & {
     draftPicks?: Array<Partial<DraftPickResult>>;
+    ifaSignings?: Array<{
+      playerId?: string;
+      teamId?: string;
+      playerName?: string;
+      position?: string;
+      country?: string;
+      bonusAmount?: number;
+    }>;
     retiredPlayers?: Array<RetirementResult | string>;
   };
 
@@ -974,6 +1356,14 @@ export function normalizeOffseasonState(
       nonTenderedPlayers: phaseResults.nonTenderedPlayers ?? [],
       freeAgentSignings: phaseResults.freeAgentSignings ?? [],
       draftPicks: (phaseResults.draftPicks ?? []).map((entry) => normalizeDraftPickResult(entry)),
+      ifaSignings: (phaseResults.ifaSignings ?? []).map((entry) => ({
+        playerId: entry.playerId ?? '',
+        teamId: entry.teamId ?? '',
+        playerName: entry.playerName ?? 'Unknown prospect',
+        position: entry.position ?? 'UNK',
+        country: entry.country ?? 'Unknown',
+        bonusAmount: entry.bonusAmount ?? 0,
+      })),
       retiredPlayers: (phaseResults.retiredPlayers ?? []).map((entry) =>
         normalizeRetirementResult(entry, players, serviceTime)),
     },
@@ -1068,6 +1458,15 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
       phase: 'draft',
       tone: transactionToneForTeam(s, pick.teamId),
       summary: `Round ${pick.round}, Pick ${pick.pickNumber}: ${teamLabel(pick.teamId)} selected ${pick.playerName} (${pick.position}, ${pick.origin})`,
+    });
+  }
+
+  for (const signing of offseasonState.phaseResults.ifaSignings) {
+    pushRow('international_signing', {
+      id: `ifa-${signing.playerId}-${signing.teamId}`,
+      phase: 'international_signing',
+      tone: transactionToneForTeam(s, signing.teamId),
+      summary: `${signing.playerName} signed with ${teamLabel(signing.teamId)} for $${signing.bonusAmount.toFixed(2)}M`,
     });
   }
 
@@ -2042,6 +2441,14 @@ function processCurrentOffseasonPhase(
     ensureRule5SessionForCurrentPhase(s);
     if (enteredPhase) {
       advanceRule5DraftToUserTurn(s);
+    }
+    return { aiSignings: [] };
+  }
+
+  if (currentPhase === 'international_signing') {
+    const advancedWithinPhase = previousPhase === currentPhase && previousPhaseDay !== s.offseasonState.phaseDay;
+    if (enteredPhase || advancedWithinPhase) {
+      simulateInternationalSigningDay(s);
     }
     return { aiSignings: [] };
   }

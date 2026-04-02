@@ -69,6 +69,9 @@ function isFlowAwareResult(value: unknown): value is { flowStateChanged?: boolea
 export function useWorker() {
   const api = useMemo(() => getOrCreateWorker(), []);
   const isReady = useSyncExternalStore(subscribe, getSnapshot);
+  type ScoutIFAResult = Awaited<ReturnType<WorkerApi['scoutIFAPlayer']>>;
+  type SignIFAResult = Awaited<ReturnType<WorkerApi['signIFAPlayer']>>;
+  type TradeIFAPoolResult = Awaited<ReturnType<WorkerApi['tradeIFAPoolSpace']>>;
 
   const runMutation = useCallback(
     async <T,>(operation: () => Promise<T>) => {
@@ -134,6 +137,40 @@ export function useWorker() {
   const getScoutingStaff = useCallback(async () => api.getScoutingStaff(), [api]);
   const scoutPlayerReport = useCallback(
     async (playerId: string) => api.scoutPlayerReport(playerId),
+    [api],
+  );
+  const getIFAPool = useCallback(async () => api.getIFAPool(), [api]);
+  const scoutIFAPlayer = useCallback(
+    async (playerId: string): Promise<ScoutIFAResult> => {
+      const result = await api.scoutIFAPlayer(playerId);
+      return result as ScoutIFAResult;
+    },
+    [api],
+  );
+  const signIFAPlayer = useCallback(
+    async (
+      playerId: string,
+      bonusAmount: number,
+    ): Promise<SignIFAResult> => {
+      const result = await api.signIFAPlayer(playerId, bonusAmount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result as SignIFAResult;
+    },
+    [api],
+  );
+  const tradeIFAPoolSpace = useCallback(
+    async (
+      toTeamId: string,
+      amount: number,
+    ): Promise<TradeIFAPoolResult> => {
+      const result = await api.tradeIFAPoolSpace(toTeamId, amount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result as TradeIFAPoolResult;
+    },
     [api],
   );
   const getDraftClass = useCallback(async () => api.getDraftClass(), [api]);
@@ -231,7 +268,7 @@ export function useWorker() {
     exportSnapshot, importSnapshot,
     getStandings, getTeamRoster, getFullRoster, getPlayer,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getSeasonFlowState,
-    getScoutingStaff, scoutPlayerReport,
+    getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
     getDraftClass, startDraft, makeDraftPick, simulateRemainingDraft,
     getTradeOffers, getTradeHistory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, proceedToOffseason, startNextSeason,

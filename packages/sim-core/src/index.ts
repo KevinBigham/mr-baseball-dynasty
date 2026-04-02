@@ -193,6 +193,7 @@ export {
   advanceContracts,
   generateContractOffer,
   getArbEligiblePlayers,
+  serviceDaysToYears,
 } from './finance/index.js';
 export type {
   ContractDetail,
@@ -208,11 +209,33 @@ export {
   combineReports,
   getTeamScoutingAccuracy,
   generateScoutNotes,
+  DEFAULT_IFA_BONUS_POOL,
+  IFA_POOL_MIN,
+  IFA_POOL_MAX,
+  scoutQualityToAccuracy,
+  getInternationalScoutAccuracy,
+  generateIFAPool,
+  createInternationalScoutingState,
+  getAvailableIFAProspects,
+  getRemainingIFABudget,
+  scoutIFAProspect,
+  tradeIFABonusPool,
+  convertIFAProspectToPlayer,
+  signIFAProspect,
 } from './scouting/index.js';
 export type {
   ScoutBias,
   Scout,
   ScoutReport,
+  InternationalRegion,
+  InternationalNationality,
+  IFAProspectStatus,
+  InternationalProspect,
+  IFATeamBudget,
+  InternationalScoutingReport,
+  IFAScoutingHistoryEntry,
+  InternationalScoutingState,
+  SignIFAProspectResult,
 } from './scouting/index.js';
 
 // Draft
@@ -288,6 +311,7 @@ export {
   recordTenderDecisions,
   recordFASigning,
   recordDraftPicks,
+  recordIFASigning,
   recordRetirements,
   autoResolveTenderNonTender,
   determineRetirements,
@@ -300,6 +324,7 @@ export type {
   ArbitrationResult,
   FASigningResult,
   DraftPickResult,
+  IFASigningResult,
   RetirementResult,
   OffseasonSummary,
 } from './roster/index.js';
