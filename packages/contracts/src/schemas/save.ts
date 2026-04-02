@@ -56,7 +56,7 @@ export const SimPhaseEnum = z.enum([
 ]);
 export type SimPhase = z.infer<typeof SimPhaseEnum>;
 
-export const SnapshotPlayerSchema = z.object({
+const LegacySnapshotPlayerSchema = z.object({
   id: z.string(),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -71,6 +71,9 @@ export const SnapshotPlayerSchema = z.object({
   teamId: z.string(),
   nationality: z.enum(["american", "latin", "asian"]),
   overallRating: z.number().int().min(0).max(550),
+});
+export const SnapshotPlayerSchema = LegacySnapshotPlayerSchema.extend({
+  rule5EligibleAfterSeason: z.number().int().min(1),
 });
 export type SnapshotPlayer = z.infer<typeof SnapshotPlayerSchema>;
 
@@ -223,7 +226,10 @@ const NarrativeSnapshotV4Schema = z.object({
   seasonHistory: z.array(SeasonHistoryEntrySchema),
 });
 
-export const CURRENT_GAME_SNAPSHOT_VERSION = 5;
+export const CURRENT_GAME_SNAPSHOT_VERSION = 6;
+
+const Rule5SessionSchema = z.unknown().nullable();
+const Rule5StateEntrySchema = z.unknown();
 
 export const GameSnapshotSchema = z.object({
   schemaVersion: z.literal(CURRENT_GAME_SNAPSHOT_VERSION),
@@ -247,8 +253,36 @@ export const GameSnapshotSchema = z.object({
   rosterStates: z.array(RosterStateEntrySchema),
   narrative: NarrativeSnapshotSchema,
   tradeState: TradeStateSchema,
+  rule5Session: Rule5SessionSchema,
+  rule5Obligations: z.array(Rule5StateEntrySchema),
+  rule5OfferBackStates: z.array(Rule5StateEntrySchema),
 });
 export type GameSnapshot = z.infer<typeof GameSnapshotSchema>;
+
+export const GameSnapshotV5Schema = z.object({
+  schemaVersion: z.literal(5),
+  rng: GameRNGStateSchema,
+  season: z.number().int().min(1),
+  day: z.number().int().min(1),
+  phase: SimPhaseEnum,
+  userTeamId: z.string(),
+  players: z.array(LegacySnapshotPlayerSchema),
+  schedule: z.array(ScheduledGameSchema),
+  seasonState: SerializedSeasonStateSchema,
+  playoffBracket: z.unknown().nullable(),
+  injuries: z.array(InjuryEntrySchema),
+  serviceTime: z.array(ServiceTimeEntrySchema),
+  scoutingStaffs: z.array(ScoutStaffEntrySchema),
+  gmPersonalities: z.array(GMPersonalityEntrySchema),
+  offseasonState: z.unknown().nullable(),
+  draftClass: z.unknown().nullable(),
+  freeAgencyMarket: z.unknown().nullable(),
+  news: z.array(NewsItemSchema),
+  rosterStates: z.array(RosterStateEntrySchema),
+  narrative: NarrativeSnapshotSchema,
+  tradeState: TradeStateSchema,
+});
+export type GameSnapshotV5 = z.infer<typeof GameSnapshotV5Schema>;
 
 export const GameSnapshotV4Schema = z.object({
   schemaVersion: z.literal(4),
@@ -257,7 +291,7 @@ export const GameSnapshotV4Schema = z.object({
   day: z.number().int().min(1),
   phase: SimPhaseEnum,
   userTeamId: z.string(),
-  players: z.array(SnapshotPlayerSchema),
+  players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
   seasonState: SerializedSeasonStateSchema,
   playoffBracket: z.unknown().nullable(),
@@ -282,7 +316,7 @@ export const GameSnapshotV3Schema = z.object({
   day: z.number().int().min(1),
   phase: SimPhaseEnum,
   userTeamId: z.string(),
-  players: z.array(SnapshotPlayerSchema),
+  players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
   seasonState: SerializedSeasonStateSchema,
   playoffBracket: z.unknown().nullable(),
@@ -306,7 +340,7 @@ export const GameSnapshotV2Schema = z.object({
   day: z.number().int().min(1),
   phase: SimPhaseEnum,
   userTeamId: z.string(),
-  players: z.array(SnapshotPlayerSchema),
+  players: z.array(LegacySnapshotPlayerSchema),
   schedule: z.array(ScheduledGameSchema),
   seasonState: LegacySerializedSeasonStateSchema,
   playoffBracket: z.unknown().nullable(),
@@ -361,10 +395,63 @@ function createEmptyLegacyState() {
   };
 }
 
+function createEmptyRule5State() {
+  return {
+    rule5Session: null,
+    rule5Obligations: [],
+    rule5OfferBackStates: [],
+  };
+}
+
+function calculateRule5EligibleAfterSeason(signingSeason: number, signedAge: number): number {
+  return Math.max(1, signingSeason + (signedAge <= 18 ? 4 : 3));
+}
+
+const BACKFILL_BASE_YEARS: Record<z.infer<typeof LegacySnapshotPlayerSchema>["rosterStatus"], number> = {
+  MLB: 6,
+  AAA: 4,
+  AA: 3,
+  A_PLUS: 2,
+  A: 1,
+  ROOKIE: 1,
+  INTERNATIONAL: 1,
+  FREE_AGENT: 5,
+  RETIRED: 6,
+};
+
+const BACKFILL_TYPICAL_MAX_AGE: Record<z.infer<typeof LegacySnapshotPlayerSchema>["rosterStatus"], number> = {
+  MLB: 28,
+  AAA: 24,
+  AA: 22,
+  A_PLUS: 21,
+  A: 20,
+  ROOKIE: 19,
+  INTERNATIONAL: 18,
+  FREE_AGENT: 29,
+  RETIRED: 35,
+};
+
+function migrateSnapshotPlayer(
+  player: z.infer<typeof LegacySnapshotPlayerSchema>,
+  currentSeason: number,
+): SnapshotPlayer {
+  const baseYears = BACKFILL_BASE_YEARS[player.rosterStatus];
+  const typicalMaxAge = BACKFILL_TYPICAL_MAX_AGE[player.rosterStatus];
+  const estimatedYearsInOrg = Math.max(1, baseYears + Math.max(0, player.age - typicalMaxAge));
+  const estimatedSigningSeason = currentSeason - estimatedYearsInOrg + 1;
+  const estimatedSignedAge = Math.max(16, player.age - estimatedYearsInOrg + 1);
+
+  return {
+    ...player,
+    rule5EligibleAfterSeason: calculateRule5EligibleAfterSeason(estimatedSigningSeason, estimatedSignedAge),
+  };
+}
+
 export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
     seasonState: {
       ...snapshot.seasonState,
       playerSeasonStats: snapshot.seasonState.playerSeasonStats.map(migratePlayerStatEntry),
@@ -391,6 +478,7 @@ export function migrateGameSnapshot(snapshot: GameSnapshotV2): GameSnapshot {
         })),
     },
     tradeState: createEmptyTradeState(),
+    ...createEmptyRule5State(),
   });
 }
 
@@ -398,11 +486,13 @@ function migrateGameSnapshotV3(snapshot: GameSnapshotV3): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
     },
     tradeState: createEmptyTradeState(),
+    ...createEmptyRule5State(),
   });
 }
 
@@ -410,10 +500,22 @@ function migrateGameSnapshotV4(snapshot: GameSnapshotV4): GameSnapshot {
   return GameSnapshotSchema.parse({
     ...snapshot,
     schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
     narrative: {
       ...snapshot.narrative,
       ...createEmptyLegacyState(),
     },
+    tradeState: snapshot.tradeState ?? createEmptyTradeState(),
+    ...createEmptyRule5State(),
+  });
+}
+
+function migrateGameSnapshotV5(snapshot: GameSnapshotV5): GameSnapshot {
+  return GameSnapshotSchema.parse({
+    ...snapshot,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+    players: snapshot.players.map((player) => migrateSnapshotPlayer(player, snapshot.season)),
+    ...createEmptyRule5State(),
   });
 }
 
@@ -434,6 +536,15 @@ export function parseGameSnapshot(snapshotLike: unknown): GameSnapshot {
     snapshotLike.schemaVersion === 3
   ) {
     return migrateGameSnapshotV3(GameSnapshotV3Schema.parse(snapshotLike));
+  }
+
+  if (
+    typeof snapshotLike === "object" &&
+    snapshotLike !== null &&
+    "schemaVersion" in snapshotLike &&
+    snapshotLike.schemaVersion === 5
+  ) {
+    return migrateGameSnapshotV5(GameSnapshotV5Schema.parse(snapshotLike));
   }
 
   if (

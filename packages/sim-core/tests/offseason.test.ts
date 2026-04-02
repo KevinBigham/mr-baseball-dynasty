@@ -27,6 +27,19 @@ describe('createOffseasonState', () => {
 });
 
 describe('advanceOffseasonDay', () => {
+  it('includes protection audit and rule 5 draft between the amateur draft and spring training', () => {
+    expect(OFFSEASON_PHASES).toEqual([
+      'season_review',
+      'arbitration',
+      'tender_nontender',
+      'free_agency',
+      'draft',
+      'protection_audit',
+      'rule5_draft',
+      'spring_training',
+    ]);
+  });
+
   it('progresses through phases', () => {
     let state = createOffseasonState(1);
     const seenPhases = new Set<string>();

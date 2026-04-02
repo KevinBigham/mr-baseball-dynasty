@@ -18,6 +18,8 @@ export const OFFSEASON_PHASES = [
   'tender_nontender',
   'free_agency',
   'draft',
+  'protection_audit',
+  'rule5_draft',
   'spring_training',
 ] as const;
 
@@ -30,6 +32,8 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   tender_nontender: 5,
   free_agency: 30,
   draft: 3,
+  protection_audit: 4,
+  rule5_draft: 3,
   spring_training: 12,
 };
 

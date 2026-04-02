@@ -6,6 +6,7 @@ import {
   GameRNG,
   TEAMS,
   DRAFT_ROUNDS,
+  FORTY_MAN_LIMIT,
   aiSelectPick,
   buildPlayoffPreview,
   determinePlayoffSeeds,
@@ -22,6 +23,8 @@ import {
   generateNews,
   deduplicateNews,
   createOffseasonState,
+  createRule5Session,
+  estimateBackfilledRule5EligibilityAfterSeason,
   advanceOffseasonDay,
   skipCurrentPhase,
   autoResolveTenderNonTender,
@@ -38,9 +41,18 @@ import {
   recordTenderDecisions,
   resolveArbitration,
   simulateFADay,
+  lockRule5ProtectionAudit as lockRule5ProtectionAuditCore,
+  makeRule5Selection as makeRule5SelectionCore,
+  passRule5DraftTurn as passRule5DraftTurnCore,
+  toggleRule5Protection as toggleRule5ProtectionCore,
   type DraftPickResult,
   type FASigningResult,
   type RetirementResult,
+  type Rule5EligiblePlayer,
+  type Rule5Obligation,
+  type Rule5OfferBackState,
+  type Rule5Selection,
+  type Rule5SessionState,
 } from '@mbd/sim-core';
 import { applyMoraleEvent } from '../../../../packages/sim-core/src/league/narrativeState';
 import type {
@@ -95,6 +107,9 @@ export interface FullGameState {
   scoutingStaffs: Map<string, Scout[]>;
   gmPersonalities: Map<string, GMPersonality>;
   offseasonState: OffseasonState | null;
+  rule5Session: Rule5SessionState | null;
+  rule5Obligations: Rule5Obligation[];
+  rule5OfferBackStates: Rule5OfferBackState[];
   draftClass: DraftSessionState | null;
   freeAgencyMarket: FreeAgencyMarket | null;
   news: NewsItem[];
@@ -202,7 +217,22 @@ export interface OffseasonTransactionGroup {
 
 export interface OffseasonStateView extends OffseasonState {
   transactionGroups: OffseasonTransactionGroup[];
+  rule5?: Rule5StateView;
   flowStateChanged?: boolean;
+}
+
+export interface Rule5StateView {
+  phase: Rule5SessionState['phase'];
+  currentTeamId: string | null;
+  draftOrder: string[];
+  consecutivePasses: number;
+  protectedCount: number;
+  protectedLimit: number;
+  protectedPlayers: Rule5EligiblePlayer[];
+  eligiblePlayers: Rule5EligiblePlayer[];
+  selections: Rule5Selection[];
+  obligations: Rule5Obligation[];
+  offerBackStates: Rule5OfferBackState[];
 }
 
 export type DraftRoomStatus = 'available' | 'in_progress' | 'complete';
@@ -446,6 +476,8 @@ function phaseLabel(phase: string): string {
     case 'tender_nontender': return 'Tender / Non-Tender';
     case 'free_agency': return 'Free Agency';
     case 'draft': return 'Amateur Draft';
+    case 'protection_audit': return 'Protection Audit';
+    case 'rule5_draft': return 'Rule 5 Draft';
     case 'spring_training': return 'Spring Training';
     default: return phase;
   }
@@ -948,6 +980,32 @@ export function normalizeOffseasonState(
   };
 }
 
+function currentRule5TeamId(session: Rule5SessionState | null): string | null {
+  if (!session || session.phase === 'complete') return null;
+  return session.draftOrder[session.currentTeamIndex] ?? null;
+}
+
+function buildRule5StateView(s: FullGameState): Rule5StateView | undefined {
+  if (!s.rule5Session) return undefined;
+  const protectedIds = new Set(s.rule5Session.protectedPlayerIdsByTeam[s.userTeamId] ?? []);
+
+  return {
+    phase: s.rule5Session.phase,
+    currentTeamId: currentRule5TeamId(s.rule5Session),
+    draftOrder: [...s.rule5Session.draftOrder],
+    consecutivePasses: s.rule5Session.consecutivePasses,
+    protectedCount: s.rule5Session.protectedPlayerIdsByTeam[s.userTeamId]?.length ?? 0,
+    protectedLimit: FORTY_MAN_LIMIT,
+    protectedPlayers: s.rule5Session.candidatePlayers
+      .filter((player) => protectedIds.has(player.playerId))
+      .map((player) => ({ ...player })),
+    eligiblePlayers: s.rule5Session.eligiblePlayers.map((player) => ({ ...player })),
+    selections: s.rule5Session.selections.map((selection) => ({ ...selection })),
+    obligations: s.rule5Obligations.map((obligation) => ({ ...obligation })),
+    offerBackStates: s.rule5OfferBackStates.map((entry) => ({ ...entry })),
+  };
+}
+
 export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | null {
   const offseasonState = normalizeOffseasonState(s.offseasonState, s.players, s.serviceTime);
   if (!offseasonState) return null;
@@ -1013,6 +1071,49 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
     });
   }
 
+  if (s.rule5Session) {
+    for (const [teamId, protectedIds] of Object.entries(s.rule5Session.protectedPlayerIdsByTeam)) {
+      for (const playerId of protectedIds) {
+        const player = s.players.find((candidate) => candidate.id === playerId);
+        if (!player || player.rosterStatus === 'MLB') continue;
+        pushRow('protection_audit', {
+          id: `rule5-protect-${teamId}-${playerId}`,
+          phase: 'protection_audit',
+          tone: transactionToneForTeam(s, teamId),
+          summary: `${teamLabel(teamId)} protected ${playerLabel(player)} on the 40-man roster`,
+        });
+      }
+    }
+
+    for (const selection of s.rule5Session.selections) {
+      pushRow('rule5_draft', {
+        id: `rule5-pick-${selection.overallPick}-${selection.playerId}`,
+        phase: 'rule5_draft',
+        tone: transactionToneForTeam(s, selection.draftingTeamId),
+        summary: `Rule 5 Pick ${selection.overallPick}: ${teamLabel(selection.draftingTeamId)} selected ${selection.playerName} from ${teamLabel(selection.originalTeamId)}`,
+      });
+    }
+  }
+
+  for (const offerBack of s.rule5OfferBackStates) {
+    const player = s.players.find((candidate) => candidate.id === offerBack.playerId);
+    const playerName = playerLabel(player);
+    const summary = offerBack.status === 'accepted'
+      ? `${teamLabel(offerBack.originalTeamId)} reclaimed ${playerName} after the Rule 5 offer-back`
+      : offerBack.status === 'declined'
+        ? `${teamLabel(offerBack.originalTeamId)} declined the return of ${playerName}`
+        : `${teamLabel(offerBack.draftingTeamId)} must offer ${playerName} back to ${teamLabel(offerBack.originalTeamId)}`;
+    pushRow('rule5_draft', {
+      id: `rule5-offer-back-${offerBack.playerId}`,
+      phase: 'rule5_draft',
+      tone: transactionToneForTeam(
+        s,
+        offerBack.status === 'accepted' ? offerBack.originalTeamId : offerBack.draftingTeamId,
+      ),
+      summary,
+    });
+  }
+
   for (const retirement of offseasonState.phaseResults.retiredPlayers) {
     pushRow('spring_training', {
       id: `retire-${retirement.playerId}`,
@@ -1027,6 +1128,8 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
     'tender_nontender',
     'free_agency',
     'draft',
+    'protection_audit',
+    'rule5_draft',
     'spring_training',
   ]
     .map((phase) => ({
@@ -1039,6 +1142,7 @@ export function buildOffseasonStateView(s: FullGameState): OffseasonStateView | 
   return {
     ...offseasonState,
     transactionGroups,
+    rule5: buildRule5StateView(s),
   };
 }
 
@@ -1480,6 +1584,226 @@ function updateOffseasonClock(s: FullGameState) {
   }
 }
 
+function syncRule5ObligationsFromSession(s: FullGameState) {
+  s.rule5Obligations = s.rule5Session?.obligations.map((obligation) => ({ ...obligation })) ?? [];
+}
+
+function buildRule5DraftOrder(s: FullGameState): string[] {
+  const teamRecords = Array.from(
+    new Map(
+      Object.values(s.seasonState.standings.getFullStandings())
+        .flatMap((entries) => entries.map((entry) => [entry.teamId, { teamId: entry.teamId, wins: entry.wins, losses: entry.losses }] as const)),
+    ).values(),
+  );
+  return determineDraftOrder(teamRecords);
+}
+
+function syncRule5ProtectionToRosterState(
+  s: FullGameState,
+  teamId: string,
+  protectedPlayerIds: string[],
+) {
+  const rosterState = s.rosterStates.get(teamId);
+  if (!rosterState) return;
+
+  const nextFortyMan = Array.from(new Set([
+    ...rosterState.fortyManRoster.filter((playerId) => !s.players.some((player) => player.id === playerId && player.teamId === teamId)),
+    ...protectedPlayerIds,
+    ...rosterState.mlbRoster,
+  ]));
+
+  s.rosterStates.set(teamId, {
+    ...rosterState,
+    fortyManRoster: nextFortyMan,
+  });
+}
+
+function autoProtectAITeams(s: FullGameState) {
+  if (!s.rule5Session) return;
+
+  let session = s.rule5Session;
+  for (const teamId of session.draftOrder) {
+    if (teamId === s.userTeamId) continue;
+
+    const currentProtected = session.protectedPlayerIdsByTeam[teamId] ?? [];
+    const availableSlots = Math.max(0, FORTY_MAN_LIMIT - currentProtected.length);
+    if (availableSlots === 0) continue;
+
+    const candidates = session.candidatePlayers
+      .filter((player) => player.teamId === teamId)
+      .sort((left, right) => right.overallRating - left.overallRating);
+
+    let protectedCount = 0;
+    for (const candidate of candidates) {
+      if (protectedCount >= availableSlots) break;
+      if (candidate.overallRating < 250) break;
+      const result = toggleRule5ProtectionCore(session, teamId, candidate.playerId);
+      if (!result.success) break;
+      session = result.session;
+      protectedCount += 1;
+    }
+
+    syncRule5ProtectionToRosterState(s, teamId, session.protectedPlayerIdsByTeam[teamId] ?? []);
+  }
+
+  s.rule5Session = session;
+}
+
+function ensureRule5SessionForCurrentPhase(s: FullGameState) {
+  if (!s.offseasonState) return;
+  if (s.offseasonState.currentPhase !== 'protection_audit' && s.offseasonState.currentPhase !== 'rule5_draft') {
+    return;
+  }
+
+  if (!s.rule5Session) {
+    s.rule5Session = createRule5Session({
+      season: s.season,
+      draftOrder: buildRule5DraftOrder(s),
+      players: s.players,
+      rosterStates: s.rosterStates,
+    });
+    autoProtectAITeams(s);
+  }
+
+  if (s.offseasonState.currentPhase === 'rule5_draft' && s.rule5Session.phase === 'protection_audit') {
+    s.rule5Session = lockRule5ProtectionAuditCore(s.rule5Session);
+  }
+
+  syncRule5ObligationsFromSession(s);
+}
+
+function chooseRule5TargetForTeam(
+  s: FullGameState,
+  teamId: string,
+): Rule5EligiblePlayer | null {
+  if (!s.rule5Session) return null;
+
+  const rosterState = s.rosterStates.get(teamId);
+  if (rosterState && rosterState.fortyManRoster.length >= FORTY_MAN_LIMIT) {
+    return null;
+  }
+
+  const teamRoster = s.players.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB');
+  const needs = evaluateTeamNeeds(teamRoster);
+  const ranked = s.rule5Session.eligiblePlayers
+    .filter((player) => player.teamId !== teamId)
+    .map((player) => ({
+      player,
+      score: player.overallRating + (needs.get(player.position) ?? 0) * 2 - Math.max(0, player.age - 26) * 4,
+    }))
+    .sort((left, right) => right.score - left.score || left.player.playerId.localeCompare(right.player.playerId));
+
+  const best = ranked[0];
+  if (!best || best.score < 260) {
+    return null;
+  }
+
+  return best.player;
+}
+
+function applyRule5SelectionToLeague(s: FullGameState, selection: Rule5Selection) {
+  const player = s.players.find((candidate) => candidate.id === selection.playerId);
+  if (!player) return;
+
+  const previousTeamId = player.teamId;
+  player.teamId = selection.draftingTeamId;
+  player.rosterStatus = 'MLB';
+  player.contract.years = Math.max(1, player.contract.years);
+
+  if (previousTeamId) {
+    s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+  }
+  s.rosterStates.set(selection.draftingTeamId, buildRosterState(selection.draftingTeamId, s.players));
+}
+
+function advanceRule5DraftToUserTurn(s: FullGameState) {
+  ensureRule5SessionForCurrentPhase(s);
+  if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') return;
+
+  while (s.rule5Session.phase === 'rule5_draft') {
+    const teamId = currentRule5TeamId(s.rule5Session);
+    if (!teamId || teamId === s.userTeamId) {
+      return;
+    }
+
+    const target = chooseRule5TargetForTeam(s, teamId);
+    if (target) {
+      const result = makeRule5SelectionCore(s.rule5Session, teamId, target.playerId);
+      if (!result.success) {
+        break;
+      }
+      s.rule5Session = result.session;
+      const selection = s.rule5Session.selections[s.rule5Session.selections.length - 1];
+      if (selection) {
+        applyRule5SelectionToLeague(s, selection);
+      }
+      syncRule5ObligationsFromSession(s);
+      continue;
+    }
+
+    const passResult = passRule5DraftTurnCore(s.rule5Session, teamId);
+    if (!passResult.success) {
+      break;
+    }
+    s.rule5Session = passResult.session;
+  }
+}
+
+function requestRule5OfferBack(
+  s: FullGameState,
+  playerId: string,
+): { success: false; error: string } {
+  const obligation = s.rule5Obligations.find((entry) => entry.playerId === playerId && entry.status === 'active');
+  if (!obligation) {
+    return { success: false, error: 'No active Rule 5 obligation.' };
+  }
+
+  const existing = s.rule5OfferBackStates.find((entry) => entry.playerId === playerId && entry.status === 'pending');
+  if (!existing) {
+    s.rule5OfferBackStates.push({
+      playerId,
+      originalTeamId: obligation.originalTeamId,
+      draftingTeamId: obligation.draftingTeamId,
+      status: 'pending',
+    });
+  }
+
+  return { success: false, error: 'Rule 5 player must clear the offer-back flow before leaving the MLB roster.' };
+}
+
+export function resolveRule5OfferBackDecision(
+  s: FullGameState,
+  playerId: string,
+  acceptReturn: boolean,
+): { success: boolean; error?: string } {
+  const offer = s.rule5OfferBackStates.find((entry) => entry.playerId === playerId && entry.status === 'pending');
+  const obligation = s.rule5Obligations.find((entry) => entry.playerId === playerId && entry.status === 'active');
+  const player = s.players.find((candidate) => candidate.id === playerId);
+
+  if (!offer || !obligation || !player) {
+    return { success: false, error: 'No pending Rule 5 offer-back state.' };
+  }
+
+  const previousTeamId = player.teamId;
+  if (acceptReturn) {
+    player.teamId = offer.originalTeamId;
+    player.rosterStatus = 'AAA';
+    obligation.status = 'returned';
+    offer.status = 'accepted';
+  } else {
+    player.rosterStatus = 'AAA';
+    obligation.status = 'cleared';
+    offer.status = 'declined';
+  }
+
+  if (previousTeamId) {
+    s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+  }
+  s.rosterStates.set(player.teamId, buildRosterState(player.teamId, s.players));
+
+  return { success: true };
+}
+
 function applyArbitrationResultsOnce(s: FullGameState) {
   if (!s.offseasonState) return;
 
@@ -1709,6 +2033,19 @@ function processCurrentOffseasonPhase(
     }
   }
 
+  if (currentPhase === 'protection_audit') {
+    ensureRule5SessionForCurrentPhase(s);
+    return { aiSignings: [] };
+  }
+
+  if (currentPhase === 'rule5_draft') {
+    ensureRule5SessionForCurrentPhase(s);
+    if (enteredPhase) {
+      advanceRule5DraftToUserTurn(s);
+    }
+    return { aiSignings: [] };
+  }
+
   return { aiSignings: [] };
 }
 
@@ -1782,4 +2119,107 @@ export function skipOffseasonPhaseWithAI(s: FullGameState): OffseasonProgressRes
   const previousState = s.offseasonState;
   const nextState = skipCurrentPhase(previousState);
   return applyOffseasonTransition(s, previousState, nextState);
+}
+
+export function toggleUserRule5Protection(
+  s: FullGameState,
+  playerId: string,
+): { success: boolean; error?: string } {
+  ensureRule5SessionForCurrentPhase(s);
+  if (!s.offseasonState || s.offseasonState.currentPhase !== 'protection_audit' || !s.rule5Session) {
+    return { success: false, error: 'Protection audit is not active.' };
+  }
+
+  const result = toggleRule5ProtectionCore(s.rule5Session, s.userTeamId, playerId);
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  s.rule5Session = result.session;
+  syncRule5ProtectionToRosterState(s, s.userTeamId, s.rule5Session.protectedPlayerIdsByTeam[s.userTeamId] ?? []);
+  return { success: true };
+}
+
+export function lockUserRule5Protection(
+  s: FullGameState,
+): { success: boolean; error?: string } {
+  ensureRule5SessionForCurrentPhase(s);
+  if (!s.offseasonState || !s.rule5Session) {
+    return { success: false, error: 'Protection audit is not active.' };
+  }
+
+  s.rule5Session = lockRule5ProtectionAuditCore(s.rule5Session);
+  s.offseasonState = {
+    ...s.offseasonState,
+    currentPhase: 'rule5_draft',
+    phaseDay: 1,
+  };
+  syncRule5ObligationsFromSession(s);
+  advanceRule5DraftToUserTurn(s);
+  return { success: true };
+}
+
+export function makeUserRule5Selection(
+  s: FullGameState,
+  playerId: string,
+): { success: boolean; error?: string } {
+  ensureRule5SessionForCurrentPhase(s);
+  if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') {
+    return { success: false, error: 'Rule 5 draft is not active.' };
+  }
+
+  const result = makeRule5SelectionCore(s.rule5Session, s.userTeamId, playerId);
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  s.rule5Session = result.session;
+  const selection = s.rule5Session.selections[s.rule5Session.selections.length - 1];
+  if (selection) {
+    applyRule5SelectionToLeague(s, selection);
+  }
+  syncRule5ObligationsFromSession(s);
+  advanceRule5DraftToUserTurn(s);
+  return { success: true };
+}
+
+export function passUserRule5Turn(
+  s: FullGameState,
+): { success: boolean; error?: string } {
+  ensureRule5SessionForCurrentPhase(s);
+  if (!s.rule5Session || s.rule5Session.phase !== 'rule5_draft') {
+    return { success: false, error: 'Rule 5 draft is not active.' };
+  }
+
+  const result = passRule5DraftTurnCore(s.rule5Session, s.userTeamId);
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  s.rule5Session = result.session;
+  advanceRule5DraftToUserTurn(s);
+  return { success: true };
+}
+
+export function ensurePlayersHaveRule5Eligibility(
+  players: GeneratedPlayer[],
+  currentSeason: number,
+) {
+  for (const player of players) {
+    if (!Number.isFinite(player.rule5EligibleAfterSeason) || player.rule5EligibleAfterSeason < 1) {
+      player.rule5EligibleAfterSeason = estimateBackfilledRule5EligibilityAfterSeason(player, currentSeason);
+    }
+  }
+}
+
+export function enforceRule5RosterRestriction(
+  s: FullGameState,
+  playerId: string,
+): { success: true } | { success: false; error: string } {
+  const obligation = s.rule5Obligations.find((entry) => entry.playerId === playerId && entry.status === 'active');
+  if (!obligation) {
+    return { success: true };
+  }
+
+  return requestRule5OfferBack(s, playerId);
 }

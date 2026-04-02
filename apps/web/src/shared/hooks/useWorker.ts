@@ -201,6 +201,28 @@ export function useWorker() {
 
   const advanceOffseason = useCallback(async () => runMutation(() => api.advanceOffseason()), [api, runMutation]);
   const skipOffseasonPhase = useCallback(async () => runMutation(() => api.skipOffseasonPhase()), [api, runMutation]);
+  const getOffseasonState = useCallback(async () => api.getOffseasonState(), [api]);
+  const toggleRule5Protection = useCallback(
+    async (playerId: string) => runMutation(() => api.toggleRule5Protection(playerId)),
+    [api, runMutation],
+  );
+  const lockRule5Protection = useCallback(
+    async () => runMutation(() => api.lockRule5Protection()),
+    [api, runMutation],
+  );
+  const makeRule5Pick = useCallback(
+    async (playerId: string) => runMutation(() => api.makeRule5Pick(playerId)),
+    [api, runMutation],
+  );
+  const passRule5Pick = useCallback(
+    async () => runMutation(() => api.passRule5Pick()),
+    [api, runMutation],
+  );
+  const resolveRule5OfferBack = useCallback(
+    async (playerId: string, acceptReturn: boolean) =>
+      runMutation(() => api.resolveRule5OfferBack(playerId, acceptReturn)),
+    [api, runMutation],
+  );
 
   return {
     ping, newGame, simDay, simWeek, simMonth, simToPlayoffs,
@@ -216,7 +238,9 @@ export function useWorker() {
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,
     getAwardHistory, getSeasonHistory, resolveHistoryDisplayNames,
-    searchPlayers, advanceOffseason, skipOffseasonPhase, subscribeToFlowUpdates,
+    searchPlayers, advanceOffseason, skipOffseasonPhase, getOffseasonState,
+    toggleRule5Protection, lockRule5Protection, makeRule5Pick, passRule5Pick, resolveRule5OfferBack,
+    subscribeToFlowUpdates,
     isReady,
   };
 }
