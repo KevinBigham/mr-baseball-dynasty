@@ -36,6 +36,11 @@ const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; descr
     icon: UserMinus,
     description: 'Decide which players to tender contracts and which to non-tender.',
   },
+  qualifying_offers: {
+    label: 'Qualifying Offers',
+    icon: FileText,
+    description: 'Extend qualifying offers to eligible free agents before the market opens.',
+  },
   free_agency: {
     label: 'Free Agency',
     icon: FileText,
@@ -72,6 +77,7 @@ const ALL_PHASES = [
   'season_review',
   'arbitration',
   'tender_nontender',
+  'qualifying_offers',
   'free_agency',
   'draft',
   'protection_audit',

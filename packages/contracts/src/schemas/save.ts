@@ -24,6 +24,14 @@ import {
   SeasonHistoryEntrySchema,
 } from "./narrative.js";
 import { TradeStateSchema } from "./trade.js";
+import {
+  DraftCompensatoryPickSchema,
+  DraftPickOwnershipSchema,
+  DraftScoutingReportSchema,
+  DraftSigningDecisionSchema,
+  DraftSignabilitySchema,
+  QualifyingOfferRecordSchema,
+} from "./draft.js";
 
 export const SaveMetaSchema = z.object({
   id: z.string().uuid(),
@@ -309,11 +317,13 @@ export const InternationalScoutingStateSchema = z.object({
 export type InternationalScoutingState = z.infer<typeof InternationalScoutingStateSchema>;
 
 export const DraftStateSchema = z.object({
-  scoutingReports: z.array(z.tuple([z.string(), z.array(z.unknown())])),
-  signability: z.array(z.tuple([z.string(), z.unknown()])),
-  compensatoryPicks: z.array(z.unknown()),
-  pickOwnership: z.array(z.unknown()),
+  scoutingReports: z.array(z.tuple([z.string(), z.array(DraftScoutingReportSchema)])),
+  signability: z.array(z.tuple([z.string(), DraftSignabilitySchema])),
+  qualifyingOffers: z.array(QualifyingOfferRecordSchema),
+  compensatoryPicks: z.array(DraftCompensatoryPickSchema),
+  pickOwnership: z.array(DraftPickOwnershipSchema),
   bigBoards: z.array(z.tuple([z.string(), z.array(z.string())])),
+  signingDecisions: z.array(DraftSigningDecisionSchema),
 });
 export type DraftState = z.infer<typeof DraftStateSchema>;
 
@@ -545,9 +555,11 @@ function createEmptyPhase6State(season: number) {
     draftState: {
       scoutingReports: [],
       signability: [],
+      qualifyingOffers: [],
       compensatoryPicks: [],
       pickOwnership: [],
       bigBoards: [],
+      signingDecisions: [],
     },
     minorLeagueState: {
       serviceTimeLedger: [],

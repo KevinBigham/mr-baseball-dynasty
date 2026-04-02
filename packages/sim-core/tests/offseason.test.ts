@@ -27,11 +27,12 @@ describe('createOffseasonState', () => {
 });
 
 describe('advanceOffseasonDay', () => {
-  it('includes protection audit and rule 5 draft between the amateur draft and spring training', () => {
+  it('includes qualifying offers, rule 5, and international signing in the offseason flow', () => {
     expect(OFFSEASON_PHASES).toEqual([
       'season_review',
       'arbitration',
       'tender_nontender',
+      'qualifying_offers',
       'free_agency',
       'draft',
       'protection_audit',

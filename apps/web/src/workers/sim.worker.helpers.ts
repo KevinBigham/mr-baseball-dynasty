@@ -5,17 +5,26 @@
 import {
   GameRNG,
   TEAMS,
+  DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   FORTY_MAN_LIMIT,
   aiSelectPick,
+  awardCompensatoryPick,
   buildPlayoffPreview,
+  buildDraftPickSlots,
+  calculateMarketValue,
+  createDefaultDraftPickOwnership,
   createInternationalScoutingState as createInternationalScoutingStateCore,
   type InternationalScoutingState,
   determinePlayoffSeeds,
   determineDraftOrder,
+  forfeitHighestEligiblePick,
   generateDraftClass,
   getTeamById,
   getOffseasonLength,
+  resolveDraftSigning,
+  scoutDraftProspect,
+  serviceDaysToYears,
   toDisplayRating,
   toLetterGrade,
   advanceInjury,
@@ -55,6 +64,8 @@ import {
   passRule5DraftTurn as passRule5DraftTurnCore,
   toggleRule5Protection as toggleRule5ProtectionCore,
   type DraftPickResult,
+  type DraftPickSlot,
+  type DraftScoutingReport,
   type FASigningResult,
   type IFAScoutingHistoryEntry,
   type InternationalProspect,
@@ -88,9 +99,12 @@ import type {
   AwardHistoryEntry,
   BriefingItem,
   CareerStatsLedger,
+  DraftCompensatoryPick,
+  DraftPickOwnership,
   FranchiseTimelineEntry,
   HallOfFameBallotEntry,
   HallOfFameEntry,
+  DraftSignability,
   DraftState as PersistentDraftState,
   MinorLeagueState,
   OwnerState,
@@ -262,11 +276,18 @@ export interface DraftRoomProspect {
   lastName: string;
   position: string;
   scoutingGrade: number;
+  consensusGrade: number;
+  looks: number;
+  slotValue: number;
+  askBonus: number;
+  background: string;
+  bigBoardRank: number | null;
   age: number;
   origin: string;
 }
 
 export interface DraftRoomPick {
+  slotId: string;
   round: number;
   pickNumber: number;
   teamId: string;
@@ -277,6 +298,7 @@ export interface DraftRoomPick {
   position: string;
   scoutingGrade: number;
   origin: string;
+  slotKind?: 'standard' | 'compensatory';
   tone: OffseasonTransactionTone;
 }
 
@@ -288,6 +310,7 @@ export interface DraftBoardTeam {
 }
 
 export interface DraftBoardCell {
+  slotId: string;
   round: number;
   pickInRound: number;
   teamId: string;
@@ -427,6 +450,7 @@ export interface SeasonFlowStateView {
 }
 
 export interface DraftCurrentPick {
+  slotId: string;
   round: number;
   pickNumber: number;
   pickInRound: number;
@@ -443,6 +467,10 @@ export interface DraftClassSummaryPick {
   position: string;
   scoutingGrade: number;
   origin: string;
+  slotValue: number;
+  askBonus: number;
+  signed: boolean | null;
+  agreedBonus: number | null;
   assessment: string;
 }
 
@@ -455,6 +483,7 @@ export interface DraftClassSummary {
 export interface DraftRoomView {
   status: DraftRoomStatus;
   availableProspects: DraftRoomProspect[];
+  udfaProspects: DraftRoomProspect[];
   completedPicks: DraftRoomPick[];
   currentPick: DraftCurrentPick | null;
   board: {
@@ -468,6 +497,7 @@ export interface DraftRoomView {
     picksRemaining: number;
   };
   userDraftClass: DraftClassSummary | null;
+  userBigBoard: string[];
   flowStateChanged?: boolean;
 }
 
@@ -481,6 +511,7 @@ export interface DraftActionResult {
 
 export interface DraftSessionState extends DraftClass {
   draftOrder: string[];
+  pickSlots: DraftPickSlot[];
   completedPicks: DraftRoomPick[];
   status: DraftRoomStatus;
 }
@@ -523,9 +554,11 @@ export function createEmptyDraftState(): PersistentDraftState {
   return {
     scoutingReports: [],
     signability: [],
+    qualifyingOffers: [],
     compensatoryPicks: [],
     pickOwnership: [],
     bigBoards: [],
+    signingDecisions: [],
   };
 }
 
@@ -536,6 +569,116 @@ export function createEmptyMinorLeagueState(): MinorLeagueState {
     waiverClaims: [],
     affiliateStates: [],
     affiliateBoxScores: [],
+  };
+}
+
+const QUALIFYING_OFFER_AMOUNT = 20;
+const QUALIFYING_OFFER_MIN_MARKET_VALUE = 15;
+const QUALIFYING_OFFER_MIN_SERVICE_YEARS = 3;
+
+function ensureDraftPickOwnershipForSeason(s: FullGameState) {
+  const requiredSeasons = new Set([s.season, s.season + 1]);
+  const teamIds = TEAMS.map((team) => team.id);
+
+  if (s.draftState.pickOwnership.length === 0) {
+    s.draftState = {
+      ...s.draftState,
+      pickOwnership: createDefaultDraftPickOwnership(teamIds, s.season),
+    };
+    return;
+  }
+
+  const existingSeasonKeys = new Set(s.draftState.pickOwnership.map((pick) => pick.season));
+  if ([...requiredSeasons].every((season) => existingSeasonKeys.has(season))) {
+    return;
+  }
+
+  const supplemental = createDefaultDraftPickOwnership(teamIds, s.season)
+    .filter((pick) => !s.draftState.pickOwnership.some((existing) =>
+      existing.season === pick.season
+      && existing.round === pick.round
+      && existing.originalTeamId === pick.originalTeamId,
+    ));
+  s.draftState = {
+    ...s.draftState,
+    pickOwnership: [...s.draftState.pickOwnership, ...supplemental],
+  };
+}
+
+function getTeamDraftScoutingReports(
+  s: FullGameState,
+  teamId: string,
+): DraftScoutingReport[] {
+  return s.draftState.scoutingReports.find(([candidateTeamId]) => candidateTeamId === teamId)?.[1] ?? [];
+}
+
+function upsertTeamDraftScoutingReport(
+  s: FullGameState,
+  teamId: string,
+  report: DraftScoutingReport,
+) {
+  const nextReports = getTeamDraftScoutingReports(s, teamId);
+  const updated = nextReports.some((entry) => entry.playerId === report.playerId)
+    ? nextReports.map((entry) => (entry.playerId === report.playerId ? report : entry))
+    : [...nextReports, report];
+
+  s.draftState = {
+    ...s.draftState,
+    scoutingReports: s.draftState.scoutingReports.some(([candidateTeamId]) => candidateTeamId === teamId)
+      ? s.draftState.scoutingReports.map(([candidateTeamId, reports]) => (
+        candidateTeamId === teamId ? [candidateTeamId, updated] : [candidateTeamId, reports]
+      ))
+      : [...s.draftState.scoutingReports, [teamId, updated]],
+  };
+}
+
+function getDraftSignabilityEntry(
+  s: FullGameState,
+  playerId: string,
+): DraftSignability | null {
+  return s.draftState.signability.find(([candidatePlayerId]) => candidatePlayerId === playerId)?.[1] ?? null;
+}
+
+function ensureDraftMetadataForSession(s: FullGameState, session: DraftClass) {
+  const signabilityEntries = [...s.draftState.signability];
+  let changed = false;
+
+  for (const prospect of session.prospects) {
+    if (signabilityEntries.some(([playerId]) => playerId === prospect.player.id)) {
+      continue;
+    }
+
+    signabilityEntries.push([prospect.player.id, {
+      playerId: prospect.player.id,
+      background: prospect.background as DraftSignability['background'],
+      commitmentStrength: prospect.commitmentStrength,
+      signability: prospect.signability,
+      slotValue: prospect.slotValue,
+      askBonus: prospect.askBonus,
+    }]);
+    changed = true;
+  }
+
+  if (changed) {
+    s.draftState = {
+      ...s.draftState,
+      signability: signabilityEntries,
+    };
+  }
+}
+
+function getUserBigBoard(s: FullGameState): string[] {
+  return s.draftState.bigBoards.find(([teamId]) => teamId === s.userTeamId)?.[1] ?? [];
+}
+
+function upsertUserBigBoard(s: FullGameState, board: string[]) {
+  s.draftState = {
+    ...s.draftState,
+    bigBoards: s.draftState.bigBoards.some(([teamId]) => teamId === s.userTeamId)
+      ? s.draftState.bigBoards.map(([teamId, entries]) => (
+        teamId === s.userTeamId ? [teamId, board] : [teamId, entries]
+      ))
+      : [...s.draftState.bigBoards, [s.userTeamId, board]],
   };
 }
 
@@ -668,6 +811,7 @@ function phaseLabel(phase: string): string {
     case 'season_review': return 'Season Review';
     case 'arbitration': return 'Arbitration';
     case 'tender_nontender': return 'Tender / Non-Tender';
+    case 'qualifying_offers': return 'Qualifying Offers';
     case 'free_agency': return 'Free Agency';
     case 'draft': return 'Amateur Draft';
     case 'protection_audit': return 'Protection Audit';
@@ -698,7 +842,10 @@ function buildDraftOrderFromStandings(seasonState: SeasonState): string[] {
 function originLabel(origin: string): string {
   switch (origin) {
     case 'college':
-      return 'College';
+    case 'college_senior':
+      return 'College Senior';
+    case 'college_underclass':
+      return 'College Underclass';
     case 'high_school':
       return 'HS';
     case 'international':
@@ -710,11 +857,12 @@ function originLabel(origin: string): string {
 
 function isDraftSessionState(value: DraftClass | DraftSessionState): value is DraftSessionState {
   return Array.isArray((value as DraftSessionState).draftOrder)
+    && Array.isArray((value as DraftSessionState).pickSlots)
     && Array.isArray((value as DraftSessionState).completedPicks);
 }
 
 function getDraftStatus(session: DraftSessionState): DraftRoomStatus {
-  const totalSlots = session.draftOrder.length * DRAFT_ROUNDS;
+  const totalSlots = session.pickSlots.length;
   if (session.prospects.length === 0 || session.completedPicks.length >= totalSlots) {
     return 'complete';
   }
@@ -737,6 +885,7 @@ function normalizeDraftRoomPick(
       : 'neutral';
 
   return {
+    slotId: entry.slotId ?? `pick-${entry.pickNumber ?? 1}`,
     round: entry.round ?? 1,
     pickNumber: entry.pickNumber ?? 1,
     teamId,
@@ -747,6 +896,7 @@ function normalizeDraftRoomPick(
     position: entry.position ?? 'UNK',
     scoutingGrade: entry.scoutingGrade ?? 0,
     origin: originLabel(entry.origin ?? 'Unknown'),
+    slotKind: entry.slotKind ?? 'standard',
     tone,
   };
 }
@@ -754,10 +904,13 @@ function normalizeDraftRoomPick(
 export function createDraftSessionState(
   draftClass: DraftClass,
   seasonState: SeasonState,
+  draftState: PersistentDraftState,
 ): DraftSessionState {
+  const draftOrder = buildDraftOrderFromStandings(seasonState);
   return {
     ...draftClass,
-    draftOrder: buildDraftOrderFromStandings(seasonState),
+    draftOrder,
+    pickSlots: buildDraftPickSlots(draftOrder, draftState.pickOwnership, draftState.compensatoryPicks, draftClass.season),
     completedPicks: [],
     status: 'available',
   };
@@ -766,6 +919,7 @@ export function createDraftSessionState(
 export function normalizeDraftSessionState(
   draftClass: DraftSessionState | DraftClass | null,
   seasonState: SeasonState,
+  draftState: PersistentDraftState,
   userTeamId: string,
 ): DraftSessionState | null {
   if (!draftClass) {
@@ -778,9 +932,17 @@ export function normalizeDraftSessionState(
       draftOrder: draftClass.draftOrder.length > 0
         ? [...draftClass.draftOrder]
         : buildDraftOrderFromStandings(seasonState),
+      pickSlots: draftClass.pickSlots.length > 0
+        ? [...draftClass.pickSlots]
+        : buildDraftPickSlots(
+          buildDraftOrderFromStandings(seasonState),
+          draftState.pickOwnership,
+          draftState.compensatoryPicks,
+          draftClass.season,
+        ),
       completedPicks: draftClass.completedPicks.map((pick) => normalizeDraftRoomPick(userTeamId, pick)),
     }
-    : createDraftSessionState(draftClass, seasonState);
+    : createDraftSessionState(draftClass, seasonState, draftState);
 
   return {
     ...normalized,
@@ -793,30 +955,37 @@ function getCurrentDraftSlot(session: DraftSessionState) {
     return null;
   }
 
-  const totalSlots = session.draftOrder.length * DRAFT_ROUNDS;
+  const totalSlots = session.pickSlots.length;
   if (session.completedPicks.length >= totalSlots) {
     return null;
   }
 
-  const pickIndex = session.completedPicks.length;
-  const round = Math.floor(pickIndex / session.draftOrder.length) + 1;
-  const pickInRound = (pickIndex % session.draftOrder.length) + 1;
-  const teamId = session.draftOrder[pickInRound - 1] ?? '';
-  if (!teamId) {
+  const currentSlot = session.pickSlots[session.completedPicks.length];
+  if (!currentSlot) {
     return null;
   }
 
+  const pickInRound = session.pickSlots
+    .filter((slot) => slot.round === currentSlot.round && slot.pickNumber <= currentSlot.pickNumber)
+    .length;
+
   return {
-    round,
-    pickNumber: pickIndex + 1,
+    slotId: currentSlot.slotId,
+    round: currentSlot.round,
+    pickNumber: currentSlot.pickNumber,
     pickInRound,
-    teamId,
+    teamId: currentSlot.teamId,
+    slotKind: currentSlot.kind,
   };
 }
 
 function ensureDraftSession(s: FullGameState): DraftSessionState | null {
-  const normalized = normalizeDraftSessionState(s.draftClass, s.seasonState, s.userTeamId);
+  ensureDraftPickOwnershipForSeason(s);
+  const normalized = normalizeDraftSessionState(s.draftClass, s.seasonState, s.draftState, s.userTeamId);
   s.draftClass = normalized;
+  if (normalized) {
+    ensureDraftMetadataForSession(s, normalized);
+  }
   return normalized;
 }
 
@@ -829,6 +998,7 @@ function recordDraftPickForState(
   const teamId = slot.teamId;
   const team = getTeamById(teamId);
   const pick: DraftRoomPick = {
+    slotId: slot.slotId,
     round: slot.round,
     pickNumber: slot.pickNumber,
     teamId,
@@ -839,6 +1009,7 @@ function recordDraftPickForState(
     position: prospect.player.position,
     scoutingGrade: prospect.scoutingGrade,
     origin: originLabel(prospect.collegeOrHS),
+    slotKind: slot.slotKind,
     tone: transactionToneForTeam(s, teamId),
   };
 
@@ -917,8 +1088,19 @@ function overallDraftGrade(picks: DraftRoomPick[], totalPicks: number): string {
 }
 
 function buildDraftBoard(s: FullGameState, session: DraftSessionState | null) {
+  ensureDraftPickOwnershipForSeason(s);
   const draftOrder = session?.draftOrder ?? buildDraftOrderFromStandings(s.seasonState);
-  const teams = draftOrder.map((teamId) => {
+  const pickSlots = session?.pickSlots ?? buildDraftPickSlots(
+    draftOrder,
+    s.draftState.pickOwnership,
+    s.draftState.compensatoryPicks,
+    s.season,
+  );
+  const teams = (pickSlots.length > 0 ? pickSlots.filter((slot) => slot.round === 1) : draftOrder.map((teamId, index) => ({
+    slotId: `fallback-${index + 1}`,
+    teamId,
+  }))).map((slot) => {
+    const teamId = 'teamId' in slot ? slot.teamId : slot;
     const team = getTeamById(teamId);
     return {
       teamId,
@@ -929,20 +1111,22 @@ function buildDraftBoard(s: FullGameState, session: DraftSessionState | null) {
   });
 
   const picksByKey = new Map(
-    (session?.completedPicks ?? []).map((pick) => [`${pick.round}:${pick.teamId}`, pick] as const),
+    (session?.completedPicks ?? []).map((pick) => [pick.slotId, pick] as const),
   );
 
   const rounds: DraftBoardRow[] = [];
   for (let round = 1; round <= DRAFT_ROUNDS; round++) {
+    const roundSlots = pickSlots.filter((slot) => slot.round === round);
     rounds.push({
       round,
-      cells: draftOrder.map((teamId, index) => ({
+      cells: roundSlots.map((slot, index) => ({
+        slotId: slot.slotId,
         round,
         pickInRound: index + 1,
-        teamId,
-        teamAbbreviation: getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase(),
-        tone: transactionToneForTeam(s, teamId),
-        pick: picksByKey.get(`${round}:${teamId}`) ?? null,
+        teamId: slot.teamId,
+        teamAbbreviation: getTeamById(slot.teamId)?.abbreviation ?? slot.teamId.toUpperCase(),
+        tone: transactionToneForTeam(s, slot.teamId),
+        pick: picksByKey.get(slot.slotId) ?? null,
       })),
     });
   }
@@ -952,6 +1136,11 @@ function buildDraftBoard(s: FullGameState, session: DraftSessionState | null) {
 
 export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
   const session = ensureDraftSession(s);
+  const userReports = new Map(
+    getTeamDraftScoutingReports(s, s.userTeamId).map((report) => [report.playerId, report] as const),
+  );
+  const userBigBoard = getUserBigBoard(s);
+  const bigBoardIndex = new Map(userBigBoard.map((playerId, index) => [playerId, index] as const));
   if (!session) {
     if (s.phase !== 'offseason') {
       return null;
@@ -960,6 +1149,7 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
     return {
       status: 'available',
       availableProspects: [],
+      udfaProspects: [],
       completedPicks: [],
       currentPick: null,
       board: buildDraftBoard(s, null),
@@ -970,12 +1160,25 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
         picksRemaining: 0,
       },
       userDraftClass: null,
+      userBigBoard,
     };
   }
 
   const sortedProspects = [...session.prospects].sort((left, right) => {
-    if (right.scoutingGrade !== left.scoutingGrade) {
-      return right.scoutingGrade - left.scoutingGrade;
+    const leftBoardRank = bigBoardIndex.get(left.player.id);
+    const rightBoardRank = bigBoardIndex.get(right.player.id);
+    if (leftBoardRank != null || rightBoardRank != null) {
+      if (leftBoardRank == null) return 1;
+      if (rightBoardRank == null) return -1;
+      if (leftBoardRank !== rightBoardRank) return leftBoardRank - rightBoardRank;
+    }
+
+    const leftReport = userReports.get(left.player.id);
+    const rightReport = userReports.get(right.player.id);
+    const leftGrade = leftReport?.overallGrade ?? left.scoutingGrade;
+    const rightGrade = rightReport?.overallGrade ?? right.scoutingGrade;
+    if (rightGrade !== leftGrade) {
+      return rightGrade - leftGrade;
     }
     return `${left.player.lastName}${left.player.firstName}`.localeCompare(
       `${right.player.lastName}${right.player.firstName}`,
@@ -988,21 +1191,32 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
     firstName: prospect.player.firstName,
     lastName: prospect.player.lastName,
     position: prospect.player.position,
-    scoutingGrade: prospect.scoutingGrade,
+    scoutingGrade: userReports.get(prospect.player.id)?.overallGrade ?? prospect.scoutingGrade,
+    consensusGrade: prospect.scoutingGrade,
+    looks: userReports.get(prospect.player.id)?.looks ?? 0,
+    slotValue: prospect.slotValue,
+    askBonus: prospect.askBonus,
+    background: originLabel(prospect.background),
+    bigBoardRank: bigBoardIndex.get(prospect.player.id) != null ? (bigBoardIndex.get(prospect.player.id)! + 1) : null,
     age: prospect.player.age,
     origin: originLabel(prospect.collegeOrHS),
   }));
 
   const currentSlot = session.status === 'complete' ? null : getCurrentDraftSlot(session);
-  const totalPicks = session.completedPicks.length + session.prospects.length;
+  const totalPicks = session.pickSlots.length;
   const currentTeam = currentSlot ? getTeamById(currentSlot.teamId) : null;
   const userPicks = session.completedPicks.filter((pick) => pick.teamId === s.userTeamId);
+  const signingDecisions = new Map(s.draftState.signingDecisions.map((entry) => [entry.playerId, entry] as const));
 
   return {
     status: session.status,
     availableProspects,
+    udfaProspects: session.status === 'complete'
+      ? availableProspects.slice(0, Math.max(0, DRAFT_CLASS_SIZE - totalPicks))
+      : [],
     completedPicks: session.completedPicks,
     currentPick: currentSlot ? {
+      slotId: currentSlot.slotId,
       round: currentSlot.round,
       pickNumber: currentSlot.pickNumber,
       pickInRound: currentSlot.pickInRound,
@@ -1026,6 +1240,10 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
         position: pick.position,
         scoutingGrade: pick.scoutingGrade,
         origin: pick.origin,
+        slotValue: getDraftSignabilityEntry(s, pick.playerId)?.slotValue ?? 0,
+        askBonus: getDraftSignabilityEntry(s, pick.playerId)?.askBonus ?? 0,
+        signed: signingDecisions.get(pick.playerId)?.signed ?? null,
+        agreedBonus: signingDecisions.get(pick.playerId)?.agreedBonus ?? null,
         assessment: assessmentForDraftPick(pick, totalPicks),
       })),
       overallGrade: overallDraftGrade(userPicks, totalPicks),
@@ -1033,6 +1251,7 @@ export function buildDraftRoomView(s: FullGameState): DraftRoomView | null {
         (userPicks.reduce((sum, pick) => sum + pick.scoutingGrade, 0) / userPicks.length).toFixed(1),
       ),
     } : null,
+    userBigBoard,
   };
 }
 
@@ -1215,9 +1434,184 @@ export function tradeUserIFABonusPool(
   };
 }
 
+export function scoutUserDraftPlayer(
+  s: FullGameState,
+  playerId: string,
+): { success: true; report: DraftScoutingReport } | { success: false; error: string } {
+  const session = ensureDraftSession(s);
+  const prospect = session?.prospects.find((candidate) => candidate.player.id === playerId);
+  if (!session || !prospect) {
+    return { success: false, error: 'Draft prospect not available.' };
+  }
+
+  const staff = s.scoutingStaffs.get(s.userTeamId) ?? [];
+  const accuracy = getInternationalScoutAccuracy(staff);
+  const previousReport = getTeamDraftScoutingReports(s, s.userTeamId)
+    .find((report) => report.playerId === playerId);
+  const report = scoutDraftProspect(s.rng.fork(), prospect, accuracy, previousReport);
+  upsertTeamDraftScoutingReport(s, s.userTeamId, report);
+  return { success: true, report };
+}
+
+export function toggleUserDraftBigBoardPlayer(
+  s: FullGameState,
+  playerId: string,
+): { success: true; board: string[] } | { success: false; error: string } {
+  const session = ensureDraftSession(s);
+  if (!session || !session.prospects.some((prospect) => prospect.player.id === playerId)) {
+    return { success: false, error: 'Draft prospect not available.' };
+  }
+
+  const currentBoard = getUserBigBoard(s);
+  const nextBoard = currentBoard.includes(playerId)
+    ? currentBoard.filter((entry) => entry !== playerId)
+    : [...currentBoard, playerId];
+  upsertUserBigBoard(s, nextBoard);
+  return { success: true, board: nextBoard };
+}
+
+function recordDraftSigningDecision(
+  s: FullGameState,
+  playerId: string,
+  teamId: string,
+  signed: boolean,
+  offeredBonus: number,
+  agreedBonus: number | null,
+  returnPath: 'organization' | 'college',
+) {
+  const decision = {
+    playerId,
+    teamId,
+    season: s.season,
+    signed,
+    offeredBonus,
+    agreedBonus,
+    returnPath,
+  } as const;
+
+  s.draftState = {
+    ...s.draftState,
+    signingDecisions: s.draftState.signingDecisions.some((entry) => entry.playerId === playerId)
+      ? s.draftState.signingDecisions.map((entry) => (entry.playerId === playerId ? decision : entry))
+      : [...s.draftState.signingDecisions, decision],
+  };
+}
+
+function applyUnsignedDraftOutcome(
+  s: FullGameState,
+  playerId: string,
+  teamId: string,
+) {
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  if (!player) return;
+
+  player.teamId = '';
+  player.rosterStatus = 'INTERNATIONAL';
+  player.minorLeagueLevel = 'INTERNATIONAL';
+  s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+}
+
+function buildDraftProspectFromState(
+  s: FullGameState,
+  playerId: string,
+  scoutingGrade: number,
+  round: number,
+  pickNumber: number,
+): DraftProspect | null {
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  const signabilityEntry = getDraftSignabilityEntry(s, playerId);
+  if (!player || !signabilityEntry) {
+    return null;
+  }
+
+  return {
+    player,
+    scoutingGrade,
+    signability: signabilityEntry.signability,
+    collegeOrHS: signabilityEntry.background,
+    background: signabilityEntry.background,
+    commitmentStrength: signabilityEntry.commitmentStrength,
+    draftRound: round,
+    positionRank: 0,
+    slotValue: signabilityEntry.slotValue,
+    askBonus: signabilityEntry.askBonus,
+    consensusRank: pickNumber,
+  };
+}
+
+export function signUserDraftPick(
+  s: FullGameState,
+  playerId: string,
+  bonusAmount: number,
+): { success: true; signed: boolean; message: string } | { success: false; error: string } {
+  const pick = ensureDraftSession(s)?.completedPicks.find((entry) => entry.playerId === playerId && entry.teamId === s.userTeamId);
+  if (!pick) {
+    return { success: false, error: 'Drafted player not found.' };
+  }
+  if (s.draftState.signingDecisions.some((entry) => entry.playerId === playerId)) {
+    return { success: false, error: 'Signing decision already recorded.' };
+  }
+
+  const prospect = buildDraftProspectFromState(s, playerId, pick.scoutingGrade, pick.round, pick.pickNumber);
+  if (!prospect) {
+    return { success: false, error: 'Draft metadata unavailable.' };
+  }
+
+  const outcome = resolveDraftSigning(s.rng.fork(), prospect, bonusAmount);
+  recordDraftSigningDecision(
+    s,
+    playerId,
+    s.userTeamId,
+    outcome.signed,
+    outcome.offeredBonus,
+    outcome.signed ? outcome.offeredBonus : null,
+    outcome.returnPath,
+  );
+
+  if (!outcome.signed) {
+    applyUnsignedDraftOutcome(s, playerId, s.userTeamId);
+    return { success: true, signed: false, message: 'Player declined and will head to school.' };
+  }
+
+  return { success: true, signed: true, message: 'Player signed and joined the organization.' };
+}
+
+function autoResolveAIDraftSignings(s: FullGameState) {
+  const session = ensureDraftSession(s);
+  if (!session || session.status !== 'complete') {
+    return;
+  }
+
+  for (const pick of session.completedPicks) {
+    if (pick.teamId === s.userTeamId) continue;
+    if (s.draftState.signingDecisions.some((entry) => entry.playerId === pick.playerId)) continue;
+
+    const prospect = buildDraftProspectFromState(s, pick.playerId, pick.scoutingGrade, pick.round, pick.pickNumber);
+    if (!prospect) continue;
+
+    const offer = Math.max(0.05, Math.round(prospect.askBonus * (0.95 + s.rng.nextFloat() * 0.12) * 100) / 100);
+    const outcome = resolveDraftSigning(s.rng.fork(), prospect, offer);
+    recordDraftSigningDecision(
+      s,
+      pick.playerId,
+      pick.teamId,
+      outcome.signed,
+      outcome.offeredBonus,
+      outcome.signed ? outcome.offeredBonus : null,
+      outcome.returnPath,
+    );
+
+    if (!outcome.signed) {
+      applyUnsignedDraftOutcome(s, pick.playerId, pick.teamId);
+    }
+  }
+}
+
 export function startDraftSession(s: FullGameState, draftClass?: DraftClass): DraftActionResult {
   if (draftClass) {
-    s.draftClass = createDraftSessionState(draftClass, s.seasonState);
+    ensureDraftPickOwnershipForSeason(s);
+    ensureDraftMetadataForSession(s, draftClass);
+    s.draftClass = createDraftSessionState(draftClass, s.seasonState, s.draftState);
   }
 
   const session = ensureDraftSession(s);
@@ -1256,6 +1650,9 @@ export function makeUserDraftSelection(s: FullGameState, prospectId: string): Dr
 
   const newPicks = [recordDraftPickForState(s, session, currentSlot, prospect), ...advanceDraftToUserTurn(s)];
   session.status = getDraftStatus(session);
+  if (session.status === 'complete') {
+    autoResolveAIDraftSignings(s);
+  }
   return {
     success: true,
     draft: buildDraftRoomView(s),
@@ -1281,6 +1678,9 @@ export function simulateRemainingDraftSession(s: FullGameState): DraftActionResu
   }
 
   session.status = getDraftStatus(session);
+  if (session.status === 'complete') {
+    autoResolveAIDraftSignings(s);
+  }
   return {
     success: true,
     draft: buildDraftRoomView(s),
@@ -2287,6 +2687,112 @@ function applyTenderDecisionsOnce(s: FullGameState) {
   }
 }
 
+function processQualifyingOffersOnce(s: FullGameState) {
+  if (s.draftState.qualifyingOffers.some((entry) => entry.season === s.season)) {
+    return;
+  }
+
+  const records = [];
+  for (const player of s.players) {
+    if (player.teamId === '' || player.rosterStatus !== 'MLB' || player.contract.years > 0) {
+      continue;
+    }
+
+    const marketValue = calculateMarketValue(player);
+    const serviceYears = serviceDaysToYears(player.serviceTimeDays);
+    if (serviceYears < QUALIFYING_OFFER_MIN_SERVICE_YEARS || marketValue < QUALIFYING_OFFER_MIN_MARKET_VALUE) {
+      continue;
+    }
+
+    const ageModifier = player.age >= 33 ? 0.14 : 0;
+    const acceptChance = Math.max(0.08, Math.min(0.82, 0.72 - Math.max(0, marketValue - QUALIFYING_OFFER_AMOUNT) * 0.08 + ageModifier));
+    const accepted = s.rng.nextFloat() < acceptChance;
+
+    if (accepted) {
+      player.contract.years = 1;
+      player.contract.annualSalary = QUALIFYING_OFFER_AMOUNT;
+    }
+
+    records.push({
+      playerId: player.id,
+      teamId: player.teamId,
+      season: s.season,
+      marketValue,
+      amount: QUALIFYING_OFFER_AMOUNT,
+      status: accepted ? 'accepted' : 'rejected',
+      signingTeamId: accepted ? player.teamId : null,
+      compensationPickId: null,
+    } as const);
+  }
+
+  if (records.length > 0) {
+    s.draftState = {
+      ...s.draftState,
+      qualifyingOffers: [...s.draftState.qualifyingOffers, ...records],
+    };
+  }
+}
+
+function applyQualifyingOfferCompensationIfNeeded(
+  s: FullGameState,
+  playerId: string,
+  signingTeamId: string,
+) {
+  const record = s.draftState.qualifyingOffers.find((entry) => entry.playerId === playerId && entry.season === s.season);
+  if (!record || record.status !== 'rejected') {
+    return;
+  }
+
+  if (record.teamId === signingTeamId) {
+    s.draftState = {
+      ...s.draftState,
+      qualifyingOffers: s.draftState.qualifyingOffers.map((entry) => (
+        entry.playerId === playerId && entry.season === s.season
+          ? { ...entry, status: 'expired', signingTeamId }
+          : entry
+      )),
+    };
+    return;
+  }
+
+  ensureDraftPickOwnershipForSeason(s);
+  const compensationOrder = s.draftState.compensatoryPicks.filter((entry) => entry.season === s.season).length + 1;
+  const compensatoryPicks = awardCompensatoryPick(s.draftState.compensatoryPicks, {
+    season: s.season,
+    awardedToTeamId: record.teamId,
+    compensationForPlayerId: playerId,
+    compensationFromTeamId: signingTeamId,
+    order: compensationOrder,
+  });
+  const forfeiture = forfeitHighestEligiblePick(
+    s.draftState.pickOwnership,
+    buildDraftOrderFromStandings(s.seasonState),
+    signingTeamId,
+    s.season,
+  );
+  const awardedPick = compensatoryPicks.find((entry) =>
+    entry.season === s.season
+    && entry.compensationForPlayerId === playerId
+    && entry.awardedToTeamId === record.teamId,
+  ) ?? null;
+
+  s.draftState = {
+    ...s.draftState,
+    compensatoryPicks,
+    pickOwnership: forfeiture.pickOwnership,
+    qualifyingOffers: s.draftState.qualifyingOffers.map((entry) => (
+      entry.playerId === playerId && entry.season === s.season
+        ? {
+          ...entry,
+          status: 'compensated',
+          signingTeamId,
+          compensationPickId: awardedPick?.id ?? null,
+        }
+        : entry
+    )),
+  };
+}
+
 function ensureFreeAgencyMarket(s: FullGameState) {
   if (!s.freeAgencyMarket) {
     s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
@@ -2364,6 +2870,7 @@ function applyNewFreeAgencySignings(
       totalValue: contract.totalValue,
     };
     s.offseasonState = recordFASigning(s.offseasonState, signingResult);
+    applyQualifyingOfferCompensationIfNeeded(s, player.id, teamId);
     currentSigningIds.add(player.id);
     progress.push({
       playerId: player.id,
@@ -2420,6 +2927,11 @@ function processCurrentOffseasonPhase(
   if (currentPhase === 'tender_nontender' && enteredPhase) {
     applyArbitrationResultsOnce(s);
     applyTenderDecisionsOnce(s);
+    return { aiSignings: [] };
+  }
+
+  if (currentPhase === 'qualifying_offers' && enteredPhase) {
+    processQualifyingOffersOnce(s);
     return { aiSignings: [] };
   }
 
@@ -2480,7 +2992,10 @@ function finalizeDraftIfNeeded(
   }
 
   if (!s.draftClass) {
-    s.draftClass = createDraftSessionState(generateDraftClass(s.rng.fork(), s.season), s.seasonState);
+    ensureDraftPickOwnershipForSeason(s);
+    const generatedDraftClass = generateDraftClass(s.rng.fork(), s.season);
+    ensureDraftMetadataForSession(s, generatedDraftClass);
+    s.draftClass = createDraftSessionState(generatedDraftClass, s.seasonState, s.draftState);
   }
 
   const session = ensureDraftSession(s);
@@ -2489,6 +3004,7 @@ function finalizeDraftIfNeeded(
   }
 
   simulateRemainingDraftSession(s);
+  autoResolveAIDraftSignings(s);
 }
 
 function applyOffseasonTransition(

@@ -52,13 +52,34 @@ export type { TransactionType, RosterTransaction } from "./schemas/roster.js";
 
 export {
   ScoutReportSchema,
+  DraftProspectBackgroundEnum,
+  DraftScoutingReportSchema,
+  DraftSignabilitySchema,
+  DraftPickOwnershipSchema,
+  DraftCompensatoryPickSchema,
+  QualifyingOfferStatusEnum,
+  QualifyingOfferRecordSchema,
+  DraftSigningDecisionSchema,
   DraftPickSchema,
   DraftClassSchema,
 } from "./schemas/draft.js";
-export type { ScoutReport, DraftPick, DraftClass } from "./schemas/draft.js";
+export type {
+  ScoutReport,
+  DraftProspectBackground,
+  DraftScoutingReport,
+  DraftSignability,
+  DraftPickOwnership,
+  DraftCompensatoryPick,
+  QualifyingOfferStatus,
+  QualifyingOfferRecord,
+  DraftSigningDecision,
+  DraftPick,
+  DraftClass,
+} from "./schemas/draft.js";
 
 export {
   TradeStatusEnum,
+  TradeAssetSchema,
   TradePackageSchema,
   TradeProposalSchema,
   PersistentTradeOfferSchema,
@@ -67,6 +88,7 @@ export {
 } from "./schemas/trade.js";
 export type {
   TradeStatus,
+  TradeAsset,
   TradePackage,
   TradeProposal,
   PersistentTradeOffer,

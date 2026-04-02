@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore, useCallback } from 'react';
 import * as Comlink from 'comlink';
+import type { TradeAsset } from '@mbd/contracts';
 import type { WorkerApi } from '@/workers/sim.worker';
 
 // ---------------------------------------------------------------------------
@@ -179,22 +180,53 @@ export function useWorker() {
     async (prospectId: string) => runMutation(() => api.makeDraftPick(prospectId)),
     [api, runMutation],
   );
+  const scoutDraftPlayer = useCallback(
+    async (prospectId: string) => {
+      const result = await api.scoutDraftPlayer(prospectId);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
+  );
+  const toggleDraftBigBoard = useCallback(
+    async (prospectId: string) => {
+      const result = await api.toggleDraftBigBoard(prospectId);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
+  );
+  const signDraftPick = useCallback(
+    async (playerId: string, bonusAmount: number) => {
+      const result = await api.signDraftPick(playerId, bonusAmount);
+      if (isFlowAwareResult(result) && result.flowStateChanged) {
+        notifyFlowListeners();
+      }
+      return result;
+    },
+    [api],
+  );
   const simulateRemainingDraft = useCallback(
     async () => runMutation(() => api.simulateRemainingDraft()),
     [api, runMutation],
   );
   const getTradeOffers = useCallback(async () => api.getTradeOffers(), [api]);
   const getTradeHistory = useCallback(async () => api.getTradeHistory(), [api]);
+  const getTradeAssetInventory = useCallback(async (teamId: string) => api.getTradeAssetInventory(teamId), [api]);
   const proposeTrade = useCallback(
-    async (offered: string[], requested: string[], toTeamId: string) =>
-      api.proposeTrade(offered, requested, toTeamId),
+    async (offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) =>
+      api.proposeTrade(offeringAssets, requestingAssets, toTeamId),
     [api],
   );
   const respondToTradeOffer = useCallback(
     async (
       offerId: string,
       action: 'accept' | 'decline' | 'counter',
-      counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+      counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
     ) => api.respondToTradeOffer(offerId, action, counterPackage),
     [api],
   );
@@ -269,8 +301,8 @@ export function useWorker() {
     getStandings, getTeamRoster, getFullRoster, getPlayer,
     getLeagueLeaders, getPlayoffBracket, getHallOfFame, getFranchiseTimeline, getDynastyScore, getDashboardSummary, getSeasonFlowState,
     getScoutingStaff, scoutPlayerReport, getIFAPool, scoutIFAPlayer, signIFAPlayer, tradeIFAPoolSpace,
-    getDraftClass, startDraft, makeDraftPick, simulateRemainingDraft,
-    getTradeOffers, getTradeHistory, proposeTrade, respondToTradeOffer,
+    getDraftClass, startDraft, makeDraftPick, scoutDraftPlayer, toggleDraftBigBoard, signDraftPick, simulateRemainingDraft,
+    getTradeOffers, getTradeHistory, getTradeAssetInventory, proposeTrade, respondToTradeOffer,
     getNews, markNewsRead, proceedToOffseason, startNextSeason,
     getBriefing, getPressRoomFeed, getTeamChemistry, getOwnerState,
     getPersonalityProfile, getAwardRaces, getRivalries,

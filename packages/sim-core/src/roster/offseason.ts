@@ -1,6 +1,6 @@
 /**
  * @module offseason
- * Offseason phase sequencing: arbitration → tender/non-tender → extensions →
+ * Offseason phase sequencing: arbitration → tender/non-tender → qualifying offers →
  * free agency → draft → rule 5 → international signing → spring training.
  * Pure engine logic — no React, no DOM.
  */
@@ -16,6 +16,7 @@ export const OFFSEASON_PHASES = [
   'season_review',
   'arbitration',
   'tender_nontender',
+  'qualifying_offers',
   'free_agency',
   'draft',
   'protection_audit',
@@ -31,6 +32,7 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   season_review: 3,
   arbitration: 7,
   tender_nontender: 5,
+  qualifying_offers: 4,
   free_agency: 30,
   draft: 3,
   protection_audit: 4,

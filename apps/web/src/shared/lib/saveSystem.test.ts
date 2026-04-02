@@ -86,9 +86,11 @@ function createSnapshot(): GameSnapshot {
     draftState: {
       scoutingReports: [],
       signability: [],
+      qualifyingOffers: [],
       compensatoryPicks: [],
       pickOwnership: [],
       bigBoards: [],
+      signingDecisions: [],
     },
     minorLeagueState: {
       serviceTimeLedger: [],

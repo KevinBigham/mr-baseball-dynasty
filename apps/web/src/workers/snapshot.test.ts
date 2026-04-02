@@ -155,9 +155,11 @@ function createState(): FullGameState {
     draftState: {
       scoutingReports: [],
       signability: [],
+      qualifyingOffers: [],
       compensatoryPicks: [],
       pickOwnership: [],
       bigBoards: [],
+      signingDecisions: [],
     },
     minorLeagueState: {
       serviceTimeLedger: [],

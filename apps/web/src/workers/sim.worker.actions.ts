@@ -38,6 +38,7 @@ import type {
   PlayoffSeriesState,
   TradeProposal,
 } from '@mbd/sim-core';
+import type { TradeAsset } from '@mbd/contracts';
 import {
   createEmptyDraftState,
   createEmptyInternationalScoutingState,
@@ -54,11 +55,14 @@ import {
   requireState,
   resolveRule5OfferBackDecision,
   passUserRule5Turn,
+  scoutUserDraftPlayer,
   scoutUserIFAPlayer,
   signUserIFAPlayer,
+  signUserDraftPick,
   startDraftSession,
   setState,
   skipOffseasonPhaseWithAI,
+  toggleUserDraftBigBoardPlayer,
   tradeUserIFABonusPool,
   simulateRemainingDraftSession,
   timestamp,
@@ -75,6 +79,7 @@ import {
   clearPendingTradeOffers,
   isTradeMarketOpen,
   processTradeMarketActivity,
+  proposeTradePackage,
   recordAcceptedUserTrade,
   respondToTradeOffer,
 } from './sim.worker.trade.js';
@@ -801,6 +806,27 @@ export const actionApi = {
     };
   },
 
+  scoutDraftPlayer(prospectId: string) {
+    return {
+      ...scoutUserDraftPlayer(requireState(), prospectId),
+      flowStateChanged: true,
+    };
+  },
+
+  toggleDraftBigBoard(prospectId: string) {
+    return {
+      ...toggleUserDraftBigBoardPlayer(requireState(), prospectId),
+      flowStateChanged: true,
+    };
+  },
+
+  signDraftPick(playerId: string, bonusAmount: number) {
+    return {
+      ...signUserDraftPick(requireState(), playerId, bonusAmount),
+      flowStateChanged: true,
+    };
+  },
+
   simulateRemainingDraft() {
     return {
       ...simulateRemainingDraftSession(requireState()),
@@ -808,49 +834,19 @@ export const actionApi = {
     };
   },
 
-  proposeTrade(offered: string[], requested: string[], toTeamId: string) {
-    const s = requireState();
-    if (!isTradeMarketOpen(s)) {
-      return { decision: 'rejected', reason: 'Trade market closed — reopens in offseason' };
-    }
-    const gm = s.gmPersonalities.get(toTeamId);
-    if (!gm) {
-      return { decision: 'rejected', reason: 'Unknown team' };
-    }
-
-    const preTradeUserPlayers = getTeamPlayers(s.userTeamId);
-    const preTradePartnerPlayers = getTeamPlayers(toTeamId);
-    const proposal: TradeProposal = {
-      id: generateTradeId(s.rng.fork()),
-      fromTeamId: s.userTeamId,
+  proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
+    return proposeTradePackage(
+      requireState(),
+      offeringAssets,
+      requestingAssets,
       toTeamId,
-      playersOffered: offered,
-      playersRequested: requested,
-      status: 'proposed',
-      reason: '',
-    };
-    const result = evaluateTradeProposal(
-      s.rng.fork(),
-      proposal,
-      preTradeUserPlayers,
-      preTradePartnerPlayers,
-      gm,
-      false,
     );
-    if (result.decision === 'accepted') {
-      executeTrade(proposal, s.players);
-      s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
-      s.rosterStates.set(toTeamId, buildRosterState(toTeamId, s.players));
-      recordAcceptedUserTrade(s, proposal);
-      applyTradeConsequences(s, offered, requested, toTeamId, preTradeUserPlayers, preTradePartnerPlayers);
-    }
-    return { decision: result.decision, reason: result.reason, counter: result.counter ?? undefined };
   },
 
   respondToTradeOffer(
     offerId: string,
     action: 'accept' | 'decline' | 'counter',
-    counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+    counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
     return respondToTradeOffer(requireState(), offerId, action, counterPackage);
   },

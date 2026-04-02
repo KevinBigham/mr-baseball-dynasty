@@ -86,8 +86,8 @@ function buildIncomingOffer(offerId: string) {
       id: offerId,
       fromTeamId: 'bos',
       toTeamId: 'nyy',
-      offeringPlayerIds: [offered.id],
-      requestingPlayerIds: [requested.id],
+      offeringAssets: [{ type: 'player' as const, playerId: offered.id }],
+      requestingAssets: [{ type: 'player' as const, playerId: requested.id }],
       fairnessScore: -4,
       message: 'Boston wants to discuss a one-for-one swap.',
       createdAt: 'S1D60',
@@ -206,7 +206,11 @@ describe('sim worker narrative APIs', () => {
     const baselineOutgoingMorale = state.playerMorale.get(offered.id)?.score ?? 0;
     const beforeOwner = api.getOwnerState('nyy');
 
-    const result = api.proposeTrade([offered.id], [requested.id], 'bos');
+    const result = api.proposeTrade(
+      [{ type: 'player', playerId: offered.id }],
+      [{ type: 'player', playerId: requested.id }],
+      'bos',
+    );
 
     expect(result.decision).toBe('accepted');
 
@@ -948,7 +952,11 @@ describe('sim worker narrative APIs', () => {
 
     expect(api.getTradeOffers()).toEqual([]);
 
-    const closedResult = api.proposeTrade([requested.id], [offered.id], 'bos');
+    const closedResult = api.proposeTrade(
+      [{ type: 'player', playerId: requested.id }],
+      [{ type: 'player', playerId: offered.id }],
+      'bos',
+    );
     expect(closedResult.decision).toBe('rejected');
     expect(closedResult.reason).toContain('Trade market closed');
   });
@@ -965,7 +973,7 @@ describe('sim worker narrative APIs', () => {
 
     expect(firstRun.length).toBeGreaterThan(0);
     expect(firstRun.some((offer) => offer.fromTeamId === 'bos' && offer.toTeamId === 'nyy')).toBe(true);
-    expect(firstRun.some((offer) => offer.requestingPlayers.some((player) => player.playerId === target.id))).toBe(true);
+    expect(firstRun.some((offer) => offer.requestingAssets.some((asset) => asset.playerId === target.id))).toBe(true);
 
     api.newGame(341, 'nyy');
     state = requireState();

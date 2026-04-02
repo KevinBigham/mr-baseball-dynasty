@@ -43,6 +43,7 @@ import {
   resolveHistoryDisplayNames as resolveNarrativeHistoryDisplayNames,
 } from './sim.worker.narrative.js';
 import {
+  buildTradeAssetInventoryView,
   buildTradeHistoryView,
   buildTradeOffersView,
 } from './sim.worker.trade.js';
@@ -492,6 +493,10 @@ export const queryApi = {
 
   getTradeHistory() {
     return buildTradeHistoryView(requireState());
+  },
+
+  getTradeAssetInventory(teamId: string) {
+    return buildTradeAssetInventoryView(requireState(), teamId);
   },
 
   getRosterState(teamId: string): RosterState | null {

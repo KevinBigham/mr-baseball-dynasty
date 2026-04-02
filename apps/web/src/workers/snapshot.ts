@@ -202,6 +202,7 @@ export function importGameSnapshot(snapshotLike: unknown): FullGameState {
     draftClass: normalizeDraftSessionState(
       snapshot.draftClass as DraftSessionState | null,
       seasonState,
+      snapshot.draftState ?? createEmptyDraftState(),
       snapshot.userTeamId,
     ),
     freeAgencyMarket: snapshot.freeAgencyMarket as FreeAgencyMarket | null,

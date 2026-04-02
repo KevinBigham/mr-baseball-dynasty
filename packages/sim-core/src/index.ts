@@ -242,18 +242,34 @@ export type {
 export {
   generateDraftClass,
   rankProspects,
+  DRAFT_CLASS_SIZE,
   DRAFT_ROUNDS,
   NUM_TEAMS,
   determineDraftOrder,
   aiSelectPick,
   evaluateTeamNeeds,
   simulateFullDraft,
+  scoutDraftProspect,
+  resolveDraftSigning,
+  PROTECTED_TOP_TEN_PICK_COUNT,
+  createDefaultDraftPickOwnership,
+  tradeDraftPickOwnership,
+  awardCompensatoryPick,
+  forfeitHighestEligiblePick,
+  buildDraftPickSlots,
 } from './draft/index.js';
 export type {
   DraftProspect,
+  DraftProspectBackground,
   DraftClass,
   DraftPick,
   DraftResult,
+  DraftScoutingReport,
+  DraftSigningOutcome,
+  DraftPickOwnership,
+  DraftPickDescriptor,
+  DraftCompensatoryPick,
+  DraftPickSlot,
 } from './draft/index.js';
 
 // Trade
