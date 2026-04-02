@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { History, Award, Flame } from 'lucide-react';
+import { History, Award, Flame, Trophy } from 'lucide-react';
 import type { AwardHistoryEntry, Rivalry, SeasonHistoryEntry, SeasonStatLeader } from '@mbd/contracts';
 import type { AwardRaceEntry, AwardRaces } from '@mbd/sim-core';
 import { useWorker } from '@/shared/hooks/useWorker';
@@ -8,6 +8,45 @@ import { useGameStore } from '@/shared/hooks/useGameStore';
 interface HistoryDisplayNames {
   players: Record<string, string>;
   teams: Record<string, string>;
+}
+
+interface HallOfFameEntryView {
+  playerId: string;
+  playerName: string;
+  position: string;
+  seasonsPlayed: number;
+  teamIds: string[];
+  inductionSeason: number;
+  score: number;
+  inductionType: string;
+  careerStats: {
+    batting: { hits: number; hr: number; rbi: number } | null;
+    pitching: { wins: number; strikeouts: number; inningsPitched: number; earnedRuns: number } | null;
+  };
+}
+
+interface FranchiseTimelineEntryView {
+  season: number;
+  record: string;
+  playoffResult: string;
+  championship: boolean;
+  keyAcquisitions: string[];
+  keyDepartures: string[];
+  dynastyScore: number;
+}
+
+interface DynastyScoreSummary {
+  score: number;
+  grade: string;
+  breakdown: {
+    championships: number;
+    worldSeriesAppearances: number;
+    playoffAppearances: number;
+    ninetyWinSeasons: number;
+    divisionTitles: number;
+    losingSeasons: number;
+    awardWinners: number;
+  };
 }
 
 const EMPTY_DISPLAY_NAMES: HistoryDisplayNames = {
@@ -35,12 +74,14 @@ function collectHistoryIds(
   awardHistory: AwardHistoryEntry[],
   seasonHistory: SeasonHistoryEntry[],
   rivalries: Rivalry[],
+  hallOfFame: HallOfFameEntryView[],
 ): { playerIds: string[]; teamIds: string[] } {
   const playerIds = [
     ...(awardRaces?.mvp ?? []).map((entry) => entry.playerId),
     ...(awardRaces?.cyYoung ?? []).map((entry) => entry.playerId),
     ...(awardRaces?.roy ?? []).map((entry) => entry.playerId),
     ...awardHistory.map((entry) => entry.playerId),
+    ...hallOfFame.map((entry) => entry.playerId),
     ...seasonHistory.flatMap((entry) => [
       ...entry.awards.map((award) => award.playerId),
       ...entry.statLeaders.hr.map((leader) => leader.playerId),
@@ -58,6 +99,7 @@ function collectHistoryIds(
     ...(awardRaces?.cyYoung ?? []).map((entry) => entry.teamId),
     ...(awardRaces?.roy ?? []).map((entry) => entry.teamId),
     ...awardHistory.map((entry) => entry.teamId),
+    ...hallOfFame.flatMap((entry) => entry.teamIds),
     ...seasonHistory.flatMap((entry) => [
       entry.championTeamId ?? '',
       entry.runnerUpTeamId ?? '',
@@ -89,26 +131,35 @@ export default function HistoryPage() {
   const [awardHistory, setAwardHistory] = useState<AwardHistoryEntry[]>([]);
   const [seasonHistory, setSeasonHistory] = useState<SeasonHistoryEntry[]>([]);
   const [rivalries, setRivalries] = useState<Rivalry[]>([]);
+  const [hallOfFame, setHallOfFame] = useState<HallOfFameEntryView[]>([]);
+  const [franchiseTimeline, setFranchiseTimeline] = useState<FranchiseTimelineEntryView[]>([]);
+  const [dynastyScore, setDynastyScore] = useState<DynastyScoreSummary | null>(null);
   const [displayNames, setDisplayNames] = useState<HistoryDisplayNames>(EMPTY_DISPLAY_NAMES);
 
   const fetchHistory = useCallback(async () => {
     if (!isInitialized || !workerReady) return;
     try {
-      const [races, awards, seasons, rivalriesData] = await Promise.all([
+      const [races, awards, seasons, rivalriesData, hallOfFameData, timelineData, dynastyData] = await Promise.all([
         worker.getAwardRaces(),
         worker.getAwardHistory(),
         worker.getSeasonHistory(),
         worker.getRivalries(userTeamId),
+        worker.getHallOfFame(),
+        worker.getFranchiseTimeline(),
+        worker.getDynastyScore(),
       ]);
       const nextAwardRaces = races ?? null;
       const nextAwardHistory = awards ?? [];
       const nextSeasonHistory = seasons ?? [];
       const nextRivalries = rivalriesData ?? [];
+      const nextHallOfFame = hallOfFameData ?? [];
+      const nextTimeline = timelineData ?? [];
       const { playerIds, teamIds } = collectHistoryIds(
         nextAwardRaces as AwardRaces | null,
         nextAwardHistory as AwardHistoryEntry[],
         nextSeasonHistory as SeasonHistoryEntry[],
         nextRivalries as Rivalry[],
+        nextHallOfFame as HallOfFameEntryView[],
       );
       const resolvedNames = playerIds.length > 0 || teamIds.length > 0
         ? await worker.resolveHistoryDisplayNames(playerIds, teamIds)
@@ -118,6 +169,9 @@ export default function HistoryPage() {
       setAwardHistory(nextAwardHistory as AwardHistoryEntry[]);
       setSeasonHistory(nextSeasonHistory as SeasonHistoryEntry[]);
       setRivalries(nextRivalries as Rivalry[]);
+      setHallOfFame(nextHallOfFame as HallOfFameEntryView[]);
+      setFranchiseTimeline(nextTimeline as FranchiseTimelineEntryView[]);
+      setDynastyScore((dynastyData ?? null) as DynastyScoreSummary | null);
       setDisplayNames((resolvedNames ?? EMPTY_DISPLAY_NAMES) as HistoryDisplayNames);
     } catch (err) {
       console.error('Failed to fetch history data:', err);
@@ -146,6 +200,29 @@ export default function HistoryPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-accent-primary" />
+            <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Dynasty Score</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-[0.45fr_0.55fr]">
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-brand text-5xl text-accent-primary">{dynastyScore?.grade ?? 'F'}</div>
+              <div className="mt-2 font-data text-sm text-dynasty-muted">{dynastyScore?.score ?? 0} total points</div>
+            </div>
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="font-heading text-xs text-dynasty-muted">Titles: {dynastyScore?.breakdown.championships ?? 0}</div>
+                <div className="font-heading text-xs text-dynasty-muted">Pennants: {dynastyScore?.breakdown.worldSeriesAppearances ?? 0}</div>
+                <div className="font-heading text-xs text-dynasty-muted">Playoff trips: {dynastyScore?.breakdown.playoffAppearances ?? 0}</div>
+                <div className="font-heading text-xs text-dynasty-muted">Division crowns: {dynastyScore?.breakdown.divisionTitles ?? 0}</div>
+                <div className="font-heading text-xs text-dynasty-muted">90-win years: {dynastyScore?.breakdown.ninetyWinSeasons ?? 0}</div>
+                <div className="font-heading text-xs text-dynasty-muted">Award winners: {dynastyScore?.breakdown.awardWinners ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
           <div className="mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-accent-primary" />
@@ -195,6 +272,38 @@ export default function HistoryPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Award className="h-4 w-4 text-accent-success" />
+            <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Hall of Fame</h2>
+          </div>
+          <div className="space-y-3">
+            {hallOfFame.length > 0 ? hallOfFame.map((entry) => (
+              <div key={`${entry.playerId}-${entry.inductionSeason}`} className="rounded border border-dynasty-border bg-dynasty-elevated p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-heading text-sm text-dynasty-text">{entry.playerName}</div>
+                  <div className="font-data text-xs text-dynasty-muted">Season {entry.inductionSeason}</div>
+                </div>
+                <div className="mt-1 font-heading text-xs text-dynasty-muted">
+                  {entry.position} · {entry.seasonsPlayed} seasons · {entry.score} score
+                </div>
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                  {entry.teamIds.map((teamId) => teamName(teamId)).join(', ')}
+                </div>
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                  {entry.careerStats.batting
+                    ? `${entry.careerStats.batting.hits} hits · ${entry.careerStats.batting.hr} HR · ${entry.careerStats.batting.rbi} RBI`
+                    : `${entry.careerStats.pitching?.wins ?? 0} wins · ${entry.careerStats.pitching?.strikeouts ?? 0} strikeouts`}
+                </div>
+              </div>
+            )) : (
+              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+                Retired legends will appear here once the Hall of Fame begins to fill.
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
           <div className="mb-3 flex items-center gap-2">
             <Award className="h-4 w-4 text-accent-info" />
@@ -342,6 +451,40 @@ export default function HistoryPage() {
           </div>
         </section>
       </div>
+
+      <section className="rounded-lg border border-dynasty-border bg-dynasty-surface p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <History className="h-4 w-4 text-accent-success" />
+          <h2 className="font-heading text-sm font-semibold text-dynasty-textBright">Franchise Timeline</h2>
+        </div>
+        <div className="space-y-3">
+          {franchiseTimeline.length > 0 ? franchiseTimeline.map((entry) => (
+            <div key={entry.season} className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-heading text-sm text-dynasty-text">Season {entry.season}</div>
+                <div className="font-data text-xs text-dynasty-muted">Dynasty score {entry.dynastyScore}</div>
+              </div>
+              <div className="mt-1 font-heading text-sm text-dynasty-muted">
+                {entry.record} · {entry.playoffResult} {entry.championship ? '· Title' : ''}
+              </div>
+              {entry.keyAcquisitions.length > 0 && (
+                <div className="mt-3 font-heading text-xs text-dynasty-muted">
+                  Added: {entry.keyAcquisitions.join(' | ')}
+                </div>
+              )}
+              {entry.keyDepartures.length > 0 && (
+                <div className="mt-2 font-heading text-xs text-dynasty-muted">
+                  Lost: {entry.keyDepartures.join(' | ')}
+                </div>
+              )}
+            </div>
+          )) : (
+            <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4 font-heading text-sm text-dynasty-muted">
+              The franchise timeline starts once the first season closes.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

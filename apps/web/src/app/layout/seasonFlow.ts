@@ -10,6 +10,8 @@ export type SeasonFlowStatus =
 export type SeasonFlowAction =
   | 'proceed_to_playoffs'
   | 'sim_playoffs'
+  | 'watch_playoffs'
+  | 'skip_to_offseason'
   | 'proceed_to_offseason'
   | 'start_next_season'
   | null;
@@ -46,6 +48,14 @@ export interface SeasonFlowChampionSummary {
   seriesRecord: string;
 }
 
+export interface SeasonFlowSeasonSummary {
+  record: string;
+  divisionFinish: string;
+  playoffStatus: string;
+  teamLeaders: string[];
+  awardFavorites: string[];
+}
+
 export interface SeasonFlowOffseasonSummary {
   nextSeason: number;
   moves: string[];
@@ -60,9 +70,12 @@ export interface SeasonFlowState {
   canUseRegularSimControls: boolean;
   action: SeasonFlowAction;
   actionLabel: string | null;
+  secondaryAction: Extract<SeasonFlowAction, 'watch_playoffs' | 'skip_to_offseason'>;
+  secondaryActionLabel: string | null;
   daysUntilTradeDeadline: number | null;
   standingsSnapshot: SeasonFlowStanding[];
   playoffPreview: SeasonFlowPreviewSeries[];
+  seasonSummary: SeasonFlowSeasonSummary | null;
   championSummary: SeasonFlowChampionSummary | null;
   offseasonSummary: SeasonFlowOffseasonSummary | null;
 }

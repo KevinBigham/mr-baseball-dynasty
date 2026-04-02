@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -24,6 +24,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function AppLayout() {
+  const navigate = useNavigate();
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [seasonFlow, setSeasonFlow] = useState<SeasonFlowState | null>(null);
   const worker = useWorker();
@@ -78,14 +79,10 @@ export function AppLayout() {
     if (!workerReady || !isInitialized) return;
 
     void refreshSeasonFlow();
-    const intervalId = window.setInterval(() => {
+    return worker.subscribeToFlowUpdates(() => {
       void refreshSeasonFlow();
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isInitialized, refreshSeasonFlow, workerReady]);
+    });
+  }, [isInitialized, refreshSeasonFlow, worker, workerReady]);
 
   const handleSim = useCallback(
     async (simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>) => {
@@ -104,23 +101,39 @@ export function AppLayout() {
     [workerReady, isInitialized, refreshSeasonFlow, setSimulating, updateFromSim]
   );
 
-  const handleFlowAction = useCallback(async () => {
-    if (!seasonFlow?.action) return;
+  const handleFlowAction = useCallback(async (actionOverride?: SeasonFlowState['action']) => {
+    const nextAction = actionOverride ?? seasonFlow?.action;
+    if (!nextAction) return;
 
-    if (seasonFlow.action === 'proceed_to_playoffs' || seasonFlow.action === 'sim_playoffs') {
+    if (nextAction === 'watch_playoffs') {
+      if (seasonFlow?.status === 'regular_season_complete') {
+        await handleSim(() => worker.simDay());
+      }
+      navigate('/playoffs');
+      return;
+    }
+
+    if (nextAction === 'skip_to_offseason') {
+      await handleSim(() => worker.simRemainingPlayoffs());
+      await handleSim(() => worker.proceedToOffseason());
+      navigate('/offseason');
+      return;
+    }
+
+    if (nextAction === 'proceed_to_playoffs' || nextAction === 'sim_playoffs') {
       await handleSim(() => worker.simDay());
       return;
     }
 
-    if (seasonFlow.action === 'proceed_to_offseason') {
+    if (nextAction === 'proceed_to_offseason') {
       await handleSim(() => worker.proceedToOffseason());
       return;
     }
 
-    if (seasonFlow.action === 'start_next_season') {
+    if (nextAction === 'start_next_season') {
       await handleSim(() => worker.startNextSeason());
     }
-  }, [handleSim, seasonFlow?.action, worker]);
+  }, [handleSim, navigate, seasonFlow?.action, seasonFlow?.status, worker]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -183,6 +196,7 @@ export function AppLayout() {
                   flow={seasonFlow}
                   actionBusy={isSimulating}
                   onAction={() => void handleFlowAction()}
+                  onSecondaryAction={() => void handleFlowAction(seasonFlow.secondaryAction)}
                 />
               )}
               <Outlet />

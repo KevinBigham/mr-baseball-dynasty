@@ -51,50 +51,95 @@ describe('DashboardPage', () => {
 
     mockedUseWorker.mockReturnValue({
       isReady: true,
-      getStandings: vi.fn().mockResolvedValue({
-        divisions: {
-          AL_EAST: [
+      getDashboardSummary: vi.fn().mockResolvedValue({
+        franchise: {
+          teamName: 'New York Yankees',
+          abbreviation: 'NYY',
+          season: 4,
+          record: '50-38',
+          division: 'AL_EAST',
+          divisionRank: 1,
+          dynasty: { score: 215, grade: 'B' },
+          owner: {
+            hotSeat: true,
+            patience: 42,
+            confidence: 45,
+            summary: 'Ownership expected a stronger playoff pace.',
+          },
+          chemistry: {
+            score: 62,
+            tier: 'connected',
+            summary: 'Leadership is pulling the room together.',
+          },
+        },
+        momentum: {
+          last10: '7-3',
+          streak: 'W3',
+          runDifferential: 21,
+          seasonRunDiffPerGame: 0.24,
+          last30RunDiffPerGame: 0.48,
+          playoffProbability: 74,
+        },
+        roster: {
+          topPerformers: [
             {
-              teamId: 'nyy',
-              teamName: 'Yankees',
-              abbreviation: 'NYY',
-              wins: 50,
-              losses: 38,
-              pct: '.568',
-              gamesBack: 0,
-              streak: 'W3',
-              runDifferential: 21,
+              playerId: 'p1',
+              name: 'Aaron Judge',
+              position: 'RF',
+              label: '1.012 OPS',
+              sparklineValues: [0.31, 0.42, 1.01],
+              statLine: '101 H · 28 HR · 77 RBI',
             },
           ],
+          injuredCount: 2,
+          nextReturnDays: 4,
+          payroll: 212.4,
+          budget: 235,
+          luxuryTax: 16.2,
         },
-      }),
-      getTeamRoster: vi.fn().mockResolvedValue([{ id: 'p1' }, { id: 'p2' }]),
-      getLeagueLeaders: vi.fn().mockResolvedValue([]),
-      getPressRoomFeed: vi.fn().mockResolvedValue([
-        {
-          id: 'brief-owner-heat',
-          source: 'briefing',
-          category: 'owner',
-          priority: 1,
-          headline: 'Owner pressure is rising.',
-          body: 'Ownership wants a stronger response this month.',
-          timestamp: 'S4D88',
-          relatedTeamIds: ['nyy'],
-          relatedPlayerIds: [],
+        intel: {
+          tradeInboxCount: 3,
+          expiringContracts: [
+            { playerId: 'p2', name: 'Juan Soto', position: 'LF', salary: 31 },
+          ],
+          topProspect: {
+            playerId: 'p3',
+            name: 'Spencer Jones',
+            position: 'CF',
+            readiness: 410,
+            level: 'AAA',
+          },
         },
-      ]),
-      getTeamChemistry: vi.fn().mockResolvedValue({
-        score: 62,
-        tier: 'connected',
-        trend: 'rising',
-        summary: 'Leadership is pulling the room together.',
-        reasons: ['Veteran leadership'],
-      }),
-      getOwnerState: vi.fn().mockResolvedValue({
-        hotSeat: true,
-        patience: 42,
-        confidence: 45,
-        summary: 'Ownership expected a stronger playoff pace.',
+        divisionStandings: [
+          {
+            teamId: 'nyy',
+            teamName: 'New York Yankees',
+            abbreviation: 'NYY',
+            wins: 50,
+            losses: 38,
+            pct: '.568',
+            gamesBack: 0,
+            streak: 'W3',
+            runDifferential: 21,
+            divisionRank: 1,
+          },
+        ],
+        pressRoom: {
+          latest: {
+            id: 'brief-owner-heat',
+            source: 'briefing',
+            category: 'owner',
+            priority: 1,
+            headline: 'Owner pressure is rising.',
+            body: 'Ownership wants a stronger response this month.',
+            timestamp: 'S4D88',
+            relatedTeamIds: ['nyy'],
+            relatedPlayerIds: [],
+          },
+          feed: [],
+          briefingCount: 4,
+          newsCount: 8,
+        },
       }),
     } as unknown as ReturnType<typeof useWorker>);
   });
@@ -107,7 +152,7 @@ describe('DashboardPage', () => {
     vi.clearAllMocks();
   });
 
-  it('replaces detailed event lists with press room summaries and navigation', async () => {
+  it('renders the franchise command center cards from the unified dashboard summary', async () => {
     await act(async () => {
       root.render(
         <MemoryRouter>
@@ -119,10 +164,14 @@ describe('DashboardPage', () => {
       await Promise.resolve();
     });
 
+    expect(container.textContent).toContain('Dynasty Score');
+    expect(container.textContent).toContain('B');
+    expect(container.textContent).toContain('Season Momentum');
+    expect(container.textContent).toContain('Roster Snapshot');
+    expect(container.textContent).toContain('Front Office Intel');
+    expect(container.textContent).toContain('Trade Inbox');
+    expect(container.textContent).toContain('Spencer Jones');
+    expect(container.textContent).toContain('Aaron Judge');
     expect(container.textContent).toContain('Press Room');
-    expect(container.textContent).not.toContain('Front Office Briefing');
-    expect(container.textContent).not.toContain('Unread Inbox');
-    const pressRoomLink = container.querySelector('a[href="/press-room"]');
-    expect(pressRoomLink).toBeTruthy();
   });
 });

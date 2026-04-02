@@ -136,6 +136,46 @@ describe('HistoryPage', () => {
           reasons: ['division race', 'recent playoffs'],
         },
       ]),
+      getHallOfFame: vi.fn().mockResolvedValue([
+        {
+          playerId: 'player-hof',
+          playerName: 'Derek Jeter',
+          position: 'SS',
+          seasonsPlayed: 18,
+          teamIds: ['nyy'],
+          inductionSeason: 5,
+          score: 91,
+          inductionType: 'first_ballot',
+          careerStats: {
+            batting: { hits: 312, hr: 42, rbi: 155 },
+            pitching: null,
+          },
+        },
+      ]),
+      getFranchiseTimeline: vi.fn().mockResolvedValue([
+        {
+          season: 2,
+          record: '97-65',
+          playoffResult: 'Champion',
+          championship: true,
+          keyAcquisitions: ['Deadline blockbuster reshaped the race'],
+          keyDepartures: ['Anthony Rizzo retired'],
+          dynastyScore: 215,
+        },
+      ]),
+      getDynastyScore: vi.fn().mockResolvedValue({
+        score: 215,
+        grade: 'B',
+        breakdown: {
+          championships: 1,
+          worldSeriesAppearances: 1,
+          playoffAppearances: 1,
+          ninetyWinSeasons: 1,
+          divisionTitles: 1,
+          losingSeasons: 0,
+          awardWinners: 1,
+        },
+      }),
       resolveHistoryDisplayNames: vi.fn().mockResolvedValue({
         players: {
           'player-mvp': 'Mike Trout',
@@ -189,6 +229,10 @@ describe('HistoryPage', () => {
     expect(container.textContent).toContain('Anthony Rizzo');
     expect(container.textContent).toContain('Deadline blockbuster reshaped the race');
     expect(container.textContent).toContain('97-65');
+    expect(container.textContent).toContain('Hall of Fame');
+    expect(container.textContent).toContain('Derek Jeter');
+    expect(container.textContent).toContain('Dynasty Score');
+    expect(container.textContent).toContain('Franchise Timeline');
     expect(container.textContent).not.toContain('player-mvp');
     expect(container.textContent).not.toContain('nyy vs bos');
   });

@@ -1,10 +1,12 @@
 import { ArrowRight, CalendarRange, Flag, Trophy } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { SeasonFlowState } from './seasonFlow';
 
 interface SeasonFlowCardProps {
   flow: SeasonFlowState;
   actionBusy: boolean;
   onAction: () => void;
+  onSecondaryAction?: () => void;
 }
 
 function SeriesTeamLabel({
@@ -33,13 +35,13 @@ function SeriesTeamLabel({
   );
 }
 
-export function SeasonFlowCard({ flow, actionBusy, onAction }: SeasonFlowCardProps) {
+export function SeasonFlowCard({ flow, actionBusy, onAction, onSecondaryAction }: SeasonFlowCardProps) {
   if (!flow.action || !flow.actionLabel) {
     return null;
   }
 
   return (
-    <section className="mb-6 rounded-xl border border-dynasty-border bg-dynasty-surface p-5">
+    <section className="mb-6 rounded-xl border border-dynasty-border bg-dynasty-surface p-5 transition-all duration-300 ease-out motion-reduce:transition-none">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2 font-data text-[11px] uppercase tracking-[0.2em] text-accent-warning">
@@ -52,8 +54,8 @@ export function SeasonFlowCard({ flow, actionBusy, onAction }: SeasonFlowCardPro
 
           {flow.status === 'regular_season_complete' && (
             <>
-              <h2 className="font-brand text-3xl text-dynasty-textBright">Regular Season Complete</h2>
-              <p className="font-heading text-sm text-dynasty-muted">{flow.detailLabel}</p>
+              <h2 className="font-brand text-3xl text-dynasty-textBright">Season Summary</h2>
+              <p className="font-heading text-sm text-dynasty-muted">{flow.seasonSummary?.playoffStatus ?? flow.detailLabel}</p>
             </>
           )}
 
@@ -87,32 +89,67 @@ export function SeasonFlowCard({ flow, actionBusy, onAction }: SeasonFlowCardPro
           )}
         </div>
 
-        <button
-          onClick={onAction}
-          disabled={actionBusy}
-          className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ArrowRight className="h-4 w-4" />
-          {flow.actionLabel}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {flow.secondaryActionLabel && onSecondaryAction && (
+            <button
+              onClick={onSecondaryAction}
+              disabled={actionBusy}
+              className="inline-flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm font-semibold text-dynasty-text transition-colors hover:border-dynasty-muted hover:bg-dynasty-elevated disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {flow.secondaryActionLabel}
+            </button>
+          )}
+          <button
+            onClick={onAction}
+            disabled={actionBusy}
+            className="inline-flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primary/80 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ArrowRight className="h-4 w-4" />
+            {flow.actionLabel}
+          </button>
+        </div>
       </div>
 
       {flow.status === 'regular_season_complete' && (
-        <div className="mt-5 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {flow.standingsSnapshot.map((entry) => (
-            <div
-              key={entry.teamId}
-              className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-3 py-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-heading text-sm text-dynasty-text">{entry.teamName}</span>
-                <span className="font-data text-xs text-dynasty-muted">{entry.abbreviation}</span>
+        <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Record</div>
+                <div className="mt-2 font-brand text-4xl text-dynasty-textBright">{flow.seasonSummary?.record ?? flow.detailLabel}</div>
+                <div className="mt-1 font-heading text-sm text-dynasty-muted">{flow.seasonSummary?.divisionFinish}</div>
               </div>
-              <div className="mt-1 font-data text-xs text-dynasty-muted">
-                {entry.wins}-{entry.losses} · {entry.division}
+              <div>
+                <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Award Watch</div>
+                <div className="mt-2 space-y-1">
+                  {(flow.seasonSummary?.awardFavorites ?? []).map((favorite) => (
+                    <p key={favorite} className="font-heading text-sm text-dynasty-text">{favorite}</p>
+                  ))}
+                </div>
               </div>
             </div>
-          ))}
+          </div>
+          <div className="grid gap-4">
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Team Leaders</div>
+              <div className="mt-2 space-y-2">
+                {(flow.seasonSummary?.teamLeaders ?? []).map((leader) => (
+                  <p key={leader} className="font-heading text-sm text-dynasty-text">{leader}</p>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated p-4">
+              <div className="font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">Standings Snapshot</div>
+              <div className="mt-2 grid gap-2">
+                {flow.standingsSnapshot.map((entry) => (
+                  <div key={entry.teamId} className="flex items-center justify-between rounded border border-dynasty-border/60 px-3 py-2">
+                    <span className="font-heading text-sm text-dynasty-text">{entry.teamName}</span>
+                    <span className="font-data text-xs text-dynasty-muted">{entry.wins}-{entry.losses}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -143,6 +180,18 @@ export function SeasonFlowCard({ flow, actionBusy, onAction }: SeasonFlowCardPro
               </div>
             );
           })}
+        </div>
+      )}
+
+      {flow.status === 'playoff_preview' && (
+        <div className="mt-4">
+          <Link
+            to="/playoffs"
+            className="inline-flex items-center gap-2 font-heading text-sm text-accent-info transition-colors hover:text-accent-primary"
+          >
+            <ArrowRight className="h-4 w-4" />
+            Open the full playoff hub
+          </Link>
         </div>
       )}
 

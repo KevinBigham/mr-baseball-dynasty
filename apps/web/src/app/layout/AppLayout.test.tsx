@@ -38,6 +38,7 @@ function createWorkerMock(flow: Record<string, unknown>) {
   return {
     isReady: true,
     getSeasonFlowState: vi.fn().mockResolvedValue(flow),
+    subscribeToFlowUpdates: vi.fn(() => () => {}),
     newGame: vi.fn().mockResolvedValue({
       season: 3,
       day: 87,
@@ -50,6 +51,7 @@ function createWorkerMock(flow: Record<string, unknown>) {
     simWeek: vi.fn().mockResolvedValue({ season: 3, day: 94, phase: 'regular', gamesPlayed: 7 }),
     simMonth: vi.fn().mockResolvedValue({ season: 3, day: 117, phase: 'regular', gamesPlayed: 30 }),
     simToPlayoffs: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 75 }),
+    simRemainingPlayoffs: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'playoffs', gamesPlayed: 11 }),
     proceedToOffseason: vi.fn().mockResolvedValue({ season: 3, day: 1, phase: 'offseason', gamesPlayed: 0 }),
     startNextSeason: vi.fn().mockResolvedValue({ season: 4, day: 1, phase: 'preseason', gamesPlayed: 0 }),
   };
@@ -106,9 +108,12 @@ describe('AppLayout', () => {
       canUseRegularSimControls: true,
       action: null,
       actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: 33,
       standingsSnapshot: [],
       playoffPreview: [],
+      seasonSummary: null,
       championSummary: null,
       offseasonSummary: null,
     };
@@ -192,9 +197,12 @@ describe('AppLayout', () => {
       canUseRegularSimControls: false,
       action: 'proceed_to_offseason',
       actionLabel: 'Proceed to Offseason',
+      secondaryAction: null,
+      secondaryActionLabel: null,
       daysUntilTradeDeadline: null,
       standingsSnapshot: [],
       playoffPreview: [],
+      seasonSummary: null,
       championSummary: {
         championTeamId: 'nyy',
         championTeamName: 'New York Yankees',
@@ -233,5 +241,72 @@ describe('AppLayout', () => {
     });
 
     expect(worker.proceedToOffseason).toHaveBeenCalledTimes(1);
+  });
+
+  it('subscribes to flow updates instead of polling the worker every second', async () => {
+    mockedUseGameStore.mockReturnValue({
+      season: 3,
+      day: 87,
+      phase: 'regular',
+      isInitialized: true,
+      userTeamId: 'nyy',
+      teamName: 'Yankees',
+      playerCount: 780,
+      gamesPlayed: 87,
+      isSimulating: false,
+      setSeason: vi.fn(),
+      setDay: vi.fn(),
+      setPhase: vi.fn(),
+      setSimulating: vi.fn(),
+      setInitialized: vi.fn(),
+      setUserTeamId: vi.fn(),
+      updateFromSim: vi.fn(),
+      initializeGame: vi.fn(),
+    });
+
+    const flow = {
+      status: 'regular',
+      season: 3,
+      phaseLabel: 'Season 3 — Day 87/162',
+      detailLabel: 'Regular Season',
+      progress: 87 / 162,
+      canUseRegularSimControls: true,
+      action: null,
+      actionLabel: null,
+      secondaryAction: null,
+      secondaryActionLabel: null,
+      daysUntilTradeDeadline: 33,
+      standingsSnapshot: [],
+      playoffPreview: [],
+      seasonSummary: null,
+      championSummary: null,
+      offseasonSummary: null,
+    };
+    const worker = createWorkerMock(flow);
+    mockedUseWorker.mockReturnValue(worker as unknown as ReturnType<typeof useWorker>);
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<div>Dashboard</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(worker.subscribeToFlowUpdates).toHaveBeenCalledTimes(1);
+    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    expect(worker.getSeasonFlowState).toHaveBeenCalledTimes(2);
   });
 });

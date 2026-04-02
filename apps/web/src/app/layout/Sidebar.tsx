@@ -7,6 +7,7 @@ import {
   FileText,
   ArrowLeftRight,
   Trophy,
+  CalendarRange,
   Newspaper,
   History,
   Settings,
@@ -29,6 +30,7 @@ const mainNavItems: NavItem[] = [
   { to: '/draft', label: 'Draft', icon: <FileText className="h-5 w-5" /> },
   { to: '/trade', label: 'Trades', icon: <ArrowLeftRight className="h-5 w-5" /> },
   { to: '/league/standings', label: 'League', icon: <Trophy className="h-5 w-5" /> },
+  { to: '/playoffs', label: 'Playoffs', icon: <CalendarRange className="h-5 w-5" /> },
   { to: '/press-room', label: 'Press Room', icon: <Newspaper className="h-5 w-5" /> },
   { to: '/history', label: 'History', icon: <History className="h-5 w-5" /> },
 ];
