@@ -26,13 +26,13 @@ function buildTeam(teamId: string, rng: GameRNG): GameTeam {
 describe('simulateGame', () => {
   it('produces a valid box score', () => {
     const rng = new GameRNG(42);
-    const away = buildTeam('nyy', rng.fork());
+    const away = buildTeam('nym', rng.fork());
     const home = buildTeam('bos', rng.fork());
 
     const { boxScore } = simulateGame(rng, away, home, 'S1D1');
 
     expect(boxScore.homeTeamId).toBe('bos');
-    expect(boxScore.awayTeamId).toBe('nyy');
+    expect(boxScore.awayTeamId).toBe('nym');
     expect(boxScore.homeScore).toBeGreaterThanOrEqual(0);
     expect(boxScore.awayScore).toBeGreaterThanOrEqual(0);
     expect(boxScore.innings).toBeGreaterThanOrEqual(9);
@@ -42,13 +42,13 @@ describe('simulateGame', () => {
 
   it('is deterministic with same seed', () => {
     const rng1 = new GameRNG(100);
-    const away1 = buildTeam('lad', rng1.fork());
-    const home1 = buildTeam('sf', rng1.fork());
+    const away1 = buildTeam('lax', rng1.fork());
+    const home1 = buildTeam('sfb', rng1.fork());
     const { boxScore: bs1 } = simulateGame(rng1, away1, home1, 'S1D1');
 
     const rng2 = new GameRNG(100);
-    const away2 = buildTeam('lad', rng2.fork());
-    const home2 = buildTeam('sf', rng2.fork());
+    const away2 = buildTeam('lax', rng2.fork());
+    const home2 = buildTeam('sfb', rng2.fork());
     const { boxScore: bs2 } = simulateGame(rng2, away2, home2, 'S1D1');
 
     expect(bs1.homeScore).toBe(bs2.homeScore);
@@ -58,7 +58,7 @@ describe('simulateGame', () => {
 
   it('generates player stats', () => {
     const rng = new GameRNG(42);
-    const away = buildTeam('nyy', rng.fork());
+    const away = buildTeam('nym', rng.fork());
     const home = buildTeam('bos', rng.fork());
 
     const { playerStats } = simulateGame(rng, away, home, 'S1D1');
@@ -69,12 +69,17 @@ describe('simulateGame', () => {
     // Every player should have at least some PA or IP
     for (const [, stats] of playerStats) {
       expect(stats.pa + stats.strikeouts + stats.walks + stats.hitsAllowed).toBeGreaterThanOrEqual(0);
+      expect(stats.hbp).toBeGreaterThanOrEqual(0);
+      expect(stats.sacFlies).toBeGreaterThanOrEqual(0);
+      expect(stats.homeRunsAllowed).toBeGreaterThanOrEqual(0);
+      expect(stats.hitBatters).toBeGreaterThanOrEqual(0);
+      expect(stats.flyBallsAllowed).toBeGreaterThanOrEqual(stats.homeRunsAllowed);
     }
   });
 
   it('assigns exactly one pitcher win and one pitcher loss per game', () => {
     const rng = new GameRNG(77);
-    const away = buildTeam('nyy', rng.fork());
+    const away = buildTeam('nym', rng.fork());
     const home = buildTeam('bos', rng.fork());
 
     const { playerStats } = simulateGame(rng, away, home, 'S1D9');
@@ -91,12 +96,75 @@ describe('simulateGame', () => {
     // Sim 10 games and check scores are in reasonable range
     for (let i = 0; i < 10; i++) {
       const gameRng = rng.fork();
-      const away = buildTeam('nyy', gameRng.fork());
+      const away = buildTeam('nym', gameRng.fork());
       const home = buildTeam('bos', gameRng.fork());
       const { boxScore } = simulateGame(gameRng, away, home, `test-${i}`);
 
       expect(boxScore.homeScore).toBeLessThan(30);
       expect(boxScore.awayScore).toBeLessThan(30);
     }
+  });
+
+  it('enriches plate appearance results with inning, runner, and score context', () => {
+    const rng = new GameRNG(212);
+    const away = buildTeam('nym', rng.fork());
+    const home = buildTeam('bos', rng.fork());
+
+    const { boxScore } = simulateGame(rng, away, home, 'S1D12');
+    const first = boxScore.paResults[0];
+
+    expect(first).toBeTruthy();
+    expect(first?.inning).toBeGreaterThanOrEqual(1);
+    expect(first?.halfInning === 'top' || first?.halfInning === 'bottom').toBe(true);
+    expect(first?.outs).toBeGreaterThanOrEqual(0);
+    expect(first?.outs).toBeLessThanOrEqual(2);
+    expect(first?.runnersOn).toBeGreaterThanOrEqual(0);
+    expect(first?.runnersOn).toBeLessThanOrEqual(3);
+    expect(first?.scoreBefore).toHaveLength(2);
+    expect(first?.scoreAfter).toHaveLength(2);
+    expect(first?.rbiOnPlay).toBeGreaterThanOrEqual(0);
+
+    const walkOffPlay = boxScore.paResults.find((result) => result.isWalkOff);
+    if (walkOffPlay) {
+      expect(walkOffPlay.halfInning).toBe('bottom');
+      expect(walkOffPlay.inning).toBeGreaterThanOrEqual(9);
+      expect(walkOffPlay.scoreAfter[1]).toBeGreaterThan(walkOffPlay.scoreAfter[0]);
+    }
+  });
+
+  it('applies offense modifiers to the scoring environment', () => {
+    let boostedRuns = 0;
+    let suppressedRuns = 0;
+
+    for (let seed = 1; seed <= 12; seed++) {
+      const boostedRng = new GameRNG(seed);
+      const suppressedRng = new GameRNG(seed);
+      const boostedAway = buildTeam('nym', boostedRng.fork());
+      const boostedHome = buildTeam('bos', boostedRng.fork());
+      const suppressedAway = buildTeam('nym', suppressedRng.fork());
+      const suppressedHome = buildTeam('bos', suppressedRng.fork());
+
+      const boosted = simulateGame(
+        boostedRng,
+        boostedAway,
+        boostedHome,
+        `boosted-${seed}`,
+        false,
+        { awayOffenseModifier: 1.03, homeOffenseModifier: 1.03 },
+      );
+      const suppressed = simulateGame(
+        suppressedRng,
+        suppressedAway,
+        suppressedHome,
+        `suppressed-${seed}`,
+        false,
+        { awayOffenseModifier: 0.97, homeOffenseModifier: 0.97 },
+      );
+
+      boostedRuns += boosted.boxScore.awayScore + boosted.boxScore.homeScore;
+      suppressedRuns += suppressed.boxScore.awayScore + suppressed.boxScore.homeScore;
+    }
+
+    expect(boostedRuns).toBeGreaterThan(suppressedRuns);
   });
 });

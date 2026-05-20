@@ -1,270 +1,556 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, BrainCircuit } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Skeleton, StatLine, Tabs, TabsContent, TabsList, TabsTrigger } from '@mbd/ui';
+import {
+  ArrowDownCircle,
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowUpCircle,
+  BrainCircuit,
+  ClipboardX,
+  FileSignature,
+  GitCompareArrows,
+  History,
+  LineChart,
+  ScrollText,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
+import { PageShell } from '@/shared/components/PageShell';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import {
+  formatMinorLevel,
+  moneyLabel,
+  normalizePlayerProfileTab,
+  type PlayerProfileTab,
+  type PlayerProfileView,
+} from '../components/playerProfileShared';
 
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
+const ProfileHeader = lazy(() => import('../components/ProfileHeader'));
+const StatsTab = lazy(() => import('../components/StatsTab'));
+const DevelopmentTab = lazy(() => import('../components/DevelopmentTab'));
+const ScoutingTab = lazy(() => import('../components/ScoutingTab'));
+const MomentsTab = lazy(() => import('../components/MomentsTab'));
+const StoryArcsTab = lazy(() => import('../components/StoryArcsTab'));
+const HistoryTab = lazy(() => import('../components/HistoryTab'));
+const PersonalityTab = lazy(() => import('../components/PersonalityTab'));
+
+interface ExtensionOfferView {
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+  noTradeClause: boolean;
+  noTradeClauseType: 'none' | 'partial' | 'full';
+  playerOption: boolean;
+  teamOption: boolean;
+  optOutYears: number[];
+  signingBonus: number;
+  buyoutAmount: number;
+  deferredMoney: Array<{ yearOffset: number; amount: number }>;
 }
 
-interface PersonalityProfile {
-  playerId: string;
-  archetype: string;
-  morale: {
-    score: number;
-    trend: string;
-    summary: string;
-    lastUpdated: string;
-  };
-  personality: {
-    workEthic: number;
-    mentalToughness: number;
-    leadership: number;
-    competitiveness: number;
-  };
-  summary: string;
+interface ExtensionResponseView {
+  status: 'accepted' | 'rejected' | 'countered';
+  counterOffer?: ExtensionOfferView;
+  rounds: Array<{
+    playerDemand?: ExtensionOfferView;
+  }>;
 }
 
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default: return 'bg-dynasty-border text-dynasty-muted';
+interface RosterActionView {
+  success: boolean;
+  error?: string;
+}
+
+interface ActionState {
+  tone: 'success' | 'error' | 'info';
+  message: string;
+}
+
+interface PendingProfileRosterAction {
+  action: 'promote' | 'demote' | 'dfa';
+  title: string;
+  detail: string;
+  consequence: string;
+}
+
+const TAB_LABELS: Record<PlayerProfileTab, string> = {
+  stats: 'Stats',
+  development: 'Development',
+  scouting: 'Scouting',
+  moments: 'Signature Moments',
+  storyArcs: 'Story Arcs',
+  history: 'History',
+  personality: 'Personality',
+};
+
+const TAB_ICONS: Record<PlayerProfileTab, JSX.Element> = {
+  stats: <LineChart className="h-4 w-4" />,
+  development: <ArrowUpCircle className="h-4 w-4" />,
+  scouting: <ShieldAlert className="h-4 w-4" />,
+  moments: <Sparkles className="h-4 w-4" />,
+  storyArcs: <ScrollText className="h-4 w-4" />,
+  history: <History className="h-4 w-4" />,
+  personality: <BrainCircuit className="h-4 w-4" />,
+};
+
+const TAB_COMPONENTS = {
+  stats: StatsTab,
+  development: DevelopmentTab,
+  scouting: ScoutingTab,
+  moments: MomentsTab,
+  storyArcs: StoryArcsTab,
+  history: HistoryTab,
+  personality: PersonalityTab,
+} satisfies Record<PlayerProfileTab, typeof StatsTab>;
+
+function PlayerProfileSkeleton() {
+  return (
+    <div className="space-y-6" data-testid="player-profile-loading">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="h-48 rounded-2xl" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Skeleton className="h-[34rem] rounded-2xl" />
+        <div className="space-y-4">
+          <Skeleton className="h-52 rounded-2xl" />
+          <Skeleton className="h-40 rounded-2xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TabFallback({
+  title,
+}: {
+  title: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="font-heading text-dynasty-text">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function actionToneClasses(tone: ActionState['tone']): string {
+  switch (tone) {
+    case 'success':
+      return 'border-accent-success/30 bg-accent-success/10 text-accent-success';
+    case 'info':
+      return 'border-accent-info/30 bg-accent-info/10 text-accent-info';
+    default:
+      return 'border-accent-danger/30 bg-accent-danger/10 text-accent-danger';
   }
 }
-
-function moraleTone(score: number): string {
-  if (score >= 70) return 'text-accent-success';
-  if (score >= 55) return 'text-accent-info';
-  if (score >= 40) return 'text-accent-warning';
-  return 'text-accent-danger';
-}
-
-const PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
 
 export default function PlayerProfilePage() {
   const { playerId } = useParams<{ playerId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const worker = useWorker();
   const workerReady = worker.isReady;
-  const { isInitialized, day, season } = useGameStore();
-  const [player, setPlayer] = useState<PlayerDTO | null>(null);
-  const [profile, setProfile] = useState<PersonalityProfile | null>(null);
+  const { isInitialized, day, season, userTeamId } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
+  const [view, setView] = useState<PlayerProfileView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionState, setActionState] = useState<ActionState | null>(null);
+  const [busyAction, setBusyAction] = useState<'extend' | 'promote' | 'demote' | 'dfa' | null>(null);
+  const [pendingRosterAction, setPendingRosterAction] = useState<PendingProfileRosterAction | null>(null);
 
-  const fetchPlayer = useCallback(async () => {
-    if (!isInitialized || !workerReady || !playerId) return;
+  const activeTab = normalizePlayerProfileTab(searchParams.get('tab'));
+  const ActiveTabComponent = useMemo(() => TAB_COMPONENTS[activeTab], [activeTab]);
 
-    const [playerData, profileData] = await Promise.all([
-      worker.getPlayer(playerId),
-      worker.getPersonalityProfile(playerId),
-    ]);
+  const fetchProfile = useCallback(async () => {
+    if (!isInitialized || !workerReady || !playerId) {
+      return;
+    }
 
-    setPlayer(playerData as PlayerDTO | null);
-    setProfile(profileData as PersonalityProfile | null);
-  }, [isInitialized, workerReady, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
+    setLoading(true);
+    try {
+      const data = await worker.getPlayerProfileView(playerId);
+      setView((data as PlayerProfileView | null) ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }, [isInitialized, playerId, worker, workerReady]);
 
   useEffect(() => {
-    fetchPlayer();
-  }, [fetchPlayer, day, season]);
+    void fetchProfile();
+  }, [fetchProfile, day, season]);
 
-  if (!player) {
+  const updateTab = useCallback((nextValue: string) => {
+    const nextTab = normalizePlayerProfileTab(nextValue);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === 'stats') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', nextTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const player = view?.player ?? null;
+  const isUserTeamPlayer = Boolean(player && !player.historical && player.teamId === userTeamId);
+  const canPromote = Boolean(isUserTeamPlayer && player && player.rosterStatus !== 'MLB');
+  const canDemote = Boolean(isUserTeamPlayer && player?.rosterStatus === 'MLB');
+  const canDfa = Boolean(isUserTeamPlayer && player);
+
+  const handleRosterAction = useCallback(async (
+    action: 'promote' | 'demote' | 'dfa',
+  ) => {
+    if (!player) {
+      return;
+    }
+
+    setBusyAction(action);
+    setActionState(null);
+    try {
+      const result = (action === 'promote'
+        ? await worker.promotePlayer(player.id)
+        : action === 'demote'
+          ? await worker.demotePlayer(player.id)
+          : await worker.designateForAssignment(player.id)) as RosterActionView;
+
+      if (!result.success) {
+        setActionState({
+          tone: 'error',
+          message: result.error ?? 'The roster move could not be completed.',
+        });
+        return;
+      }
+
+      setActionState({
+        tone: 'success',
+        message: action === 'promote'
+          ? 'Player promoted and profile refreshed.'
+          : action === 'demote'
+            ? 'Player optioned and profile refreshed.'
+            : 'Player designated for assignment and profile refreshed.',
+      });
+      await fetchProfile();
+      await autosaveActiveGame({ season });
+    } finally {
+      setBusyAction(null);
+    }
+  }, [autosaveActiveGame, fetchProfile, player, season, worker]);
+
+  const requestRosterAction = useCallback((action: 'promote' | 'demote' | 'dfa') => {
+    if (!player) {
+      return;
+    }
+
+    setPendingRosterAction({
+      action,
+      title: action === 'promote'
+        ? 'Promote to MLB'
+        : action === 'demote'
+          ? 'Option to Minors'
+          : 'Designate for Assignment',
+      detail: `${player.position} | ${formatMinorLevel(player.rosterStatus)} | Options used ${player.optionYearsUsed}${player.isOutOfOptions ? ' | Out of options' : ''}`,
+      consequence: action === 'dfa'
+        ? 'This removes the player from your roster picture and exposes him to waiver-claim risk.'
+        : action === 'demote' && player.isOutOfOptions
+          ? 'This player is out of options and may need to clear waivers before reaching the minors.'
+          : 'This updates the live roster assignment and can change active-depth, service-time, and option consequences.',
+    });
+  }, [player]);
+
+  const confirmPendingRosterAction = useCallback(async () => {
+    if (!pendingRosterAction) {
+      return;
+    }
+
+    const action = pendingRosterAction.action;
+    setPendingRosterAction(null);
+    await handleRosterAction(action);
+  }, [handleRosterAction, pendingRosterAction]);
+
+  const handleExtend = useCallback(async () => {
+    if (!player) {
+      return;
+    }
+
+    setBusyAction('extend');
+    setActionState(null);
+    try {
+      const offer = await worker.getExtensionOffer(player.id, 5) as ExtensionOfferView | null;
+      if (!offer) {
+        setActionState({
+          tone: 'error',
+          message: 'No five-year extension framework is available for this player.',
+        });
+        return;
+      }
+
+      const result = await worker.negotiateExtension(player.id, offer) as ExtensionResponseView | null;
+      if (!result) {
+        setActionState({
+          tone: 'error',
+          message: 'The extension negotiation could not be started.',
+        });
+        return;
+      }
+
+      if (result.status === 'accepted') {
+        setActionState({
+          tone: 'success',
+          message: `Extension accepted at ${moneyLabel(offer.annualSalary)} AAV for ${offer.years} years.`,
+        });
+      } else if (result.status === 'countered') {
+        const counter = result.counterOffer ?? result.rounds.at(-1)?.playerDemand;
+        setActionState({
+          tone: 'info',
+          message: counter
+            ? `Counteroffer received: ${moneyLabel(counter.annualSalary)} AAV over ${counter.years} years.`
+            : 'Counteroffer received from the player camp.',
+        });
+      } else {
+        setActionState({
+          tone: 'error',
+          message: 'The player rejected the initial five-year extension offer.',
+        });
+      }
+
+      await fetchProfile();
+      await autosaveActiveGame({ season });
+    } finally {
+      setBusyAction(null);
+    }
+  }, [autosaveActiveGame, fetchProfile, player, season, worker]);
+
+  if (!loading && !player) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="font-heading text-dynasty-muted">Loading player...</div>
-      </div>
+      <PageShell>
+        <div className="space-y-6">
+          <Link
+            to="/players"
+            className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Players
+          </Link>
+
+          <Card>
+            <CardContent className="p-10 text-center">
+              <div className="font-brand text-3xl tracking-wide text-dynasty-textBright">Player Not Found</div>
+              <p className="mt-3 font-heading text-sm text-dynasty-muted">
+                The requested player profile is unavailable in the current save.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </PageShell>
     );
   }
 
-  const isPitcher = PITCHER_POSITIONS.has(player.position);
-
   return (
-    <div className="space-y-6">
-      <Link
-        to="/players"
-        className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Players
-      </Link>
+    <PageShell loading={loading && view == null} skeleton={<PlayerProfileSkeleton />}>
+      {player ? (
+        <div className="space-y-6">
+          <Link
+            to="/players"
+            className="inline-flex items-center gap-1.5 font-heading text-sm text-dynasty-muted hover:text-accent-primary"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Players
+          </Link>
 
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="font-heading text-3xl font-bold text-dynasty-text">
-              {player.firstName} {player.lastName}
-            </h1>
-            <div className="mt-2 flex items-center gap-3">
-              <span className="rounded bg-dynasty-elevated px-2 py-0.5 font-data text-sm text-dynasty-muted">
-                {player.position}
-              </span>
-              <span className="font-data text-sm text-dynasty-muted">
-                Age {player.age}
-              </span>
-              <span className="font-data text-sm text-dynasty-muted">
-                {player.teamId.toUpperCase()}
-              </span>
-              <span className="rounded bg-dynasty-elevated px-2 py-0.5 font-data text-xs uppercase text-accent-info">
-                {player.rosterStatus}
-              </span>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="font-data text-4xl font-bold text-dynasty-text">
-              {player.displayRating}
-            </div>
-            <span className={`mt-1 inline-block rounded px-3 py-0.5 font-data text-lg font-bold ${gradeColor(player.letterGrade)}`}>
-              {player.letterGrade}
-            </span>
-          </div>
-        </div>
-      </div>
+          <Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
+            <ProfileHeader
+              player={player}
+              nicknames={view?.nicknames ?? null}
+              milestoneAlerts={view?.milestoneAlerts ?? []}
+            />
+          </Suspense>
 
-      {profile && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-            <div className="flex items-center justify-between border-b border-dynasty-border px-4 py-3">
-              <h2 className="flex items-center gap-2 font-heading text-sm font-semibold text-dynasty-text">
-                <BrainCircuit className="h-4 w-4 text-accent-info" />
-                Personality Profile
-              </h2>
-              <span className="rounded bg-dynasty-elevated px-2 py-1 font-heading text-xs uppercase text-accent-primary">
-                {profile.archetype.replace('_', ' ')}
-              </span>
-            </div>
-            <div className="space-y-4 p-4">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <PersonalityStat label="Work Ethic" value={profile.personality.workEthic} />
-                <PersonalityStat label="Toughness" value={profile.personality.mentalToughness} />
-                <PersonalityStat label="Leadership" value={profile.personality.leadership} />
-                <PersonalityStat label="Compete" value={profile.personality.competitiveness} />
-              </div>
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="font-heading text-xs uppercase text-dynasty-muted">Read</div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {profile.summary}
-                </div>
-              </div>
-            </div>
-          </div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="space-y-6">
+              <Card>
+                <CardContent className="p-4">
+                  <Tabs value={activeTab} onValueChange={updateTab}>
+                    <TabsList className="flex w-full flex-wrap gap-2 border-none">
+                      {Object.entries(TAB_LABELS).map(([tab, label]) => (
+                        <TabsTrigger
+                          key={tab}
+                          value={tab}
+                          className="rounded-lg border border-dynasty-border bg-dynasty-elevated data-[state=active]:border-accent-primary data-[state=active]:bg-accent-primary/10"
+                        >
+                          {TAB_ICONS[tab as PlayerProfileTab]}
+                          {label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
 
-          <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-            <div className="border-b border-dynasty-border px-4 py-3">
-              <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-                Morale Snapshot
-              </h2>
+                    <TabsContent value={activeTab} forceMount className="mt-5">
+                      <Suspense fallback={<TabFallback title={TAB_LABELS[activeTab]} />}>
+                        <ActiveTabComponent view={view!} />
+                      </Suspense>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
             </div>
-            <div className="space-y-4 p-4">
-              <div className="flex items-end justify-between">
-                <div>
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">Current score</div>
-                  <div className={`font-data text-4xl font-bold ${moraleTone(profile.morale.score)}`}>
-                    {profile.morale.score}
+
+            <aside className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-heading text-dynasty-text">Quick Actions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Compare button — always visible for non-historical */}
+                  {!player.historical && (
+                    <Button asChild variant="outline" className="w-full justify-start">
+                      <Link to={`/players/compare?a=${player.id}`}>
+                        <GitCompareArrows className="h-4 w-4" />
+                        Compare Player
+                      </Link>
+                    </Button>
+                  )}
+
+                  {isUserTeamPlayer ? (
+                    <>
+                      <Button asChild variant="outline" className="w-full justify-start">
+                        <Link to={`/trade?playerId=${player.id}`}>
+                          <ArrowLeftRight className="h-4 w-4" />
+                          Trade Player
+                        </Link>
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'extend'}
+                        onClick={() => void handleExtend()}
+                      >
+                        <FileSignature className="h-4 w-4" />
+                        Extend Contract
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'promote'}
+                        disabled={!canPromote}
+                        onClick={() => requestRosterAction('promote')}
+                      >
+                        <ArrowUpCircle className="h-4 w-4" />
+                        Promote to MLB
+                      </Button>
+
+                      <Button
+                        variant="secondary"
+                        className="w-full justify-start"
+                        loading={busyAction === 'demote'}
+                        disabled={!canDemote}
+                        onClick={() => requestRosterAction('demote')}
+                      >
+                        <ArrowDownCircle className="h-4 w-4" />
+                        Option to Minors
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        className="w-full justify-start"
+                        loading={busyAction === 'dfa'}
+                        disabled={!canDfa}
+                        onClick={() => requestRosterAction('dfa')}
+                      >
+                        <ClipboardX className="h-4 w-4" />
+                        Designate for Assignment
+                      </Button>
+                    </>
+                  ) : (
+                    <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-6 font-heading text-sm text-dynasty-muted">
+                      Quick actions are only available for live players on your active club.
+                    </div>
+                  )}
+
+                  {actionState ? (
+                    <div className={`rounded-lg border px-4 py-3 font-heading text-sm ${actionToneClasses(actionState.tone)}`}>
+                      {actionState.message}
+                    </div>
+                  ) : null}
+
+                  {pendingRosterAction ? (
+                    <div className="rounded-lg border border-accent-warning/40 bg-accent-warning/10 p-4">
+                      <div className="font-heading text-sm font-semibold text-dynasty-textBright">
+                        Confirm {pendingRosterAction.title}
+                      </div>
+                      <div className="mt-1 font-data text-xs text-dynasty-muted">{pendingRosterAction.detail}</div>
+                      <div className="mt-3 font-heading text-sm text-accent-warning">
+                        {pendingRosterAction.consequence}
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPendingRosterAction(null)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={pendingRosterAction.action === 'dfa' ? 'destructive' : 'default'}
+                          size="sm"
+                          loading={busyAction === pendingRosterAction.action}
+                          onClick={() => void confirmPendingRosterAction()}
+                        >
+                          Confirm
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-heading text-dynasty-text">Contract Snapshot</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <StatLine
+                    stats={[
+                      { label: 'Years', value: player.contract.years },
+                      { label: 'AAV', value: moneyLabel(player.contract.annualSalary) },
+                      { label: 'Total', value: moneyLabel(player.contract.totalValue) },
+                    ]}
+                  />
+                  <StatLine
+                    stats={[
+                      { label: 'Bonus', value: moneyLabel(player.contract.signingBonus) },
+                      { label: 'Opt-Outs', value: player.contract.optOutYears.length || '--' },
+                      { label: 'NTC', value: player.contract.noTradeClause ? player.contract.noTradeClauseType : 'none' },
+                    ]}
+                  />
+                  <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated px-4 py-3">
+                    <div className="font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                      Roster Context
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant="outline">{formatMinorLevel(player.rosterStatus)}</Badge>
+                      {player.minorLeagueLevel ? (
+                        <Badge variant="outline">{formatMinorLevel(player.minorLeagueLevel)}</Badge>
+                      ) : null}
+                      {player.isOutOfOptions ? (
+                        <Badge variant="warning">Out of Options</Badge>
+                      ) : (
+                        <Badge variant="info">Options Used {player.optionYearsUsed}</Badge>
+                      )}
+                    </div>
+                    <div className="mt-3 font-heading text-sm text-dynasty-muted">
+                      Service time: {Math.floor(player.serviceTimeDays / 172)} years · {player.serviceTimeDays % 172} days
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-heading text-xs uppercase text-dynasty-muted">Trend</div>
-                  <div className="font-data text-sm text-dynasty-text">
-                    {profile.morale.trend.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-              <div className="rounded border border-dynasty-border bg-dynasty-elevated p-4">
-                <div className="font-heading text-xs uppercase text-dynasty-muted">Latest note</div>
-                <div className="mt-1 font-heading text-sm text-dynasty-text">
-                  {profile.morale.summary}
-                </div>
-                <div className="mt-2 font-data text-xs text-dynasty-muted">
-                  Updated {profile.morale.lastUpdated}
-                </div>
-              </div>
-            </div>
+                </CardContent>
+              </Card>
+            </aside>
           </div>
         </div>
-      )}
-
-      {player.stats ? (
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-          <div className="border-b border-dynasty-border px-4 py-3">
-            <h2 className="font-heading text-sm font-semibold text-dynasty-text">
-              Season Stats
-            </h2>
-          </div>
-          <div className="p-4">
-            {isPitcher ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-                <StatBlock label="ERA" value={player.stats.era} />
-                <StatBlock label="K" value={String(player.stats.strikeouts)} />
-                <StatBlock label="BB" value={String(player.stats.walks)} />
-                <StatBlock label="H" value={String(player.stats.hits)} />
-                <StatBlock label="ER" value={String(player.stats.earnedRuns)} />
-                <StatBlock label="IP" value={String(Math.round(player.stats.ip / 3))} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
-                <StatBlock label="AVG" value={player.stats.avg} />
-                <StatBlock label="HR" value={String(player.stats.hr)} highlight />
-                <StatBlock label="RBI" value={String(player.stats.rbi)} />
-                <StatBlock label="H" value={String(player.stats.hits)} />
-                <StatBlock label="BB" value={String(player.stats.bb)} />
-                <StatBlock label="K" value={String(player.stats.k)} />
-                <StatBlock label="PA" value={String(player.stats.pa)} />
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-8 text-center">
-          <p className="font-heading text-sm text-dynasty-muted">
-            No stats yet. Sim games to see this player&apos;s performance.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PersonalityStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-dynasty-border bg-dynasty-elevated p-3 text-center">
-      <div className="font-heading text-[10px] uppercase text-dynasty-muted">{label}</div>
-      <div className="mt-1 font-data text-2xl font-bold text-dynasty-text">{value}</div>
-    </div>
-  );
-}
-
-function StatBlock({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="text-center">
-      <div className="font-heading text-xs uppercase text-dynasty-muted">{label}</div>
-      <div className={`mt-1 font-data text-2xl font-bold ${highlight ? 'text-accent-primary' : 'text-dynasty-text'}`}>
-        {value}
-      </div>
-    </div>
+      ) : null}
+    </PageShell>
   );
 }

@@ -9,12 +9,13 @@ import type { Log5Input, OutcomeRates } from '../src/math/log5.js';
 /** MLB-approximate league-average rates (sum to 1.0). */
 const LEAGUE_AVG: OutcomeRates = {
   bb: 0.085,
+  hbp: 0.008,
   k: 0.220,
   hr: 0.035,
   single: 0.155,
   double: 0.050,
   triple: 0.005,
-  gb: 0.200,
+  gb: 0.192,
   fb: 0.150,
   ld: 0.100,
 };
@@ -120,6 +121,15 @@ describe('computeLog5Probabilities', () => {
 
       expect(patientResult['bb']!).toBeGreaterThan(avgResult['bb']!);
     });
+
+    it('wild pitchers raise hit-by-pitch probability', () => {
+      const avgResult = computeLog5Probabilities(makeInput());
+      const wildPitcher = computeLog5Probabilities(
+        makeInput({ pitcher: { hbp: 0.02 } }),
+      );
+
+      expect(wildPitcher['hbp']!).toBeGreaterThan(avgResult['hbp']!);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -170,6 +180,27 @@ describe('computeLog5Probabilities', () => {
       // and still sums to 1.
       expect(sumValues(fatigued)).toBeCloseTo(1.0, 10);
       expect(sumValues(fresh)).toBeCloseTo(1.0, 10);
+    });
+
+    it('chemistry modifier boosts batter-friendly outcomes and suppresses outs', () => {
+      const neutral = computeLog5Probabilities(makeInput());
+      const connectedClubhouse = computeLog5Probabilities(
+        makeInput({ modifiers: { chemistry: 1.08 } }),
+      );
+
+      const neutralProduction = neutral['bb']! + neutral['single']! + neutral['double']! + neutral['triple']! + neutral['hr']!;
+      const connectedProduction =
+        connectedClubhouse['bb']! +
+        connectedClubhouse['single']! +
+        connectedClubhouse['double']! +
+        connectedClubhouse['triple']! +
+        connectedClubhouse['hr']!;
+      const neutralOuts = neutral['k']! + neutral['gb']! + neutral['fb']!;
+      const connectedOuts = connectedClubhouse['k']! + connectedClubhouse['gb']! + connectedClubhouse['fb']!;
+
+      expect(connectedProduction).toBeGreaterThan(neutralProduction);
+      expect(connectedClubhouse['hr']!).toBeGreaterThan(neutral['hr']!);
+      expect(connectedOuts).toBeLessThan(neutralOuts);
     });
 
     it('park factor affects outcomes', () => {

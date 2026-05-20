@@ -33,6 +33,7 @@ export {
   createInitialPlayerMorale,
   applyMoraleEvent,
   calculateTeamChemistry,
+  chemistryScoreToModifier,
   createOwnerState,
   evaluateOwnerState,
   applyOwnerDecisionDelta,
@@ -43,10 +44,22 @@ export type {
   MoraleEvent,
   OwnerEvaluationContext,
   BriefingContext,
+  TeamChemistryContext,
 } from './narrativeState.js';
 
 export {
+  createFrontOfficeState,
+  evaluateFrontOfficeState,
+  frontOfficeTradeModifier,
+  frontOfficeFreeAgencyAppeal,
+} from './frontOffice.js';
+export type {
+  FrontOfficeEvaluationContext,
+} from './frontOffice.js';
+
+export {
   calculateAwardRaces,
+  buildRookieOfTheYearVotingEntries,
   finalizeAwardResults,
 } from './awards.js';
 export type {
@@ -55,9 +68,50 @@ export type {
 } from './awards.js';
 
 export {
+  AWARD_NAMES,
+  generateAwardNarrative,
+  generateAwardCeremony,
+} from './awardNarratives.js';
+export type {
+  AwardReactionTone,
+  AwardNarrativeContext,
+  AwardNarrative,
+  AwardCeremonyScript,
+} from './awardNarratives.js';
+
+export {
+  getRivalry,
+  seedHistoricalRivalries,
   upsertRivalry,
+  recordRivalryGame,
   deriveRivalriesFromStandings,
+  finalizeSeasonRivalries,
+  recordBlockbusterTradeRivalry,
+  recordStarDefectionRivalry,
+  rivalryTradePenalty,
+  rivalryGameModifier,
+  computeRivalryIntensityScore,
 } from './rivalries.js';
+export type {
+  ComputedRivalryIntensityContext,
+  RivalrySeasonReviewContext,
+  RivalryTradeContext,
+  RivalryDefectionContext,
+} from './rivalries.js';
+
+export {
+  backfillLegacyRecordBook,
+  getRecordWatchList,
+  updateRecordBook,
+} from './records.js';
+export type {
+  BrokenRecord,
+  LegacyRecordBookArgs,
+  PlayerSeasonRecord,
+  RecordWatchArgs,
+  TeamStandingRecord,
+  UpdateRecordBookArgs,
+} from './records.js';
 
 export {
   evaluateHOFCandidate,
@@ -77,3 +131,51 @@ export type {
   FranchiseTimelineEntry,
   DynastyScoreSummary,
 } from './hallOfFame.js';
+
+export {
+  ACHIEVEMENT_DEFINITIONS,
+  checkAchievements,
+} from './achievements.js';
+export type {
+  AchievementCategory,
+  AchievementDefinition,
+  AchievementMetricMap,
+  AchievementProgressValue,
+  AchievementUnlockResult,
+  CheckAchievementsArgs,
+  CheckAchievementsResult,
+} from './achievements.js';
+
+export {
+  RELATIONSHIP_TIER_THRESHOLDS,
+  GRUDGE_DECAY_RATE,
+  PERMANENT_DECAY_RATE,
+  MAX_TRADE_HISTORY,
+  MAX_TRADE_PENALTY_PCT,
+  createRelationshipMap,
+  getRelationship,
+  modifyRelationship,
+  decayRelationships,
+  getRelationshipTier,
+  getTradeValueAdjustment,
+  addTradeMemory,
+  generateRelationshipTooltip,
+} from './gmRelationships.js';
+export type {
+  RelationshipEventType,
+  RelationshipTier,
+  TradeMemory,
+  RelationshipEvent,
+  GMRelationship,
+} from './gmRelationships.js';
+
+export {
+  adjustFABidForRelationship,
+  shouldPassOnWaiverClaim,
+  adjustDraftPickTradeValue,
+  getRule5TargetingBonus,
+  generateRelationshipEffectNarrative,
+} from './relationshipEffects.js';
+export type {
+  RelationshipEffect,
+} from './relationshipEffects.js';

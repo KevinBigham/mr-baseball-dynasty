@@ -14,6 +14,7 @@
 
 export interface OutcomeRates {
   readonly bb: number;
+  readonly hbp: number;
   readonly k: number;
   readonly hr: number;
   readonly single: number;
@@ -44,7 +45,7 @@ export interface Log5Input {
 // ---------------------------------------------------------------------------
 
 const OUTCOME_KEYS = [
-  'bb', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld',
+  'bb', 'hbp', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld',
 ] as const;
 
 type OutcomeKey = (typeof OUTCOME_KEYS)[number];
@@ -64,6 +65,7 @@ type OutcomeKey = (typeof OUTCOME_KEYS)[number];
  */
 const BATTER_INFLUENCE: Record<OutcomeKey, number> = {
   bb: 0.65,
+  hbp: 0.15,
   k: 0.25,
   hr: 0.50,
   single: 0.50,
@@ -105,6 +107,27 @@ function combinedModifier(modifiers: Log5Modifiers | undefined): number {
   if (modifiers.chemistry !== undefined) m *= modifiers.chemistry;
 
   return squash(m);
+}
+
+function applyOutcomeModifier(key: OutcomeKey, probability: number, modifier: number): number {
+  if (modifier === 1) return probability;
+
+  switch (key) {
+    case 'bb':
+    case 'hbp':
+    case 'hr':
+    case 'single':
+    case 'double':
+    case 'triple':
+    case 'ld':
+      return probability * modifier;
+    case 'k':
+    case 'gb':
+    case 'fb':
+      return probability / modifier;
+    default:
+      return probability;
+  }
 }
 
 /**
@@ -153,8 +176,8 @@ export function computeLog5Probabilities(
 
     let p = log5Single(batterRate, pitcherRate, leagueRate, batterWeight);
 
-    // Apply combined modifier multiplicatively.
-    p *= mod;
+    // Positive modifiers are batter-friendly and negative modifiers suppress offense.
+    p = applyOutcomeModifier(key, p, mod);
 
     // Floor at zero — probabilities cannot be negative.
     raw[key] = Math.max(0, p);

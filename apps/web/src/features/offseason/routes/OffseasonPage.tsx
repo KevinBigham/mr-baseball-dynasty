@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowRightLeft,
   Award,
   Calendar,
@@ -8,16 +9,24 @@ import {
   DollarSign,
   FileText,
   Gavel,
+  Globe2,
   ShieldAlert,
   ShieldCheck,
   SkipForward,
   Tent,
+  TrendingUp,
   Undo2,
   UserMinus,
+  Users,
 } from 'lucide-react';
 import { getTeamById } from '@mbd/sim-core';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, GradeBar, StatLine } from '@mbd/ui';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
+import { useActiveSaveAutosave } from '@/shared/hooks/useActiveSaveAutosave';
+import { getAudioEngine } from '@/shared/lib/audio';
+import { SeasonNarrativePanel } from '@/shared/components/SeasonNarrativePanel';
+import type { SeasonRecapView, OffseasonHeadlineView } from '@/workers/sim.worker.seasonNarrative';
 
 const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; description: string }> = {
   season_review: {
@@ -34,6 +43,16 @@ const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; descr
     label: 'Tender / Non-Tender',
     icon: UserMinus,
     description: 'Decide which players to tender contracts and which to non-tender.',
+  },
+  extensions: {
+    label: 'Extensions',
+    icon: FileText,
+    description: 'Open extension talks with core players before the free-agent market resets leverage.',
+  },
+  qualifying_offers: {
+    label: 'Qualifying Offers',
+    icon: FileText,
+    description: 'Extend qualifying offers to eligible free agents before the market opens.',
   },
   free_agency: {
     label: 'Free Agency',
@@ -55,6 +74,16 @@ const PHASE_CONFIG: Record<string, { label: string; icon: typeof Calendar; descr
     icon: Gavel,
     description: 'Manage the major-league Rule 5 board and active roster obligations.',
   },
+  international_signing: {
+    label: 'International Signing',
+    icon: Globe2,
+    description: 'Scout and sign the current international amateur class.',
+  },
+  coaching_changes: {
+    label: 'Coaching Changes',
+    icon: ShieldCheck,
+    description: 'Refresh your development staff before spring training opens.',
+  },
   spring_training: {
     label: 'Spring Training',
     icon: Tent,
@@ -66,10 +95,14 @@ const ALL_PHASES = [
   'season_review',
   'arbitration',
   'tender_nontender',
+  'extensions',
+  'qualifying_offers',
   'free_agency',
   'draft',
   'protection_audit',
   'rule5_draft',
+  'international_signing',
+  'coaching_changes',
   'spring_training',
 ];
 
@@ -122,6 +155,44 @@ interface Rule5View {
   offerBackStates: Rule5OfferBackStateView[];
 }
 
+interface ExtensionCandidateView {
+  playerId: string;
+  playerName: string;
+  yearsRemaining: number;
+  currentSalary: number;
+  willingness: number;
+  demandMultiplier?: number;
+  walkAwayThreshold?: number;
+}
+
+interface QualifyingOfferEligibleView {
+  playerId: string;
+  playerName: string;
+  projectedMarketValue: number;
+  qualifyingOfferSalary: number;
+  serviceYears: number;
+}
+
+interface SpringTrainingView {
+  rosterIssues: Array<{
+    code: string;
+    severity: 'error' | 'warning';
+    message: string;
+    playerId?: string;
+  }>;
+  promotionCandidates: Array<{
+    playerId: string;
+    playerName: string;
+    position: string;
+    overallRating: number;
+    currentLevel: string;
+    score: number;
+    reason: string;
+  }>;
+  currentRosterSize: number;
+  rosterLimit: number;
+}
+
 interface OffseasonData {
   currentPhase: string;
   phaseDay: number;
@@ -131,8 +202,12 @@ interface OffseasonData {
     arbitrationResolved: unknown[];
     tenderedPlayers: string[];
     nonTenderedPlayers: string[];
+    extensions: unknown[];
+    qualifyingOffers: unknown[];
+    coachChanges: unknown[];
     freeAgentSignings: unknown[];
     draftPicks: unknown[];
+    ifaSignings: unknown[];
     retiredPlayers: unknown[];
   };
   transactionGroups?: Array<{
@@ -164,6 +239,14 @@ function teamAbbreviation(teamId: string): string {
   return getTeamById(teamId)?.abbreviation ?? teamId.toUpperCase();
 }
 
+function moneyLabel(value: number, digits: number = 1): string {
+  return `$${value.toFixed(digits)}M`;
+}
+
+function gradeFromFraction(value: number): number {
+  return Math.max(20, Math.min(80, Math.round(20 + (value * 60))));
+}
+
 function playerLine(player: Rule5PlayerView): string {
   return `${player.playerName} | ${player.position} | Age ${player.age} | OVR ${player.overallRating}`;
 }
@@ -171,12 +254,33 @@ function playerLine(player: Rule5PlayerView): string {
 export default function OffseasonPage() {
   const worker = useWorker();
   const { phase, season, isInitialized, userTeamId } = useGameStore();
+  const autosaveActiveGame = useActiveSaveAutosave();
   const [offseason, setOffseason] = useState<OffseasonData | null>(null);
+  const [seasonRecap, setSeasonRecap] = useState<SeasonRecapView | null>(null);
+  const [offseasonHeadline, setOffseasonHeadline] = useState<OffseasonHeadlineView | null>(null);
+  const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidateView[]>([]);
+  const [qualifyingOfferEligible, setQualifyingOfferEligible] = useState<QualifyingOfferEligibleView[]>([]);
+  const [qualifyingOfferSalary, setQualifyingOfferSalary] = useState<number | null>(null);
+  const [springTraining, setSpringTraining] = useState<SpringTrainingView | null>(null);
   const [advancing, setAdvancing] = useState(false);
   const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({});
+  const previousResultsRef = useRef<OffseasonData['phaseResults'] | null>(null);
 
   const applyOffseasonData = useCallback((data: OffseasonData | null) => {
     if (!data) return;
+
+    const previous = previousResultsRef.current;
+    if (previous) {
+      if (data.phaseResults.extensions.length > previous.extensions.length) {
+        getAudioEngine().playEffect('extension_signed');
+      }
+
+      if (data.phaseResults.freeAgentSignings.length > previous.freeAgentSignings.length) {
+        getAudioEngine().playEffect('free_agent_signed');
+      }
+    }
+
+    previousResultsRef.current = data.phaseResults;
     setOffseason(data);
     setExpandedPhases((current) => {
       const next = { ...current };
@@ -191,13 +295,34 @@ export default function OffseasonPage() {
 
   const fetchOffseason = useCallback(async () => {
     if (!isInitialized || !worker.isReady) return null;
-    const data = await worker.getOffseasonState();
+    const [data, extensionData, qualifyingOfferData, qualifyingOfferAmount, recapView, headlineView] = await Promise.all([
+      worker.getOffseasonState(),
+      worker.getExtensionCandidates(userTeamId),
+      worker.getQualifyingOfferEligible(userTeamId),
+      worker.getQualifyingOfferSalary(),
+      worker.getSeasonRecap(season),
+      worker.getOffseasonHeadline(season),
+    ]);
+
+    setExtensionCandidates((extensionData ?? []) as ExtensionCandidateView[]);
+    setQualifyingOfferEligible((qualifyingOfferData ?? []) as QualifyingOfferEligibleView[]);
+    setQualifyingOfferSalary(typeof qualifyingOfferAmount === 'number' ? qualifyingOfferAmount : null);
+    setSeasonRecap((recapView ?? null) as SeasonRecapView | null);
+    setOffseasonHeadline((headlineView ?? null) as OffseasonHeadlineView | null);
+
     if (data) {
       applyOffseasonData(data as OffseasonData);
-      return data as OffseasonData;
+      const offseasonData = data as OffseasonData;
+      if (offseasonData.currentPhase === 'spring_training') {
+        const stView = await worker.getSpringTrainingView();
+        setSpringTraining(stView as SpringTrainingView | null);
+      } else {
+        setSpringTraining(null);
+      }
+      return offseasonData;
     }
     return null;
-  }, [applyOffseasonData, isInitialized, worker]);
+  }, [applyOffseasonData, isInitialized, season, userTeamId, worker]);
 
   useEffect(() => {
     void fetchOffseason();
@@ -209,6 +334,7 @@ export default function OffseasonPage() {
       const data = await worker.advanceOffseason();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -221,7 +347,32 @@ export default function OffseasonPage() {
       const data = await worker.skipOffseasonPhase();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  const handleIssueQualifyingOffer = async (playerId: string) => {
+    setAdvancing(true);
+    try {
+      const result = await worker.issueQualifyingOffer(playerId);
+      if (isSuccessResult(result) && result.success) {
+        await fetchOffseason();
+        await autosaveActiveGame({ season });
+      }
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  const handleResolveQualifyingOffers = async () => {
+    setAdvancing(true);
+    try {
+      await worker.resolveQualifyingOffers();
+      await fetchOffseason();
+      await autosaveActiveGame({ season });
     } finally {
       setAdvancing(false);
     }
@@ -233,6 +384,7 @@ export default function OffseasonPage() {
       const result = await worker.toggleRule5Protection(playerId);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -245,6 +397,7 @@ export default function OffseasonPage() {
       const data = await worker.lockRule5Protection();
       if (isOffseasonData(data)) {
         applyOffseasonData(data);
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -257,6 +410,7 @@ export default function OffseasonPage() {
       const result = await worker.makeRule5Pick(playerId);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -269,6 +423,7 @@ export default function OffseasonPage() {
       const result = await worker.passRule5Pick();
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -281,6 +436,7 @@ export default function OffseasonPage() {
       const result = await worker.resolveRule5OfferBack(playerId, acceptReturn);
       if (isSuccessResult(result) && result.success) {
         await fetchOffseason();
+        await autosaveActiveGame({ season });
       }
     } finally {
       setAdvancing(false);
@@ -440,15 +596,116 @@ export default function OffseasonPage() {
         </div>
       </div>
 
+      {seasonRecap && offseasonHeadline ? (
+        <SeasonNarrativePanel
+          season={seasonRecap.season}
+          title="Offseason Narrative"
+          headline={offseasonHeadline.headline}
+          recap={seasonRecap.recap}
+          storylines={seasonRecap.storylines}
+        />
+      ) : null}
+
       {offseason && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-9">
           <ResultCard label="Arbitrations" value={offseason.phaseResults.arbitrationResolved.length} icon={DollarSign} />
           <ResultCard label="Tendered" value={offseason.phaseResults.tenderedPlayers.length} icon={Check} />
           <ResultCard label="Non-Tendered" value={offseason.phaseResults.nonTenderedPlayers.length} icon={UserMinus} />
+          <ResultCard label="Extensions" value={offseason.phaseResults.extensions.length} icon={FileText} />
+          <ResultCard label="QOs" value={offseason.phaseResults.qualifyingOffers.length} icon={FileText} />
           <ResultCard label="FA Signings" value={offseason.phaseResults.freeAgentSignings.length} icon={FileText} />
           <ResultCard label="Draft Picks" value={offseason.phaseResults.draftPicks.length} icon={Award} />
+          <ResultCard label="Staff Moves" value={offseason.phaseResults.coachChanges.length} icon={ShieldCheck} />
           <ResultCard label="Retirements" value={offseason.phaseResults.retiredPlayers.length} icon={Calendar} />
         </div>
+      )}
+
+      {offseason?.currentPhase === 'extensions' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="font-heading text-dynasty-text">Extensions</CardTitle>
+              <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Negotiate before the open market shifts leverage.
+              </div>
+            </div>
+            <Badge variant="outline">{extensionCandidates.length} candidates</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {extensionCandidates.length > 0 ? extensionCandidates.map((candidate) => (
+              <div key={candidate.playerId} className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
+                    <StatLine
+                      className="mt-2"
+                      stats={[
+                        { label: 'Control', value: `${candidate.yearsRemaining} yr` },
+                        { label: 'Current', value: moneyLabel(candidate.currentSalary) },
+                        { label: 'Willingness', value: `${Math.round(candidate.willingness * 100)}%` },
+                      ]}
+                    />
+                  </div>
+                  <div className="w-full max-w-sm space-y-2">
+                    <GradeBar label="Willingness" grade={gradeFromFraction(candidate.willingness)} />
+                    <GradeBar label="Leverage" grade={gradeFromFraction(((candidate.demandMultiplier ?? 1) - 1) / 0.55)} />
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 px-4 py-6 text-sm text-dynasty-muted">
+                No extension candidates are active right now.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {offseason?.currentPhase === 'qualifying_offers' && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="font-heading text-dynasty-text">Qualifying Offers</CardTitle>
+              <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Salary line {qualifyingOfferSalary != null ? moneyLabel(qualifyingOfferSalary, 2) : '--'}
+              </div>
+            </div>
+            <Button type="button" size="sm" disabled={advancing} onClick={() => void handleResolveQualifyingOffers()}>
+              Resolve Offers
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {qualifyingOfferEligible.length > 0 ? qualifyingOfferEligible.map((candidate) => (
+              <div key={candidate.playerId} className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="font-heading text-sm text-dynasty-text">{candidate.playerName}</div>
+                    <StatLine
+                      className="mt-2"
+                      stats={[
+                        { label: 'QO', value: moneyLabel(candidate.qualifyingOfferSalary, 2) },
+                        { label: 'Market', value: moneyLabel(candidate.projectedMarketValue, 1) },
+                        { label: 'Service', value: `${candidate.serviceYears}` },
+                      ]}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={advancing}
+                    onClick={() => void handleIssueQualifyingOffer(candidate.playerId)}
+                  >
+                    Issue QO
+                  </Button>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 px-4 py-6 text-sm text-dynasty-muted">
+                No qualifying-offer files are eligible this offseason.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {rule5 && (
@@ -711,6 +968,86 @@ export default function OffseasonPage() {
             )}
           </div>
         </div>
+      )}
+
+      {offseason?.currentPhase === 'spring_training' && springTraining && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="font-heading text-dynasty-text">
+                <div className="flex items-center gap-2">
+                  <Tent className="h-5 w-5 text-accent-primary" />
+                  Spring Training
+                </div>
+              </CardTitle>
+              <div className="mt-1 font-data text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                Finalize your 26-man roster before Opening Day
+              </div>
+            </div>
+            <Badge variant="outline">
+              <Users className="mr-1 h-3 w-3" />
+              {springTraining.currentRosterSize}/{springTraining.rosterLimit}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {springTraining.rosterIssues.length > 0 && (
+              <div className="rounded-lg border border-accent-warning/50 bg-accent-warning/10 p-4">
+                <div className="mb-2 flex items-center gap-2 font-heading text-sm font-semibold text-accent-warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  Roster Compliance Issues
+                </div>
+                <div className="space-y-2">
+                  {springTraining.rosterIssues.map((issue, idx) => (
+                    <div
+                      key={`issue-${idx}`}
+                      className="rounded border border-accent-warning/30 bg-dynasty-elevated px-3 py-2 font-data text-xs text-dynasty-text"
+                    >
+                      {issue.message}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="mb-3 flex items-center gap-2 font-heading text-[11px] uppercase tracking-[0.18em] text-dynasty-muted">
+                <TrendingUp className="h-3.5 w-3.5" />
+                Top Call-Up Candidates
+              </div>
+              {springTraining.promotionCandidates.length > 0 ? (
+                <div className="space-y-2">
+                  {springTraining.promotionCandidates.map((candidate) => (
+                    <div
+                      key={candidate.playerId}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-dynasty-border bg-dynasty-elevated/60 px-4 py-3"
+                    >
+                      <div>
+                        <div className="font-heading text-sm text-dynasty-text">
+                          {candidate.playerName}
+                        </div>
+                        <StatLine
+                          className="mt-1"
+                          stats={[
+                            { label: 'POS', value: candidate.position },
+                            { label: 'OVR', value: String(candidate.overallRating) },
+                            { label: 'Level', value: candidate.currentLevel },
+                          ]}
+                        />
+                      </div>
+                      <div className="text-right">
+                        <div className="font-data text-xs text-dynasty-muted">{candidate.reason}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dynasty-border bg-dynasty-elevated/60 px-4 py-6 text-sm text-dynasty-muted">
+                  No minor league players are ready for promotion.
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {transactionGroups.length > 0 && (

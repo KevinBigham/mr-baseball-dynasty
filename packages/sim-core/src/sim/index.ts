@@ -21,10 +21,25 @@ export {
   simulateGame,
 } from './gameSimulator.js';
 export type {
+  GameSimulationOptions,
   GameTeam,
   GameBoxScore,
   PlayerGameStats,
 } from './gameSimulator.js';
+
+export {
+  REGULAR_SEASON_DAYS,
+  REGULAR_SEASON_MONTHS,
+  getRegularSeasonGameDays,
+  getDaysUntilTradeDeadline,
+  getRegularSeasonMonthForDay,
+  getTradeDeadlineDay,
+  getNextMonthStartDay,
+  isTradeDeadlineModeDay,
+} from './calendar.js';
+export type {
+  RegularSeasonMonth,
+} from './calendar.js';
 
 export {
   createSeasonState,
@@ -33,6 +48,7 @@ export {
   simulateMonth,
 } from './seasonSimulator.js';
 export type {
+  SeasonSimulationOptions,
   SeasonState,
   DaySimResult,
 } from './seasonSimulator.js';
@@ -52,6 +68,7 @@ export {
 } from './playoffSimulator.js';
 export type {
   LeagueId,
+  PlayoffSimulationOptions,
   PlayoffSeed,
   PlayoffKeyPerformer,
   PlayoffGameResult,

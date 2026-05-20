@@ -3,6 +3,7 @@
  * Interactive postseason bracket simulation with per-series state.
  */
 
+import type { PlayoffSeriesDeficitReached } from '@mbd/contracts';
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import { HITTER_POSITIONS, PITCHER_POSITIONS } from '../player/generation.js';
@@ -71,6 +72,8 @@ export interface PlayoffSeriesState {
   readonly status: 'in_progress' | 'complete';
   readonly winnerId: string | null;
   readonly loserId: string | null;
+  readonly deficitReached: PlayoffSeriesDeficitReached | null;
+  readonly deficitTeamId: string | null;
 }
 
 export interface CompletedRoundResult {
@@ -102,6 +105,11 @@ export interface PlayoffPreviewSeries {
   readonly away: PlayoffPreviewTeamSlot;
 }
 
+export interface PlayoffSimulationOptions {
+  readonly teamModifiers?: Map<string, number>;
+  readonly unavailablePlayerIds?: ReadonlySet<string>;
+}
+
 const LEAGUES: readonly LeagueId[] = ['AL', 'NL'];
 
 function leagueFromDivision(division: string): LeagueId {
@@ -109,9 +117,9 @@ function leagueFromDivision(division: string): LeagueId {
 }
 
 function standingsSort(left: StandingsEntry, right: StandingsEntry): number {
-  if (right.pct !== left.pct) return right.pct - left.pct;
   if (right.wins !== left.wins) return right.wins - left.wins;
   if (left.losses !== right.losses) return left.losses - right.losses;
+  if (right.pct !== left.pct) return right.pct - left.pct;
   return left.teamId.localeCompare(right.teamId);
 }
 
@@ -232,6 +240,8 @@ function createSeries(
     status: 'in_progress',
     winnerId: null,
     loserId: null,
+    deficitReached: null,
+    deficitTeamId: null,
   };
   return {
     ...base,
@@ -239,8 +249,16 @@ function createSeries(
   };
 }
 
-function buildGameTeam(teamId: string, allPlayers: GeneratedPlayer[]): GameTeam {
-  const mlbPlayers = allPlayers.filter((player) => player.teamId === teamId && player.rosterStatus === 'MLB');
+function buildGameTeam(
+  teamId: string,
+  allPlayers: GeneratedPlayer[],
+  unavailablePlayerIds: ReadonlySet<string> = new Set(),
+): GameTeam {
+  const mlbPlayers = allPlayers.filter((player) =>
+    player.teamId === teamId
+    && player.rosterStatus === 'MLB'
+    && !unavailablePlayerIds.has(player.id),
+  );
   const hitters = mlbPlayers
     .filter((player) => (HITTER_POSITIONS as readonly string[]).includes(player.position))
     .sort((left, right) => right.overallRating - left.overallRating);
@@ -262,6 +280,10 @@ function buildGameTeam(teamId: string, allPlayers: GeneratedPlayer[]): GameTeam 
     pitcher: starter,
     bullpen,
   };
+}
+
+function canFieldGameTeam(team: GameTeam): boolean {
+  return team.lineup.length >= 9 && team.pitcher != null;
 }
 
 function playerPerformanceScore(stats: PlayerGameStats): number {
@@ -401,10 +423,11 @@ function simulateSeriesState(
   series: PlayoffSeriesState,
   allPlayers: GeneratedPlayer[],
   rng: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffSeriesState {
   let current = series;
   while (current.status !== 'complete') {
-    current = simPlayoffGame(current, allPlayers, rng.fork());
+    current = simPlayoffGame(current, allPlayers, rng.fork(), options);
   }
   return current;
 }
@@ -523,6 +546,7 @@ export function simPlayoffGame(
   series: PlayoffSeriesState,
   allPlayers: GeneratedPlayer[],
   rng: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffSeriesState {
   if (series.status === 'complete') {
     return series;
@@ -535,17 +559,27 @@ export function simPlayoffGame(
     : series.lowerSeed;
   const guest = host.teamId === series.higherSeed.teamId ? series.lowerSeed : series.higherSeed;
 
-  const home = buildGameTeam(host.teamId, allPlayers);
-  const away = buildGameTeam(guest.teamId, allPlayers);
+  const home = buildGameTeam(host.teamId, allPlayers, options.unavailablePlayerIds);
+  const away = buildGameTeam(guest.teamId, allPlayers, options.unavailablePlayerIds);
 
-  if (home.lineup.length < 9 || away.lineup.length < 9) {
-    const higherSeedWins = series.higherSeedWins + 1;
+  const homeCanField = canFieldGameTeam(home);
+  const awayCanField = canFieldGameTeam(away);
+
+  if (!homeCanField || !awayCanField) {
+    const winnerId = homeCanField === awayCanField
+      ? series.higherSeed.teamId
+      : homeCanField
+        ? host.teamId
+        : guest.teamId;
+    const higherSeedWon = winnerId === series.higherSeed.teamId;
+    const winsNeeded = getWinsNeeded(series.bestOf);
     const completed = {
       ...series,
-      higherSeedWins,
+      higherSeedWins: higherSeedWon ? winsNeeded : 0,
+      lowerSeedWins: higherSeedWon ? 0 : winsNeeded,
       status: 'complete' as const,
-      winnerId: series.higherSeed.teamId,
-      loserId: series.lowerSeed.teamId,
+      winnerId,
+      loserId: higherSeedWon ? series.lowerSeed.teamId : series.higherSeed.teamId,
     };
     return {
       ...completed,
@@ -559,6 +593,10 @@ export function simPlayoffGame(
     home,
     `${series.id}-G${gameNumber}`,
     true,
+    {
+      awayOffenseModifier: options.teamModifiers?.get(guest.teamId),
+      homeOffenseModifier: options.teamModifiers?.get(host.teamId),
+    },
   );
   const winnerId = boxScore.homeScore > boxScore.awayScore ? boxScore.homeTeamId : boxScore.awayTeamId;
   const loserId = winnerId === boxScore.homeTeamId ? boxScore.awayTeamId : boxScore.homeTeamId;
@@ -567,6 +605,31 @@ export function simPlayoffGame(
   const nextLowerSeedWins = series.lowerSeedWins + (higherSeedWon ? 0 : 1);
   const winsNeeded = getWinsNeeded(series.bestOf);
   const complete = nextHigherSeedWins >= winsNeeded || nextLowerSeedWins >= winsNeeded;
+  const firstDeficit = series.deficitReached == null
+    ? (
+      series.bestOf === 5
+      && (
+        (nextHigherSeedWins === 2 && nextLowerSeedWins === 0)
+        || (nextHigherSeedWins === 0 && nextLowerSeedWins === 2)
+      )
+        ? {
+          deficitReached: '0-2' as const,
+          deficitTeamId: nextHigherSeedWins === 2 ? series.lowerSeed.teamId : series.higherSeed.teamId,
+        }
+        : series.bestOf === 7
+          && (
+            (nextHigherSeedWins === 3 && nextLowerSeedWins === 1)
+            || (nextHigherSeedWins === 1 && nextLowerSeedWins === 3)
+          )
+          ? {
+            deficitReached: '1-3' as const,
+            deficitTeamId: nextHigherSeedWins === 3 ? series.lowerSeed.teamId : series.higherSeed.teamId,
+          }
+          : null
+    )
+    : null;
+  const deficitReached = series.deficitReached ?? firstDeficit?.deficitReached ?? null;
+  const deficitTeamId = series.deficitTeamId ?? firstDeficit?.deficitTeamId ?? null;
 
   const nextSeries: PlayoffSeriesState = {
     ...series,
@@ -590,6 +653,8 @@ export function simPlayoffGame(
     status: complete ? 'complete' : 'in_progress',
     winnerId: complete ? winnerId : null,
     loserId: complete ? loserId : null,
+    deficitReached,
+    deficitTeamId,
   };
 
   return {
@@ -605,6 +670,7 @@ export function simulateSeries(
   bestOf: 3 | 5 | 7,
   round: PlayoffRound,
   allPlayers: GeneratedPlayer[],
+  options: PlayoffSimulationOptions = {},
 ): SeriesResult {
   const higherSeed: PlayoffSeed = {
     teamId: team1Id,
@@ -626,6 +692,7 @@ export function simulateSeries(
     createSeries(`LEGACY-${team1Id}-${team2Id}`, round, 'AL', bestOf, higherSeed, lowerSeed),
     allPlayers,
     rng.fork(),
+    options,
   );
   return toLegacySeries(completed);
 }
@@ -634,6 +701,7 @@ export function advancePlayoffRound(
   bracket: PlayoffBracket,
   allPlayers?: GeneratedPlayer[],
   rng?: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffBracket {
   let working = bracket;
 
@@ -642,7 +710,7 @@ export function advancePlayoffRound(
       return working;
     }
     const completedCurrent = working.currentRoundSeries.map((series) =>
-      simulateSeriesState(series, allPlayers, rng.fork()),
+      simulateSeriesState(series, allPlayers, rng.fork(), options),
     );
     working = syncLegacyBracket({
       seeds: working.seeds,
@@ -697,13 +765,14 @@ export function simPlayoffSeries(
   bracket: PlayoffBracket,
   allPlayers: GeneratedPlayer[],
   rng: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffBracket {
   const activeSeries = bracket.currentRoundSeries.find((series) => series.status !== 'complete');
   if (!activeSeries) {
-    return advancePlayoffRound(bracket, allPlayers, rng.fork());
+    return advancePlayoffRound(bracket, allPlayers, rng.fork(), options);
   }
 
-  const updatedSeries = simulateSeriesState(activeSeries, allPlayers, rng.fork());
+  const updatedSeries = simulateSeriesState(activeSeries, allPlayers, rng.fork(), options);
   const nextCurrentRoundSeries = bracket.currentRoundSeries.map((series) =>
     series.id === updatedSeries.id ? updatedSeries : series,
   );
@@ -715,7 +784,7 @@ export function simPlayoffSeries(
   });
 
   if (nextCurrentRoundSeries.every((series) => series.status === 'complete')) {
-    return advancePlayoffRound(nextBracket, allPlayers, rng.fork());
+    return advancePlayoffRound(nextBracket, allPlayers, rng.fork(), options);
   }
 
   return nextBracket;
@@ -725,13 +794,14 @@ export function simNextPlayoffGame(
   bracket: PlayoffBracket,
   allPlayers: GeneratedPlayer[],
   rng: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffBracket {
   const activeSeries = bracket.currentRoundSeries.find((series) => series.status !== 'complete');
   if (!activeSeries) {
-    return advancePlayoffRound(bracket, allPlayers, rng.fork());
+    return advancePlayoffRound(bracket, allPlayers, rng.fork(), options);
   }
 
-  const updatedSeries = simPlayoffGame(activeSeries, allPlayers, rng.fork());
+  const updatedSeries = simPlayoffGame(activeSeries, allPlayers, rng.fork(), options);
   const nextCurrentRoundSeries = bracket.currentRoundSeries.map((series) =>
     series.id === updatedSeries.id ? updatedSeries : series,
   );
@@ -743,7 +813,7 @@ export function simNextPlayoffGame(
   });
 
   if (nextCurrentRoundSeries.every((series) => series.status === 'complete')) {
-    return advancePlayoffRound(nextBracket, allPlayers, rng.fork());
+    return advancePlayoffRound(nextBracket, allPlayers, rng.fork(), options);
   }
 
   return nextBracket;
@@ -753,8 +823,9 @@ export function simPlayoffRound(
   bracket: PlayoffBracket,
   allPlayers: GeneratedPlayer[],
   rng: GameRNG,
+  options: PlayoffSimulationOptions = {},
 ): PlayoffBracket {
-  return advancePlayoffRound(bracket, allPlayers, rng.fork());
+  return advancePlayoffRound(bracket, allPlayers, rng.fork(), options);
 }
 
 export function isPlayoffComplete(bracket: PlayoffBracket): boolean {
@@ -765,10 +836,11 @@ export function simulatePlayoffs(
   rng: GameRNG,
   seeds: PlayoffSeed[],
   allPlayers: GeneratedPlayer[],
+  options: PlayoffSimulationOptions = {},
 ): PlayoffBracket {
   let bracket = createBracketFromSeeds(seeds);
   while (!isPlayoffComplete(bracket)) {
-    bracket = advancePlayoffRound(bracket, allPlayers, rng.fork());
+    bracket = advancePlayoffRound(bracket, allPlayers, rng.fork(), options);
   }
   return bracket;
 }

@@ -29,6 +29,14 @@ export interface PAResult {
   readonly outcome: PAOutcome;
   readonly batterId: string;
   readonly pitcherId: string;
+  readonly inning: number;
+  readonly halfInning: 'top' | 'bottom';
+  readonly outs: number;
+  readonly runnersOn: number;
+  readonly scoreBefore: readonly [number, number];
+  readonly scoreAfter: readonly [number, number];
+  readonly rbiOnPlay: number;
+  readonly isWalkOff: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,12 +46,13 @@ export interface PAResult {
 /** League average rates (approximate MLB averages) */
 const LEAGUE_AVG = {
   bb: 0.085,
+  hbp: 0.008,
   k: 0.220,
-  hr: 0.030,
-  single: 0.155,
+  hr: 0.0314,
+  single: 0.16,
   double: 0.045,
   triple: 0.005,
-  gb: 0.220,
+  gb: 0.212,
   fb: 0.140,
   ld: 0.100,
 };
@@ -62,9 +71,10 @@ function hitterToRates(attrs: HitterAttributes) {
 
   return {
     bb: LEAGUE_AVG.bb * (0.5 + eyeN),
+    hbp: LEAGUE_AVG.hbp * (0.75 + ((eyeN + speedN) * 0.35)),
     k: LEAGUE_AVG.k * (1.5 - contactN),
-    hr: LEAGUE_AVG.hr * (0.3 + powerN * 1.4),
-    single: LEAGUE_AVG.single * (0.5 + contactN * 0.8),
+    hr: LEAGUE_AVG.hr * (0.28 + powerN * 1.1),
+    single: LEAGUE_AVG.single * (0.52 + contactN * 0.86),
     double: LEAGUE_AVG.double * (0.5 + (contactN + powerN) * 0.5),
     triple: LEAGUE_AVG.triple * (0.3 + speedN * 1.4),
     gb: LEAGUE_AVG.gb,
@@ -86,9 +96,10 @@ function pitcherToRates(attrs: PitcherAttributes) {
 
   return {
     bb: LEAGUE_AVG.bb * (1.5 - controlN),
+    hbp: LEAGUE_AVG.hbp * (1.4 - controlN),
     k: LEAGUE_AVG.k * (0.5 + stuffN),
-    hr: LEAGUE_AVG.hr * (1.3 - movementN * 0.6),
-    single: LEAGUE_AVG.single * (1.3 - stuffN * 0.6),
+    hr: LEAGUE_AVG.hr * (1.18 - movementN * 0.48),
+    single: LEAGUE_AVG.single * (1.28 - stuffN * 0.54),
     double: LEAGUE_AVG.double * (1.2 - movementN * 0.4),
     triple: LEAGUE_AVG.triple,
     gb: LEAGUE_AVG.gb * (0.7 + movementN * 0.6),
@@ -104,6 +115,7 @@ function pitcherToRates(attrs: PitcherAttributes) {
 /** Outcome mapping from Log5 keys to PAOutcome enum */
 const KEY_TO_OUTCOME: Record<string, PAOutcome> = {
   bb: 'BB',
+  hbp: 'HBP',
   k: 'K',
   hr: 'HR',
   single: 'SINGLE',
@@ -114,7 +126,7 @@ const KEY_TO_OUTCOME: Record<string, PAOutcome> = {
   ld: 'LD_OUT',
 };
 
-const OUTCOME_KEYS = ['bb', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld'] as const;
+const OUTCOME_KEYS = ['bb', 'hbp', 'k', 'hr', 'single', 'double', 'triple', 'gb', 'fb', 'ld'] as const;
 
 /**
  * Resolve a single plate appearance.
@@ -151,10 +163,34 @@ export function resolvePlateAppearance(
         outcome = 'DOUBLE_PLAY';
       }
 
-      return { outcome, batterId, pitcherId };
+      return {
+        outcome,
+        batterId,
+        pitcherId,
+        inning: 0,
+        halfInning: 'top',
+        outs: 0,
+        runnersOn: 0,
+        scoreBefore: [0, 0],
+        scoreAfter: [0, 0],
+        rbiOnPlay: 0,
+        isWalkOff: false,
+      };
     }
   }
 
   // Fallback (floating point guard)
-  return { outcome: 'FB_OUT', batterId, pitcherId };
+  return {
+    outcome: 'FB_OUT',
+    batterId,
+    pitcherId,
+    inning: 0,
+    halfInning: 'top',
+    outs: 0,
+    runnersOn: 0,
+    scoreBefore: [0, 0],
+    scoreAfter: [0, 0],
+    rbiOnPlay: 0,
+    isWalkOff: false,
+  };
 }

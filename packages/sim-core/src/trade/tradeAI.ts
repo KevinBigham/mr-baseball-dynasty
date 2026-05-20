@@ -3,11 +3,13 @@
  * AI trade behavior: GM personalities, proposal evaluation, counter-offers,
  * and autonomous trade generation.
  *
- * All randomness uses GameRNG — Math.random() is NEVER used.
+ * All randomness uses GameRNG; the JS global random API is never used.
  */
 
 import type { GameRNG } from '../math/prng.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { assignPlayerToTeam } from '../player/teamTenures.js';
+import { isTradeDeadlineModeDay } from '../sim/calendar.js';
 import { evaluatePlayerTradeValue, comparePackages } from './valuation.js';
 
 // ---------------------------------------------------------------------------
@@ -45,12 +47,21 @@ const COUNTER_IMPROVEMENT_MAX = 20;
 
 /** Maximum number of trade proposals an AI generates per evaluation cycle. */
 const MAX_AI_PROPOSALS = 3;
+const DEADLINE_MAX_AI_PROPOSALS = 7;
 
 /** Minimum overall trade value to be considered "tradeable" by AI. */
 const MIN_TRADEABLE_VALUE = 15;
 
 /** Trade ID hex segment length. */
 const TRADE_ID_SEGMENTS = 3;
+const TOP_PROSPECT_POTENTIAL_THRESHOLD = 320;
+const TOP_PROSPECT_AGE_THRESHOLD = 24;
+const MAX_PROPOSAL_FAIRNESS_ABS = 22;
+const RENTAL_PLAYER_AGE_THRESHOLD = 28;
+const DEADLINE_UPGRADE_MARGIN = 0;
+const STANDARD_UPGRADE_MARGIN = 10;
+const DEADLINE_BALANCED_PROPOSAL_ABS = 35;
+const DEADLINE_ACCEPTANCE_BONUS = 8;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,6 +86,11 @@ export interface TradeResult {
   playersMoved: Array<{ playerId: string; fromTeam: string; toTeam: string }>;
 }
 
+export interface TradeGenerationContext {
+  currentDay?: number;
+  contenderTeamIds?: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -90,6 +106,41 @@ function playersById(allPlayers: GeneratedPlayer[], ids: string[]): GeneratedPla
     if (p) result.push(p);
   }
   return result;
+}
+
+function prospectPotential(player: GeneratedPlayer): number {
+  return player.potentialRating ?? player.ceiling ?? player.overallRating;
+}
+
+function isProtectedProspect(player: GeneratedPlayer): boolean {
+  return player.rosterStatus !== 'MLB'
+    && player.age <= TOP_PROSPECT_AGE_THRESHOLD
+    && prospectPotential(player) >= TOP_PROSPECT_POTENTIAL_THRESHOLD;
+}
+
+function isFutureValueTarget(player: GeneratedPlayer): boolean {
+  return player.rosterStatus !== 'MLB'
+    && player.age <= 25
+    && prospectPotential(player) >= 260
+    && !isProtectedProspect(player);
+}
+
+function isRentalPlayer(player: GeneratedPlayer): boolean {
+  return player.rosterStatus === 'MLB'
+    && player.contract.years <= 1
+    && player.age >= RENTAL_PLAYER_AGE_THRESHOLD;
+}
+
+function isBalancedProposal(fairness: number, atDeadline: boolean = false): boolean {
+  return Math.abs(fairness) <= (atDeadline ? DEADLINE_BALANCED_PROPOSAL_ABS : MAX_PROPOSAL_FAIRNESS_ABS);
+}
+
+function proposalFairnessCap(atDeadline: boolean, isContender: boolean): number {
+  return atDeadline && isContender ? 35 : MAX_PROPOSAL_FAIRNESS_ABS;
+}
+
+function isDeadlineBuyerProposal(reason: string): boolean {
+  return reason.startsWith('Deadline buyer mode:');
 }
 
 /**
@@ -115,6 +166,18 @@ function adjustedFairness(
   if (personality === 'win_now') {
     const veteransAcquired = offeredPlayers.filter((p) => p.age >= 28);
     adjusted += veteransAcquired.length * 5;
+  }
+
+  const protectedProspects = requestedPlayers.filter(isProtectedProspect);
+  adjusted -= protectedProspects.length * 28;
+
+  if (!isContender) {
+    const futureValueAcquired = offeredPlayers.filter(isFutureValueTarget);
+    const rentalsMoved = requestedPlayers.filter(isRentalPlayer);
+    const veteransAcquired = offeredPlayers.filter(isRentalPlayer);
+    adjusted += futureValueAcquired.length * 12;
+    adjusted += rentalsMoved.length * 8;
+    adjusted -= veteransAcquired.length * 12;
   }
 
   // Contending teams are more aggressive at deadline
@@ -200,6 +263,9 @@ export function evaluateTradeProposal(
   if (fillsNeed) {
     effective += NEED_BONUS;
   }
+  if (isDeadlineBuyerProposal(proposal.reason)) {
+    effective += DEADLINE_ACCEPTANCE_BONUS;
+  }
 
   const threshold = ACCEPTANCE_THRESHOLDS[gmPersonality];
 
@@ -243,8 +309,27 @@ export function generateAITradeOffers(
   allPlayers: GeneratedPlayer[],
   gmPersonality: GMPersonality,
   isContender: boolean,
+  context: TradeGenerationContext = {},
 ): TradeProposal[] {
+  const deadlineMode = isTradeDeadlineModeDay(context.currentDay ?? 1);
+  const contenderTeamIds = new Set(context.contenderTeamIds ?? []);
+
+  if (!isContender && deadlineMode) {
+    const sellerProposals = generateSellerTradeOffers(
+      rng,
+      teamId,
+      teamPlayers,
+      allPlayers,
+      contenderTeamIds,
+    );
+    if (sellerProposals.length > 0) {
+      return sellerProposals;
+    }
+  }
+
   const proposals: TradeProposal[] = [];
+  const proposalLimit = deadlineMode ? DEADLINE_MAX_AI_PROPOSALS : MAX_AI_PROPOSALS;
+  const upgradeMargin = deadlineMode ? DEADLINE_UPGRADE_MARGIN : STANDARD_UPGRADE_MARGIN;
 
   // Identify team weaknesses: positions with lowest-rated MLB starters
   const mlbPlayers = teamPlayers.filter((p) => p.rosterStatus === 'MLB');
@@ -269,6 +354,7 @@ export function generateAITradeOffers(
       if (p.contract.noTradeClause) return false;
       const val = evaluatePlayerTradeValue(p);
       if (val.overall < MIN_TRADEABLE_VALUE) return false;
+      if (isProtectedProspect(p)) return false;
       // Prospect huggers won't offer young talent
       if (gmPersonality === 'prospect_hugger' && p.age < YOUNG_PLAYER_AGE_THRESHOLD) return false;
       return true;
@@ -288,15 +374,19 @@ export function generateAITradeOffers(
   }
 
   for (const [weakPos, weakInfo] of weakPositions) {
-    if (proposals.length >= MAX_AI_PROPOSALS) break;
+    if (proposals.length >= proposalLimit) break;
 
     // Find targets at this position on other teams that would be upgrades
     const targets = otherTeamPlayers
       .filter((p) => {
         if (p.position !== weakPos) return false;
         if (p.contract.noTradeClause) return false;
+        if (deadlineMode && isContender) {
+          if (contenderTeamIds.has(p.teamId)) return false;
+          if (!isRentalPlayer(p) && p.contract.years > 2) return false;
+        }
         const val = evaluatePlayerTradeValue(p);
-        return val.overall > weakInfo.value + 10; // meaningful upgrade
+        return val.overall > weakInfo.value + upgradeMargin; // meaningful upgrade
       })
       .sort((a, b) => evaluatePlayerTradeValue(b).overall - evaluatePlayerTradeValue(a).overall);
 
@@ -322,14 +412,34 @@ export function generateAITradeOffers(
 
     if (offerPackage.length === 0) continue;
 
+    if (deadlineMode && isContender && packageValue < targetValue) {
+      const prospectSweetener = teamPlayers
+        .filter((player) =>
+          !player.contract.noTradeClause
+          && !offerPackage.some((candidate) => candidate.id === player.id)
+          && player.rosterStatus !== 'MLB'
+          && isFutureValueTarget(player),
+        )
+        .sort((left, right) =>
+          evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+          || left.id.localeCompare(right.id),
+        )[0];
+
+      if (prospectSweetener) {
+        offerPackage.push(prospectSweetener);
+        packageValue += evaluatePlayerTradeValue(prospectSweetener).overall;
+      }
+    }
+
     // Check if AI itself thinks this is reasonable
     const { fairness } = comparePackages(offerPackage, [target]);
     const selfThreshold = ACCEPTANCE_THRESHOLDS[gmPersonality];
+    const fairnessCap = proposalFairnessCap(deadlineMode, isContender);
 
     // AI won't propose trades it wouldn't accept itself (but in reverse)
-    if (fairness < selfThreshold) continue;
+    if (fairness < selfThreshold || Math.abs(fairness) > fairnessCap) continue;
 
-    const reason = buildTradeReason(weakPos, isContender, gmPersonality);
+    const reason = buildTradeReason(weakPos, isContender, gmPersonality, deadlineMode);
 
     proposals.push({
       id: generateTradeId(rng),
@@ -345,6 +455,59 @@ export function generateAITradeOffers(
   return proposals;
 }
 
+function generateSellerTradeOffers(
+  rng: GameRNG,
+  teamId: string,
+  teamPlayers: GeneratedPlayer[],
+  allPlayers: GeneratedPlayer[],
+  contenderTeamIds: Set<string>,
+): TradeProposal[] {
+  const proposals: TradeProposal[] = [];
+  const rentals = teamPlayers
+    .filter((player) => !player.contract.noTradeClause && isRentalPlayer(player))
+    .sort((left, right) =>
+      evaluatePlayerTradeValue(right).overall - evaluatePlayerTradeValue(left).overall
+      || left.id.localeCompare(right.id),
+    )
+    .slice(0, DEADLINE_MAX_AI_PROPOSALS);
+
+  for (const rental of rentals) {
+    if (proposals.length >= DEADLINE_MAX_AI_PROPOSALS) break;
+
+    for (const contenderTeamId of contenderTeamIds) {
+      if (contenderTeamId === teamId) continue;
+      const contenderPlayers = allPlayers.filter((player) => player.teamId === contenderTeamId);
+      const futureValueCandidates = contenderPlayers
+        .filter((player) => !player.contract.noTradeClause && isFutureValueTarget(player))
+        .sort((left, right) =>
+          Math.abs(comparePackages([rental], [left]).fairness) - Math.abs(comparePackages([rental], [right]).fairness)
+          || prospectPotential(left) - prospectPotential(right)
+          || left.id.localeCompare(right.id),
+        );
+      const returnPiece = futureValueCandidates.find((candidate) =>
+        isBalancedProposal(comparePackages([rental], [candidate]).fairness, true),
+      );
+
+      if (!returnPiece) {
+        continue;
+      }
+
+      proposals.push({
+        id: generateTradeId(rng),
+        fromTeamId: teamId,
+        toTeamId: contenderTeamId,
+        playersOffered: [rental.id],
+        playersRequested: [returnPiece.id],
+        status: 'proposed',
+        reason: 'Moving an expiring piece for controllable future value.',
+      });
+      break;
+    }
+  }
+
+  return proposals;
+}
+
 /**
  * Execute a trade: move players between teams.
  *
@@ -354,6 +517,7 @@ export function generateAITradeOffers(
 export function executeTrade(
   proposal: TradeProposal,
   allPlayers: GeneratedPlayer[],
+  season: number = 1,
 ): TradeResult {
   const playersMoved: TradeResult['playersMoved'] = [];
 
@@ -362,7 +526,7 @@ export function executeTrade(
     const player = playerById(allPlayers, playerId);
     if (player) {
       const fromTeam = player.teamId;
-      player.teamId = proposal.toTeamId;
+      Object.assign(player, assignPlayerToTeam(player, proposal.toTeamId, season));
       playersMoved.push({ playerId, fromTeam, toTeam: proposal.toTeamId });
     }
   }
@@ -372,7 +536,7 @@ export function executeTrade(
     const player = playerById(allPlayers, playerId);
     if (player) {
       const fromTeam = player.teamId;
-      player.teamId = proposal.fromTeamId;
+      Object.assign(player, assignPlayerToTeam(player, proposal.fromTeamId, season));
       playersMoved.push({ playerId, fromTeam, toTeam: proposal.fromTeamId });
     }
   }
@@ -465,6 +629,7 @@ function buildTradeReason(
   targetPosition: string,
   isContender: boolean,
   personality: GMPersonality,
+  atDeadline: boolean,
 ): string {
   const posNames: Record<string, string> = {
     C: 'catching', '1B': 'first base', '2B': 'second base', '3B': 'third base',
@@ -475,6 +640,9 @@ function buildTradeReason(
 
   if (isContender && personality === 'win_now') {
     return `Pushing for a championship — need to upgrade ${posLabel}.`;
+  }
+  if (isContender && atDeadline) {
+    return `Deadline buyer mode: upgrading ${posLabel} for the stretch run.`;
   }
   if (isContender) {
     return `Looking to strengthen ${posLabel} for a playoff push.`;

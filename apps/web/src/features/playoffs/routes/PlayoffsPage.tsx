@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import {
   ArrowRight,
   Play,
@@ -7,7 +7,10 @@ import {
   Trophy,
   Zap,
 } from 'lucide-react';
+
+const MomentumPanel = lazy(() => import('../components/MomentumPanel'));
 import type { PlayoffBracket, PlayoffSeriesState } from '@mbd/sim-core';
+import { TeamLogo } from '@/shared/components/TeamLogo';
 import type { SeasonFlowPreviewSeries } from '@/app/layout/seasonFlow';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
@@ -107,6 +110,10 @@ export default function PlayoffsPage() {
         </div>
       </div>
 
+      <Suspense fallback={null}>
+        <MomentumPanel />
+      </Suspense>
+
       <section className="grid gap-4 xl:grid-cols-4">
         {ROUND_LABELS.map((round) => {
           const cards = playoffPreview.filter((entry) => entry.round === round.key);
@@ -123,10 +130,12 @@ export default function PlayoffsPage() {
                         <span>Best of {card.bestOf}</span>
                       </div>
                       <div className="mt-3 space-y-2">
-                        <div className="font-heading text-sm text-dynasty-text">
+                        <div className="flex items-center gap-2 font-heading text-sm text-dynasty-text">
+                          {live?.higherSeed.teamId && <TeamLogo teamId={live.higherSeed.teamId} size="xs" />}
                           {live ? `${live.higherSeed.seed} ${teamName(live.higherSeed.teamId, card.home.teamName)}` : `${card.home.seed ?? ''} ${card.home.teamName}`.trim()}
                         </div>
-                        <div className="font-heading text-sm text-dynasty-text">
+                        <div className="flex items-center gap-2 font-heading text-sm text-dynasty-text">
+                          {live?.lowerSeed.teamId && <TeamLogo teamId={live.lowerSeed.teamId} size="xs" />}
                           {live ? `${live.lowerSeed.seed} ${teamName(live.lowerSeed.teamId, card.away.teamName)}` : `${card.away.seed ?? ''} ${card.away.teamName}`.trim()}
                         </div>
                       </div>

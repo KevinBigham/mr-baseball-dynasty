@@ -1,6 +1,25 @@
 import * as Comlink from 'comlink';
 import { actionApi } from './sim.worker.actions.js';
+import {
+  applyScoutingHire,
+  applyStaffHires,
+  completeOnboarding,
+  completeRevisedOnboarding,
+  getAGMCandidates,
+  getOnboardingData,
+  getRevisedOnboardingData,
+} from './sim.worker.onboarding.js';
 import { queryApi } from './sim.worker.queries.js';
+
+const onboardingApi = {
+  getOnboardingData,
+  completeOnboarding,
+  getAGMCandidates,
+  getRevisedOnboardingData,
+  applyStaffHires,
+  applyScoutingHire,
+  completeRevisedOnboarding,
+};
 
 /**
  * Web Worker entry point.
@@ -12,6 +31,7 @@ export const api = {
   },
   ...actionApi,
   ...queryApi,
+  ...onboardingApi,
 };
 
 export type WorkerApi = typeof api;

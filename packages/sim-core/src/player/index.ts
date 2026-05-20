@@ -33,8 +33,75 @@ export type {
   Position,
   RosterLevel,
   DevPhase,
+  DevelopmentProgram,
+  DevelopmentTrajectory,
+  NoTradeClauseType,
+  DeferredMoneyInstallment,
+  ExtensionHistoryEntry,
   GeneratedPlayer,
 } from './generation.js';
+export {
+  assignPlayerToTeam,
+  getLongestTeamTenureSeasons,
+  getTenureSeasonCount,
+  releasePlayerFromTeam,
+  retirePlayerFromTeam,
+  seedInitialTeamTenure,
+} from './teamTenures.js';
+
+export {
+  PERSONALITY_TRAITS,
+  POSITIVE_CHEMISTRY_TRAITS,
+  NEGATIVE_CHEMISTRY_TRAITS,
+  CLUBHOUSE_LEADER_TRAITS,
+  PLAYOFF_COMPOSURE_TRAITS,
+  VOLATILE_PERFORMANCE_TRAITS,
+  assignPersonalityTraits,
+  deriveDeterministicPersonalityTraits,
+  calculatePlayoffComposureModifier,
+  countMatchingTraits,
+} from './personalityTraits.js';
+
+export {
+  COACH_ROLES,
+  COACH_SPECIALTIES,
+  calculateCoachMarketValue,
+  calculateCoachingPayroll,
+  calculateStaffBudget,
+  fireCoach,
+  generateCoachFreeAgents,
+  generateCoachingStaff,
+  getCoachSpecialtyForPosition,
+  getCoachingDevelopmentModifier,
+  hireCoach,
+} from './coaching.js';
+export type {
+  CoachRole,
+  CoachSpecialty,
+  Coach,
+} from './coaching.js';
+
+export {
+  getBreakoutProbability,
+  getPositionConversionTargets,
+  initializePlayerDevelopmentProfile,
+  reconcileDevelopmentPipeline,
+  runMonthlyDevelopmentCheckpoint,
+} from './developmentPipeline.js';
+export {
+  createProspectBond,
+  getProspectLoyaltyModifier,
+  updateProspectBonds,
+} from './prospectBonds.js';
+export {
+  applyDevelopmentSetback,
+  checkDevelopmentSetback,
+  recoverDevelopmentSetback,
+  isDevelopmentSetbackExpired,
+} from './developmentSetbacks.js';
+export type {
+  ProspectBondSnapshot,
+} from './prospectBonds.js';
 
 // Development
 export {
@@ -67,3 +134,51 @@ export {
 export type {
   BreakoutEvent,
 } from './breakouts.js';
+
+export {
+  calculateCoachSynergy,
+  calculateCoachPlayerAffinity,
+  calculateStaffHarmony,
+  getCoachDevelopmentBonus,
+  identifyChemistryIssues,
+} from './coachingChemistry.js';
+export type {
+  CoachSynergy,
+  CoachPlayerAffinity,
+  StaffHarmony,
+  ChemistryIssue,
+} from './coachingChemistry.js';
+export {
+  findMentorCandidates,
+  findProtegeeCandidates,
+  pairMentors,
+  advanceMentorship,
+  getMentorshipDevelopmentBonus,
+  toMentorRelationship,
+  fromMentorRelationship,
+} from './mentorship.js';
+export type {
+  MentorshipPairing,
+  MentorshipEvent,
+} from './mentorship.js';
+export {
+  comparePlayersHead2Head,
+  comparePlayerStats,
+  rankPlayerAttributes,
+  generateComparisonSummary,
+} from './comparison.js';
+export type {
+  AttributeComparison,
+  ComparisonResult,
+  RankedAttribute,
+  StatComparison,
+} from './comparison.js';
+export {
+  findSimilarPlayers,
+  getPlayerArchetype,
+} from './similarity.js';
+export type {
+  SimilarPlayer,
+  SimilarityResult,
+  PlayerArchetype,
+} from './similarity.js';

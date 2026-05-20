@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PositionEnum } from "./player.js";
 
 export const NewsPriorityEnum = z.union([
   z.literal(1),
@@ -9,18 +10,38 @@ export const NewsPriorityEnum = z.union([
 ]);
 export type NewsPriority = z.infer<typeof NewsPriorityEnum>;
 
+export const NewsTagEnum = z.enum([
+  "BREAKING",
+  "ANALYSIS",
+  "RECAP",
+  "RUMOR",
+  "WATCH",
+  "DEBATE",
+]);
+export type NewsTag = z.infer<typeof NewsTagEnum>;
+
 export const NewsCategoryEnum = z.enum([
   "injury",
   "trade",
   "signing",
+  "extension",
+  "qualifying_offer",
+  "coaching",
   "draft",
   "milestone",
   "performance",
   "standings",
   "roster_move",
+  "development",
+  "rumor",
+  "rivalry",
   "award",
   "record",
   "playoff",
+  "arbitration",
+  "holdout",
+  "press_conference",
+  "league_event",
 ]);
 export type NewsCategory = z.infer<typeof NewsCategoryEnum>;
 
@@ -30,6 +51,7 @@ export const NewsItemSchema = z.object({
   body: z.string(),
   priority: NewsPriorityEnum,
   category: NewsCategoryEnum,
+  tag: NewsTagEnum.optional(),
   timestamp: z.string(),
   relatedPlayerIds: z.array(z.string()),
   relatedTeamIds: z.array(z.string()),
@@ -67,6 +89,306 @@ export const MomentSchema = z.object({
   historical: z.boolean(),
 });
 export type Moment = z.infer<typeof MomentSchema>;
+
+export const SignatureMomentTypeEnum = z.enum([
+  "walk_off_hr",
+  "no_hitter",
+  "perfect_game",
+  "four_hr_game",
+  "playoff_error",
+  "first_career_hr",
+  "first_all_star",
+  "milestone_500hr",
+  "milestone_3000h",
+  "milestone_300w",
+  "blown_ws_save",
+  "cycle",
+  "twenty_k_game",
+  "bench_clearing_brawl",
+  "arbitration_win",
+  "arbitration_loss",
+  "super_two_debut",
+  "holdout_resolution",
+  "blockbuster_trade_moved",
+  "blockbuster_trade_acquired",
+  "deadline_seller",
+  "deadline_buyer",
+  "championship_run",
+  "contention_collapse",
+  "first_dynasty_peak",
+  "losing_season_streak",
+  "rebuild_begun",
+  "breakout_season",
+  "contention_window_opens",
+  "fire_sale",
+  "dynasty_end",
+  "cursed_franchise",
+  "veteran_core_retires",
+  "playoff_gauntlet",
+  "rivalry_renewed",
+  "comeback_player",
+  "rookie_sensation",
+  "september_heroics",
+  "redemption_arc",
+  "late_career_peak",
+  "rookie_breakout",
+  "three_peat",
+  "era_ending_collapse",
+  "perennial_contender",
+  "dominant_rotation",
+  "bullpen_collapse",
+  "lineup_of_era",
+  "injury_return_hero",
+  "trade_deadline_spark",
+  "september_callup_hero",
+  "hot_streak_week",
+  "cold_snap_week",
+  "closer_lights_out",
+  "closer_meltdown_week",
+  "bench_clutch_week",
+  "bullpen_overwork_warning",
+]);
+export type SignatureMomentType = z.infer<typeof SignatureMomentTypeEnum>;
+
+export const MomentRoundEnum = z.enum(["WC", "DS", "CS", "WS"]);
+export type MomentRound = z.infer<typeof MomentRoundEnum>;
+
+export const SignatureMomentSchema = z.object({
+  season: z.number().int().min(1),
+  day: z.number().int().min(1).optional(),
+  timestamp: z.string().optional(),
+  type: SignatureMomentTypeEnum,
+  description: z.string().min(1),
+  impact: z.number(),
+  relevance: z.number(),
+  isPlayoff: z.boolean(),
+  isEliminationGame: z.boolean(),
+  worldSeriesClincher: z.boolean(),
+  round: MomentRoundEnum.nullable(),
+});
+export type SignatureMoment = z.infer<typeof SignatureMomentSchema>;
+
+export const NicknameIdEnum = z.enum([
+  "mr_3000",
+  "the_franchise",
+  "mr_october",
+  "doctor_k",
+  "the_wall",
+  "iron_man",
+  "the_flash",
+  "the_closer",
+  "the_professor",
+  "the_natural",
+  "old_reliable",
+  "the_kid",
+  "phoenix",
+  "captain",
+  "the_vulture",
+  "boom_or_bust",
+  "cardiac_kid",
+  "crash",
+  "snakebit",
+  "the_ghost",
+  "the_inferno",
+  "on_a_heater",
+  "torch_mode",
+  "wildfire",
+  "smoke_show",
+  "red_hot",
+  "barrelstorm",
+  "the_oven",
+  "deep_freeze",
+  "the_yips",
+  "snow_day",
+  "slump_merchant",
+  "warning_track",
+  "the_icebox",
+  "whiff_machine",
+  "cold_spell",
+  "big_boomer",
+  "the_hammer",
+  "thunderstick",
+  "moonshot",
+  "light_tower",
+  "the_anvil",
+  "launch_code",
+  "big_fly_machine",
+  "slapdash",
+  "the_surgeon",
+  "silk_bat",
+  "needle_threader",
+  "line_driver",
+  "bat_control",
+  "the_metronome",
+  "table_setter",
+  "cheetah",
+  "the_blur",
+  "jetstream",
+  "green_light",
+  "first_to_third",
+  "dust_trail",
+  "burner",
+  "quicksilver",
+]);
+export type NicknameId = z.infer<typeof NicknameIdEnum>;
+
+const NicknameTriggerValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+export const EarnedNicknameSchema = z.object({
+  id: NicknameIdEnum,
+  displayText: z.string().min(1),
+  priority: z.number().int().min(1),
+  triggerData: z.record(NicknameTriggerValueSchema),
+});
+export type EarnedNickname = z.infer<typeof EarnedNicknameSchema>;
+
+export const NicknameSeasonHistoryEntrySchema = z.object({
+  season: z.number().int().min(1),
+  age: z.number().int().min(16).max(60),
+  teamId: z.string(),
+  gamesPlayed: z.number().int().min(0),
+  pa: z.number().int().min(0),
+  hits: z.number().int().min(0),
+  hr: z.number().int().min(0),
+  battingWalks: z.number().int().min(0),
+  battingStrikeouts: z.number().int().min(0),
+  stolenBases: z.number().int().min(0),
+  saves: z.number().int().min(0),
+  blownSaves: z.number().int().min(0),
+  wins: z.number().int().min(0),
+  era: z.number(),
+  pitchingStrikeouts: z.number().int().min(0),
+  injuryCount: z.number().int().min(0),
+  overallStart: z.number().int().min(0).max(100),
+  overallEnd: z.number().int().min(0).max(100),
+  wasOnMlbRoster: z.boolean(),
+  ledLeagueInStolenBases: z.boolean(),
+});
+export type NicknameSeasonHistoryEntry = z.infer<typeof NicknameSeasonHistoryEntrySchema>;
+
+export const PlayerNicknameStateSchema = z.object({
+  seasonHistory: z.array(NicknameSeasonHistoryEntrySchema).default([]),
+  earnedNicknames: z.array(EarnedNicknameSchema).default([]),
+  primaryNickname: EarnedNicknameSchema.nullable().default(null),
+  badgeNicknames: z.array(EarnedNicknameSchema).default([]),
+});
+export type PlayerNicknameState = z.infer<typeof PlayerNicknameStateSchema>;
+
+export const TradeMemorySchema = z.object({
+  season: z.number().int().min(0),
+  surplusValue: z.number(),
+  permanentMemory: z.boolean(),
+  description: z.string().min(1),
+});
+export type TradeMemory = z.infer<typeof TradeMemorySchema>;
+
+export const GMRelationshipSchema = z.object({
+  targetTeamId: z.string(),
+  score: z.number(),
+  tradeHistory: z.array(TradeMemorySchema).default([]),
+  lastInteractionSeason: z.number().int().min(0),
+});
+export type GMRelationship = z.infer<typeof GMRelationshipSchema>;
+
+const GMPersonalityEnum = z.enum([
+  "aggressive",
+  "conservative",
+  "analytical",
+  "prospect_hugger",
+  "win_now",
+]);
+
+export const LeagueEventTypeEnum = z.enum([
+  "blockbuster_trade",
+  "phenom_debut",
+  "gm_firing",
+  "injury_cascade",
+  "ownership_change",
+  "record_chase",
+  "ifa_frenzy",
+  "retirement_tour",
+  "scandal",
+  "expansion_rumors",
+]);
+export type LeagueEventType = z.infer<typeof LeagueEventTypeEnum>;
+
+const TradeMarketShiftEffectDataSchema = z.object({
+  kind: z.literal("trade_market_shift"),
+  magnitude: z.number(),
+  positionGroup: PositionEnum,
+});
+
+const ProspectMarketShiftEffectDataSchema = z.object({
+  kind: z.literal("prospect_market_shift"),
+  magnitude: z.number(),
+});
+
+const GMResetEffectDataSchema = z.object({
+  kind: z.literal("gm_reset"),
+  magnitude: z.number(),
+  newPersonality: GMPersonalityEnum,
+});
+
+const SellerSignalEffectDataSchema = z.object({
+  kind: z.literal("seller_signal"),
+  magnitude: z.number(),
+});
+
+const BudgetShiftEffectDataSchema = z.object({
+  kind: z.literal("budget_shift"),
+  magnitude: z.number(),
+  budgetDeltaPct: z.number(),
+});
+
+const RevenueShiftEffectDataSchema = z.object({
+  kind: z.literal("revenue_shift"),
+  magnitude: z.number(),
+  revenuePct: z.number(),
+});
+
+const InternationalMarketShiftEffectDataSchema = z.object({
+  kind: z.literal("international_market_shift"),
+  magnitude: z.number(),
+  inflationPct: z.number(),
+});
+
+const DraftPickPenaltyEffectDataSchema = z.object({
+  kind: z.literal("draft_pick_penalty"),
+  magnitude: z.number(),
+  picksLost: z.number().int().min(0),
+});
+
+const ExpansionUncertaintyEffectDataSchema = z.object({
+  kind: z.literal("expansion_uncertainty"),
+  magnitude: z.number(),
+  uncertaintyScore: z.number().int().min(0),
+});
+
+export const LeagueEventEffectDataSchema = z.discriminatedUnion("kind", [
+  TradeMarketShiftEffectDataSchema,
+  ProspectMarketShiftEffectDataSchema,
+  GMResetEffectDataSchema,
+  SellerSignalEffectDataSchema,
+  BudgetShiftEffectDataSchema,
+  RevenueShiftEffectDataSchema,
+  InternationalMarketShiftEffectDataSchema,
+  DraftPickPenaltyEffectDataSchema,
+  ExpansionUncertaintyEffectDataSchema,
+]);
+export type LeagueEventEffectData = z.infer<typeof LeagueEventEffectDataSchema>;
+
+export const LeagueEventSchema = z.object({
+  type: LeagueEventTypeEnum,
+  season: z.number().int().min(1),
+  month: z.number().int().min(1).max(12),
+  teamIds: z.array(z.string()).max(3),
+  playerIds: z.array(z.string()).max(2),
+  headline: z.string().min(1),
+  description: z.string().min(1),
+  gameplayEffect: z.string().nullable(),
+  effectData: LeagueEventEffectDataSchema,
+});
+export type LeagueEvent = z.infer<typeof LeagueEventSchema>;
 
 export const NarrativeTrendEnum = z.enum([
   "rising",
@@ -118,6 +440,15 @@ export const OwnerStateSchema = z.object({
   hotSeat: z.boolean(),
   summary: z.string(),
   expectations: OwnerExpectationsSchema,
+  spendingWillingness: z.enum(["cheap", "moderate", "lavish"]).optional(),
+  winNowPressure: z.number().min(0).max(100).optional(),
+  meddlingLevel: z.number().min(0).max(100).optional(),
+  satisfaction: z.number().min(0).max(100).optional(),
+  annualBudget: z.number().min(0).optional(),
+  payrollCap: z.number().min(0).optional(),
+  draftBonusPool: z.number().min(0).optional(),
+  ifaBonusPool: z.number().min(0).optional(),
+  staffBudget: z.number().min(0).optional(),
 });
 export type OwnerState = z.infer<typeof OwnerStateSchema>;
 
@@ -129,6 +460,11 @@ export const BriefingCategoryEnum = z.enum([
   "rivalry",
   "breakout",
   "news",
+  "extension",
+  "qualifying_offer",
+  "coaching",
+  "development",
+  "rumor",
 ]);
 export type BriefingCategory = z.infer<typeof BriefingCategoryEnum>;
 
@@ -136,6 +472,7 @@ export const BriefingItemSchema = z.object({
   id: z.string(),
   priority: NewsPriorityEnum,
   category: BriefingCategoryEnum,
+  tag: NewsTagEnum.optional(),
   headline: z.string().min(1),
   body: z.string(),
   relatedTeamIds: z.array(z.string()),
@@ -145,6 +482,90 @@ export const BriefingItemSchema = z.object({
 });
 export type BriefingItem = z.infer<typeof BriefingItemSchema>;
 
+export const TickerCategoryEnum = z.enum([
+  "score",
+  "trade",
+  "injury",
+  "milestone",
+  "standings",
+  "prospect",
+  "rumor",
+  "record",
+  "league_event",
+  "arbitration",
+]);
+export type TickerCategory = z.infer<typeof TickerCategoryEnum>;
+
+export const TickerEntrySchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  category: TickerCategoryEnum,
+  text: z.string().min(1),
+  priority: NewsPriorityEnum,
+  relatedTeamIds: z.array(z.string()),
+  relatedPlayerIds: z.array(z.string()),
+  expiresDay: z.number().int().min(1),
+});
+export type TickerEntry = z.infer<typeof TickerEntrySchema>;
+
+export const StoryArcPhaseEnum = z.enum([
+  "setup",
+  "rising",
+  "climax",
+  "resolution",
+]);
+export type StoryArcPhase = z.infer<typeof StoryArcPhaseEnum>;
+
+export const PlayerStoryArcSchema = z.object({
+  playerId: z.string(),
+  arcType: z.string().min(1),
+  startSeason: z.number().int().min(1),
+  startDay: z.number().int().min(1),
+  phase: StoryArcPhaseEnum,
+  milestones: z.array(z.string()).default([]),
+  resolvedSeason: z.number().int().min(1).nullable(),
+});
+export type PlayerStoryArc = z.infer<typeof PlayerStoryArcSchema>;
+
+export const ProspectBondSchema = z.object({
+  prospectId: z.string(),
+  draftedSeason: z.number().int().min(1),
+  debutSeason: z.number().int().min(1).nullable(),
+  currentLevel: z.string().min(1),
+  bondStrength: z.number().min(0).max(100),
+  milestones: z.array(z.string()).default([]),
+  loyaltyModifier: z.number().min(0).max(1),
+});
+export type ProspectBond = z.infer<typeof ProspectBondSchema>;
+
+export const PlayerOriginAcquisitionTypeEnum = z.enum(["draft", "ifa"]);
+export type PlayerOriginAcquisitionType = z.infer<typeof PlayerOriginAcquisitionTypeEnum>;
+
+export const PlayerOriginSchema = z.object({
+  playerId: z.string(),
+  originTeamId: z.string(),
+  acquisitionType: PlayerOriginAcquisitionTypeEnum,
+  acquiredSeason: z.number().int().min(1),
+  draftSeason: z.number().int().min(1).nullable(),
+  draftRound: z.number().int().min(1).nullable(),
+  draftPickNumber: z.number().int().min(1).nullable(),
+  originalGrade: z.number().int().min(20).max(80).nullable(),
+  bonusAmount: z.number().min(0).nullable(),
+});
+export type PlayerOrigin = z.infer<typeof PlayerOriginSchema>;
+
+export const DebutFlashbackSchema = z.object({
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  draftSeason: z.number().int().min(1),
+  draftRound: z.number().int().min(1),
+  originalGrade: z.number().int().min(20).max(80),
+  debutSeason: z.number().int().min(1),
+  debutOverall: z.number().int().min(0).max(100),
+  journeyHighlights: z.array(z.string()).default([]),
+});
+export type DebutFlashback = z.infer<typeof DebutFlashbackSchema>;
+
 export const RivalrySchema = z.object({
   id: z.string(),
   teamA: z.string(),
@@ -152,11 +573,85 @@ export const RivalrySchema = z.object({
   intensity: z.number().min(0).max(100),
   summary: z.string(),
   reasons: z.array(z.string()),
+  origin: z.enum(["historical", "division_race", "playoff", "trade", "defection"]).optional(),
+  active: z.boolean().optional(),
+  currentSeasonWinsA: z.number().int().min(0).optional(),
+  currentSeasonWinsB: z.number().int().min(0).optional(),
+  historicalWinsA: z.number().int().min(0).optional(),
+  historicalWinsB: z.number().int().min(0).optional(),
+  lastMetSeason: z.number().int().min(0).optional(),
+  closeRaceStreak: z.number().int().min(0).optional(),
+  playoffSeriesStreak: z.number().int().min(0).optional(),
+  lastTradeSeason: z.number().int().min(0).optional(),
+  lastDefectionSeason: z.number().int().min(0).optional(),
+  eventHistory: z.array(z.object({
+    season: z.number().int().min(1),
+    type: z.enum(["historical", "division_race", "playoff", "trade", "defection", "series_result"]),
+    summary: z.string(),
+  })).optional(),
 });
 export type Rivalry = z.infer<typeof RivalrySchema>;
 
 export const AwardLeagueEnum = z.enum(["AL", "NL", "MLB"]);
 export type AwardLeague = z.infer<typeof AwardLeagueEnum>;
+
+export const TeamTenureEntrySchema = z.object({
+  teamId: z.string(),
+  startSeason: z.number().int().min(1),
+  endSeason: z.number().int().min(1).nullable(),
+});
+export type TeamTenureEntry = z.infer<typeof TeamTenureEntrySchema>;
+
+export const MonthlyRecordBucketSchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+});
+export type MonthlyRecordBucket = z.infer<typeof MonthlyRecordBucketSchema>;
+
+export const MonthlyRecordSplitsSchema = z.record(
+  z.string(),
+  z.record(z.string(), MonthlyRecordBucketSchema),
+);
+export type MonthlyRecordSplits = z.infer<typeof MonthlyRecordSplitsSchema>;
+
+export const PlayoffSeriesDeficitReachedEnum = z.enum(["0-2", "1-3"]);
+export type PlayoffSeriesDeficitReached = z.infer<
+  typeof PlayoffSeriesDeficitReachedEnum
+>;
+
+export const PlayoffSeriesHistoryEntrySchema = z.object({
+  season: z.number().int().min(1),
+  round: z.string().min(1),
+  higherSeedTeamId: z.string(),
+  lowerSeedTeamId: z.string(),
+  bestOf: z.number().int().positive(),
+  deficitReached: PlayoffSeriesDeficitReachedEnum.nullable(),
+  deficitTeamId: z.string().nullable().default(null),
+  winnerTeamId: z.string(),
+});
+export type PlayoffSeriesHistoryEntry = z.infer<
+  typeof PlayoffSeriesHistoryEntrySchema
+>;
+
+export const RookieOfTheYearVotingPlacementSchema = z.object({
+  rank: z.number().int().min(1),
+  playerId: z.string(),
+  points: z.number(),
+});
+export type RookieOfTheYearVotingPlacement = z.infer<
+  typeof RookieOfTheYearVotingPlacementSchema
+>;
+
+const RookieOfTheYearLeagueEnum = z.enum(["AL", "NL"]);
+
+export const RookieOfTheYearVotingEntrySchema = z.object({
+  season: z.number().int().min(1),
+  leagueId: RookieOfTheYearLeagueEnum,
+  placements: z.array(RookieOfTheYearVotingPlacementSchema),
+});
+export type RookieOfTheYearVotingEntry = z.infer<
+  typeof RookieOfTheYearVotingEntrySchema
+>;
 
 export const AwardHistoryEntrySchema = z.object({
   season: z.number().int().min(1),
@@ -180,6 +675,7 @@ export const CareerPitchingTotalsSchema = z.object({
   strikeouts: z.number().int().min(0),
   inningsPitched: z.number().min(0),
   earnedRuns: z.number().int().min(0),
+  shutouts: z.number().int().min(0).default(0),
 });
 export type CareerPitchingTotals = z.infer<typeof CareerPitchingTotalsSchema>;
 
@@ -192,6 +688,9 @@ export const CareerStatsLedgerSchema = z.object({
   peakOverall: z.number().int().min(0).max(100),
   championshipRings: z.number().int().min(0),
   allStarSelections: z.number().int().min(0),
+  gamesPlayed: z.number().int().min(0).optional(),
+  saves: z.number().int().min(0).optional(),
+  war: z.number().optional(),
   batting: CareerBattingTotalsSchema.nullable(),
   pitching: CareerPitchingTotalsSchema.nullable(),
 });
@@ -275,6 +774,309 @@ export const BlockbusterTradeSummarySchema = z.object({
 });
 export type BlockbusterTradeSummary = z.infer<typeof BlockbusterTradeSummarySchema>;
 
+export const RecordBookHolderSchema = z.object({
+  playerId: z.string().nullable(),
+  playerName: z.string().nullable(),
+  teamId: z.string().nullable(),
+  season: z.number().int().min(1).nullable(),
+  value: z.number(),
+  displayValue: z.string().min(1),
+});
+export type RecordBookHolder = z.infer<typeof RecordBookHolderSchema>;
+
+export const RecordBookEntrySchema = z.object({
+  id: z.string(),
+  scope: z.enum(["franchise", "league"]),
+  teamId: z.string().nullable(),
+  category: z.enum(["team_single_season", "individual_single_season", "career", "streak"]),
+  stat: z.string().min(1),
+  label: z.string().min(1),
+  qualifier: z.string().nullable().default(null),
+  holders: z.array(RecordBookHolderSchema).default([]),
+  trackingFromSeason: z.number().int().min(1).nullable().default(null),
+  note: z.string().nullable().default(null),
+});
+export type RecordBookEntry = z.infer<typeof RecordBookEntrySchema>;
+
+export const RecordWatchEntrySchema = z.object({
+  id: z.string(),
+  recordId: z.string(),
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  teamId: z.string(),
+  recordLabel: z.string().min(1),
+  currentValue: z.number(),
+  projectedValue: z.number(),
+  holderValue: z.number(),
+  progressRatio: z.number().min(0).max(2),
+  summary: z.string(),
+});
+export type RecordWatchEntry = z.infer<typeof RecordWatchEntrySchema>;
+
+export const HistoricalPlayerSchema = z.object({
+  playerId: z.string(),
+  fullName: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  position: z.string().min(1),
+  lastKnownTeamId: z.string(),
+  active: z.boolean(),
+  retiredSeason: z.number().int().min(1).nullable().default(null),
+  seasonsPlayed: z.number().int().min(0).default(0),
+  peakOverall: z.number().int().min(0).max(100).nullable().default(null),
+  personalityTraits: z.array(z.string()).default([]),
+});
+export type HistoricalPlayer = z.infer<typeof HistoricalPlayerSchema>;
+
+export const MentorRelationshipSchema = z.object({
+  veteranPlayerId: z.string(),
+  rookiePlayerId: z.string(),
+  teamId: z.string(),
+  startedSeason: z.number().int().min(1),
+  summary: z.string(),
+});
+export type MentorRelationship = z.infer<typeof MentorRelationshipSchema>;
+
+export const FrontOfficeStateSchema = z.object({
+  teamId: z.string(),
+  reputation: z.number().min(0).max(100),
+  draftScore: z.number(),
+  tradeScore: z.number(),
+  freeAgencyScore: z.number(),
+  playoffScore: z.number(),
+  summary: z.string(),
+});
+export type FrontOfficeState = z.infer<typeof FrontOfficeStateSchema>;
+
+export const WinLossRecordSchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+});
+export type WinLossRecord = z.infer<typeof WinLossRecordSchema>;
+
+export const GMCareerEntrySchema = z.object({
+  teamId: z.string(),
+  seasons: z.number().int().min(0),
+  record: WinLossRecordSchema,
+  championships: z.number().int().min(0),
+  hiredSeason: z.number().int().min(1),
+  firedSeason: z.number().int().min(1).nullable(),
+  firedReason: z.string().nullable(),
+  reputation: z.number().min(0).max(100),
+});
+export type GMCareerEntry = z.infer<typeof GMCareerEntrySchema>;
+
+export const GMCareerSchema = z.object({
+  careerHistory: z.array(GMCareerEntrySchema).default([]),
+  currentTeamId: z.string(),
+  reputation: z.number().min(0).max(100),
+  overallRecord: WinLossRecordSchema,
+  championships: z.number().int().min(0),
+  hiredSeason: z.number().int().min(1),
+  firedSeasons: z.array(z.number().int().min(1)).default([]),
+  careerAchievements: z.array(z.string()).default([]),
+  jobSearchActive: z.boolean().default(false),
+  lastFiredReason: z.string().nullable().default(null),
+});
+export type GMCareer = z.infer<typeof GMCareerSchema>;
+
+export const JobOpeningSchema = z.object({
+  teamId: z.string(),
+  ownerArchetype: z.string().min(1),
+  budget: z.string().min(1),
+  expectations: z.string().min(1),
+  difficulty: z.string().min(1),
+  attractiveness: z.number(),
+});
+export type JobOpening = z.infer<typeof JobOpeningSchema>;
+
+export const JobMarketSchema = z.object({
+  availableJobs: z.array(JobOpeningSchema).default([]),
+  applicationDeadlineSeason: z.number().int().min(1).nullable().default(null),
+});
+export type JobMarket = z.infer<typeof JobMarketSchema>;
+
+export const ConsequenceWatcherTypeEnum = z.enum([
+  "trade_aftermath",
+  "prospect_risk",
+  "contract_reaction",
+  "fan_reaction",
+]);
+export type ConsequenceWatcherType = z.infer<typeof ConsequenceWatcherTypeEnum>;
+
+export const ConsequenceWatcherSchema = z.object({
+  id: z.string(),
+  type: ConsequenceWatcherTypeEnum,
+  createdSeason: z.number().int().min(1),
+  createdDay: z.number().int().min(1),
+  expiresSeason: z.number().int().min(1).default(1),
+  expiresDay: z.number().int().min(1),
+  context: z.record(z.string(), z.unknown()).default({}),
+  resolved: z.boolean().default(false),
+});
+export type ConsequenceWatcher = z.infer<typeof ConsequenceWatcherSchema>;
+
+export const FanSentimentTrendEnum = z.enum([
+  "rising",
+  "stable",
+  "falling",
+]);
+export type FanSentimentTrend = z.infer<typeof FanSentimentTrendEnum>;
+
+export const FanSentimentSchema = z.object({
+  score: z.number().min(0).max(100),
+  trend: FanSentimentTrendEnum.default("stable"),
+  summary: z.string(),
+  updatedAt: z.string(),
+});
+export type FanSentiment = z.infer<typeof FanSentimentSchema>;
+
+export const ScoutOpinionSourceEnum = z.enum([
+  "scout_director",
+  "analytics_head",
+  "manager",
+]);
+export type ScoutOpinionSource = z.infer<typeof ScoutOpinionSourceEnum>;
+
+export const ScoutOpinionSchema = z.object({
+  source: ScoutOpinionSourceEnum,
+  overallGrade: z.number().int().min(20).max(80),
+  ceiling: z.number().int().min(20).max(80),
+  floor: z.number().int().min(20).max(80),
+  summary: z.string().min(1),
+  confidence: z.number().int().min(1).max(20),
+});
+export type ScoutOpinion = z.infer<typeof ScoutOpinionSchema>;
+
+export const ScoutConflictSchema = z.object({
+  prospectId: z.string(),
+  teamId: z.string().nullable().default(null),
+  prospectType: z.enum(["draft", "ifa"]),
+  createdSeason: z.number().int().min(1),
+  resolutionSeason: z.number().int().min(1),
+  resolved: z.boolean().default(false),
+  headline: z.string().min(1),
+  opinions: z.array(ScoutOpinionSchema).length(3),
+  divergence: z.number().int().min(0).default(0),
+  debateGenerated: z.boolean().default(false),
+  resolution: z.object({
+    season: z.number().int().min(1),
+    actualGrade: z.number().int().min(20).max(80),
+    closestSource: ScoutOpinionSourceEnum,
+  }).nullable().default(null),
+  winningSource: ScoutOpinionSourceEnum.nullable().default(null),
+  outcomeSummary: z.string().nullable().default(null),
+});
+export type ScoutConflict = z.infer<typeof ScoutConflictSchema>;
+
+export const DynastyCardTypeEnum = z.enum([
+  "championship_run",
+  "draft_class",
+  "trade_network",
+  "farm_pipeline",
+  "career_overview",
+  "season_recap",
+  "underdog_story",
+  "scenario_complete",
+]);
+export type DynastyCardType = z.infer<typeof DynastyCardTypeEnum>;
+
+export const DynastyCardStatSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1),
+});
+export type DynastyCardStat = z.infer<typeof DynastyCardStatSchema>;
+
+export const DynastyCardSchema = z.object({
+  id: z.string(),
+  type: DynastyCardTypeEnum,
+  title: z.string().min(1),
+  subtitle: z.string().min(1),
+  stats: z.array(DynastyCardStatSchema).default([]),
+  highlights: z.array(z.string()).default([]),
+  generatedAt: z.string(),
+  teamId: z.string().nullable().default(null),
+  season: z.number().int().min(1).nullable().default(null),
+  textSummary: z.string().min(1).default(""),
+});
+export type DynastyCard = z.infer<typeof DynastyCardSchema>;
+
+export const ChallengeStateSchema = z.object({
+  scenarioId: z.string(),
+  startSeason: z.number().int().min(1),
+  maxSeasons: z.number().int().min(1),
+  progress: z.number().min(0).max(1),
+  completed: z.boolean(),
+  completedSeason: z.number().int().min(1).nullable().default(null),
+  failed: z.boolean().default(false),
+  summary: z.string().min(1),
+});
+export type ChallengeState = z.infer<typeof ChallengeStateSchema>;
+
+export const SeasonArchiveStandingSchema = z.object({
+  teamId: z.string(),
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  divisionRank: z.number().int().min(1),
+  gamesBack: z.number(),
+});
+export type SeasonArchiveStanding = z.infer<typeof SeasonArchiveStandingSchema>;
+
+export const ArchivedSeasonStandingSchema = z.object({
+  teamId: z.string(),
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  divisionRank: z.number().int().min(1),
+});
+export type ArchivedSeasonStanding = z.infer<typeof ArchivedSeasonStandingSchema>;
+
+export const SeasonArchivePlayoffSeriesSchema = z.object({
+  round: z.string().min(1),
+  winnerTeamId: z.string().nullable(),
+  loserTeamId: z.string().nullable(),
+  result: z.string().nullable(),
+});
+export type SeasonArchivePlayoffSeries = z.infer<typeof SeasonArchivePlayoffSeriesSchema>;
+
+export const SeasonArchiveTransactionSchema = z.object({
+  headline: z.string().min(1),
+  summary: z.string(),
+  playerIds: z.array(z.string()).default([]),
+  teamIds: z.array(z.string()).default([]),
+  impactScore: z.number().default(0),
+});
+export type SeasonArchiveTransaction = z.infer<typeof SeasonArchiveTransactionSchema>;
+
+export const SeasonArchiveDraftPickSchema = z.object({
+  pickNumber: z.number().int().min(1),
+  playerId: z.string(),
+  playerName: z.string().min(1),
+  teamId: z.string(),
+  currentStatus: z.string().min(1),
+});
+export type SeasonArchiveDraftPick = z.infer<typeof SeasonArchiveDraftPickSchema>;
+
+export const SeasonArchiveFinancialSchema = z.object({
+  teamId: z.string(),
+  payroll: z.number().min(0),
+  budget: z.number().min(0),
+});
+export type SeasonArchiveFinancial = z.infer<typeof SeasonArchiveFinancialSchema>;
+
+export const SeasonArchiveEntrySchema = z.object({
+  season: z.number().int().min(1),
+  standings: z.array(SeasonArchiveStandingSchema).default([]),
+  playoffSeries: z.array(SeasonArchivePlayoffSeriesSchema).default([]),
+  awards: z.array(AwardHistoryEntrySchema).default([]),
+  statLeaders: SeasonStatLeadersSchema,
+  transactions: z.array(SeasonArchiveTransactionSchema).default([]),
+  draftClass: z.array(SeasonArchiveDraftPickSchema).default([]),
+  financials: z.array(SeasonArchiveFinancialSchema).default([]),
+  userSummary: z.lazy(() => UserSeasonSummarySchema).nullable().default(null),
+  timelineEvents: z.array(z.string()).default([]),
+});
+export type SeasonArchiveEntry = z.infer<typeof SeasonArchiveEntrySchema>;
+
 export const UserSeasonSummarySchema = z.object({
   teamId: z.string(),
   record: z.string(),
@@ -282,6 +1084,71 @@ export const UserSeasonSummarySchema = z.object({
   storylines: z.array(z.string()),
 });
 export type UserSeasonSummary = z.infer<typeof UserSeasonSummarySchema>;
+
+export const ArchivedSeasonSchema = z.object({
+  season: z.number().int().min(1),
+  standings: z.array(ArchivedSeasonStandingSchema).default([]),
+  userRecord: WinLossRecordSchema.nullable().default(null),
+  playoffResult: z.string().nullable().default(null),
+  championshipWon: z.boolean().default(false),
+  championTeamId: z.string().nullable().default(null),
+  mvpName: z.string().nullable().default(null),
+  cyYoungName: z.string().nullable().default(null),
+  statLeaders: SeasonStatLeadersSchema,
+  dynastyScore: z.number().nullable().default(null),
+});
+export type ArchivedSeason = z.infer<typeof ArchivedSeasonSchema>;
+
+export const WhatIfBranchMetaSchema = z.object({
+  id: z.string().min(1),
+  saveId: z.string().min(1),
+  branchedAtSeason: z.number().int().min(1),
+  branchedAtDay: z.number().int().min(1),
+  description: z.string().min(1),
+  createdAt: z.string(),
+});
+export type WhatIfBranchMeta = z.infer<typeof WhatIfBranchMetaSchema>;
+
+const TimelineRecordSummarySchema = z.object({
+  wins: z.number().int().min(0),
+  losses: z.number().int().min(0),
+  pct: z.number().min(0).max(1),
+});
+
+const TimelineStandingsSummarySchema = z.object({
+  divisionRank: z.number().int().min(1),
+  gamesBack: z.number().min(0),
+});
+
+const TimelineCountDeltaSchema = z.object({
+  parent: z.number().int().min(0),
+  branch: z.number().int().min(0),
+  delta: z.number().int(),
+});
+
+export const TimelineComparisonSchema = z.object({
+  branchMeta: WhatIfBranchMetaSchema,
+  recordDelta: z.object({
+    parent: TimelineRecordSummarySchema,
+    branch: TimelineRecordSummarySchema,
+    delta: z.number().int(),
+  }),
+  standingsDelta: z.object({
+    parent: TimelineStandingsSummarySchema,
+    branch: TimelineStandingsSummarySchema,
+    delta: z.number().int(),
+  }),
+  rosterDelta: z.object({
+    parent: z.array(z.string()),
+    branch: z.array(z.string()),
+    added: z.array(z.string()),
+    lost: z.array(z.string()),
+    delta: z.number().int(),
+  }),
+  championshipsDelta: TimelineCountDeltaSchema,
+  tradesDelta: TimelineCountDeltaSchema,
+});
+export type TimelineComparison = z.infer<typeof TimelineComparisonSchema>;
 
 export const SeasonHistoryEntrySchema = z.object({
   season: z.number().int().min(1),

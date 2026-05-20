@@ -6,7 +6,10 @@ import {
   calculateMarketValue,
   getDemandLevel,
   createFreeAgencyMarket,
+  generateAIOffer,
+  makeUserOffer,
   projectContractYears,
+  simulateFADay,
   getTopFreeAgents,
   simulateFullFreeAgency,
 } from '../src/index.js';
@@ -18,7 +21,7 @@ import type { GeneratedPlayer } from '../src/index.js';
 
 function makePlayer(seed: number, position: string = 'SS'): GeneratedPlayer {
   const rng = new GameRNG(seed);
-  return generatePlayer(rng, position as any, 'NYY', 'MLB');
+  return generatePlayer(rng, position as any, 'NYT', 'MLB');
 }
 
 function makeExpiringPlayer(seed: number): GeneratedPlayer {
@@ -154,24 +157,169 @@ describe('simulateFullFreeAgency', () => {
     const market = createFreeAgencyMarket(1, players);
     const budgets = new Map([
       ['bos', 220],
-      ['tor', 5],
+      ['cha', 5],
     ]);
     const payrolls = new Map([
       ['bos', 20],
-      ['tor', 4.8],
+      ['cha', 4.8],
     ]);
     const needs = new Map([
       ['bos', new Map([['SS', 95]])],
-      ['tor', new Map([['SS', 10]])],
+      ['cha', new Map([['SS', 10]])],
     ]);
 
-    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
-    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nyy');
+    const first = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
+    const second = simulateFullFreeAgency(new GameRNG(999), market, budgets, new Map(payrolls), needs, 'nym');
 
     expect(second).toEqual(first);
     expect(first.day).toBe(60);
     expect(first.freeAgents).toEqual([]);
     expect(first.signedPlayers[0]?.signedWith).toBe('bos');
     expect(first.signedPlayers[0]?.contract).toBeTruthy();
+  });
+
+  it('does not mutate the supplied payroll map when user offers are applied', () => {
+    const player = { ...makeExpiringPlayer(203), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    const freeAgent = market.freeAgents[0]!;
+    const budgets = new Map([
+      ['nym', 220],
+      ['bos', 200],
+    ]);
+    const payrolls = new Map([
+      ['nym', 20],
+      ['bos', 25],
+    ]);
+    const needs = new Map([
+      ['nym', new Map([[player.position, 90]])],
+      ['bos', new Map([[player.position, 80]])],
+    ]);
+    const payrollSnapshot = Array.from(payrolls.entries());
+    const offer = {
+      teamId: 'nym',
+      playerId: freeAgent.player.id,
+      years: 4,
+      annualSalary: Number((freeAgent.marketValue + 2).toFixed(2)),
+      totalValue: Number(((freeAgent.marketValue + 2) * 4).toFixed(2)),
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    };
+
+    simulateFullFreeAgency(
+      new GameRNG(1001),
+      market,
+      budgets,
+      payrolls,
+      needs,
+      'nym',
+      [offer],
+    );
+
+    expect(Array.from(payrolls.entries())).toEqual(payrollSnapshot);
+  });
+});
+
+describe('makeUserOffer', () => {
+  it('lets a high-chemistry club land a slightly deeper discount', () => {
+    const player = { ...makeExpiringPlayer(210), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    const freeAgent = market.freeAgents[0]!;
+
+    const result = makeUserOffer(market, {
+      teamId: 'nym',
+      playerId: freeAgent.player.id,
+      years: 4,
+      annualSalary: Number((freeAgent.marketValue * 0.77).toFixed(2)),
+      totalValue: Number((freeAgent.marketValue * 0.77 * 4).toFixed(2)),
+      noTradeClause: false,
+      playerOption: false,
+      teamOption: false,
+      signingBonus: 0,
+    }, 82);
+
+    expect(result.accepted).toBe(true);
+    expect(result.reason).toMatch(/clubhouse fit/i);
+  });
+});
+
+describe('simulateFADay', () => {
+  it('lets a favored club win a comparable market through per-player attractiveness', () => {
+    const player = { ...makeExpiringPlayer(260), teamId: '' };
+    const market = createFreeAgencyMarket(1, [player]);
+    market.day = 54;
+    market.freeAgents[0]!.demandLevel = 'low';
+    const next = simulateFADay(
+      new GameRNG(260),
+      market,
+      new Map([['por', 200], ['bos', 200]]),
+      new Map([['por', 90], ['bos', 90]]),
+      new Map([
+        ['por', new Map([[player.position, 80]])],
+        ['bos', new Map([[player.position, 80]])],
+      ]),
+      (teamId, playerId) => (teamId === 'por' && playerId === player.id ? 78 : 55),
+    );
+
+    expect(next.signedPlayers[0]?.signedWith).toBe('por');
+  });
+});
+
+describe('generateAIOffer', () => {
+  it('stays out of low-need fits for conservative budgets', () => {
+    const player = {
+      ...makeExpiringPlayer(301),
+      age: 31,
+      overallRating: 275,
+      hitterAttributes: {
+        contact: 280,
+        power: 265,
+        eye: 250,
+        speed: 180,
+        defense: 210,
+        durability: 240,
+      },
+    };
+
+    const offer = generateAIOffer(
+      new GameRNG(301),
+      'por',
+      player,
+      125,
+      92,
+      18,
+    );
+
+    expect(offer).toBeNull();
+  });
+
+  it('still makes competitive offers for elite fits with budget support', () => {
+    const player = {
+      ...makeExpiringPlayer(302),
+      age: 27,
+      overallRating: 430,
+      hitterAttributes: {
+        contact: 420,
+        power: 430,
+        eye: 395,
+        speed: 260,
+        defense: 300,
+        durability: 365,
+      },
+    };
+
+    const offer = generateAIOffer(
+      new GameRNG(302),
+      'bos',
+      player,
+      240,
+      128,
+      92,
+    );
+
+    expect(offer).toBeTruthy();
+    expect(offer?.annualSalary).toBeGreaterThan(20);
+    expect(offer?.years).toBeGreaterThanOrEqual(4);
   });
 });

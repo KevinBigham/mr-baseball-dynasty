@@ -1,80 +1,184 @@
 import {
+  applyForJob as applyForJobCareer,
+  appendConsequenceWatchers,
+  applyMomentEffects,
+  applyScenarioOverrides,
+  autoFillMLBRoster,
+  buildTradeAftermathChain,
+  calculateFanSentiment,
+  calculateRushingRisk,
   GameRNG,
+  generateInteractivePressConference,
   TEAMS,
   assignGMPersonality,
   buildRosterState,
+  chemistryScoreToModifier,
+  consumeOptionYear,
   createSeasonState,
   demotePlayer,
   determinePlayoffSeeds,
   determineRetirements,
-  developAllPlayers,
+  developPlayer,
   dfaPlayer,
   evaluateTradeProposal,
   executeTrade,
+  createFrontOfficeState,
+  createOwnerState,
+  CAREER_SHUTOUT_MILESTONE,
+  deduplicateNews,
+  decayRelationships,
+  decayMoments,
+  detectComebackPlayer,
+  estimatedWar,
+  detectPlayoffGauntlet,
+  detectMoment,
+  detectRookieSensation,
+  detectSeptemberHeroics,
   generateDraftClass,
+  generateCoachFreeAgents,
+  generateChampionshipCard,
+  generateDynastyCard,
+  generateCoachingStaff,
+  generateNews,
   generateLeaguePlayers,
   generateSchedule,
+  generateSeasonRecapCard,
   generateScoutingStaff,
+  getTeamBudget,
+  getRegularSeasonMonthForDay,
   getTeamById,
+  getScenarioById,
+  initializePlayerDevelopmentProfile,
   initializePlayoffBracket,
   isPlayoffComplete,
+  MAX_MOMENTS_PER_PLAYER,
   markAsRead,
   makeUserOffer,
   promotePlayer,
+  reconcileDevelopmentPipeline,
   recordRetirements,
+  recordCareerShutout,
+  recordStarDefectionRivalry,
+  rivalryGameModifier,
+  runMonthlyDevelopmentCheckpoint,
+  evaluateConsequenceWatchers,
+  evaluateNicknames,
+  evaluateScenarioProgress,
   simulateDay,
   simulateMonth,
   simNextPlayoffGame,
   simPlayoffRound as simPlayoffBracketRound,
   simPlayoffSeries as simPlayoffBracketSeries,
   simulateWeek,
+  toDisplayRating,
   generateTradeId,
   createFreeAgencyMarket,
 } from '@mbd/sim-core';
 import type {
   ContractOffer,
+  PlayerGameStats,
   PlayoffBracket,
   PlayoffGameResult,
   PlayoffSeriesState,
   TradeProposal,
 } from '@mbd/sim-core';
+import type {
+  DayOneOpeningPlan,
+  SignatureMoment as PersistedSignatureMoment,
+  TradeAsset,
+} from '@mbd/contracts';
 import {
+  createEmptyDraftState,
+  createEmptyInternationalScoutingState,
+  createEmptyMinorLeagueState,
+  advanceMinorLeagueDay,
+  appendPlayerMoments,
+  appendTeamMoments,
   buildOffseasonStateView,
+  claimPlayerOffWaivers,
   createEmptyTradeState,
   enforceRule5RosterRestriction,
   ensurePlayersHaveRule5Eligibility,
+  fireCoachForUserTeam,
   getTeamPlayers,
+  hireCoachForUserTeam,
+  issueTeamQualifyingOffer,
   lockUserRule5Protection,
   makeUserDraftSelection,
   makeUserRule5Selection,
+  negotiatePlayerExtension,
   processDayInjuriesAndNews,
   requireState,
+  retirePlayerAssignment,
+  resolveOutstandingQualifyingOffers,
   resolveRule5OfferBackDecision,
+  updatePlayerTeamAssignment,
   passUserRule5Turn,
+  placePlayerOnWaivers,
+  scoutUserDraftPlayer,
+  scoutUserIFAPlayer,
+  signUserIFAPlayer,
+  signUserDraftPick,
   startDraftSession,
   setState,
   skipOffseasonPhaseWithAI,
+  toggleUserDraftBigBoardPlayer,
+  tradeUserIFABonusPool,
   simulateRemainingDraftSession,
   timestamp,
   toggleUserRule5Protection,
   advanceOffseasonOnce,
+  applyQualifyingOfferCompensationIfNeeded,
+  resolvePersistedScoutConflicts,
 } from './sim.worker.helpers.js';
 import type {
   FullGameState,
   OffseasonStateView,
   SimResultDTO,
 } from './sim.worker.helpers.js';
-import { exportGameSnapshot, importGameSnapshot } from './snapshot.js';
+import { exportGameSnapshot, importGameSnapshot, isSaveCompatible } from './snapshot.js';
 import {
+  captureSeasonAchievementFacts,
+  recordDraftedHomegrownPlayer,
+  recordExtensionCompleted,
+  recordFreeAgentSigning,
+  recordInternationalHomegrownPlayer,
+  recordMonthlyDivisionLead,
+  recordProspectCallup,
+  syncAchievementState,
+} from './sim.worker.achievements.js';
+import {
+  createDefaultFranchiseState,
+  createEmptyAchievementState,
+  createEmptyCeremonyState,
+  dismissCeremonyMoment as dismissCeremonyMomentState,
+  maybeQueuePlayoffClinchMoment,
+  queueAwardMoments,
+  queueCeremonyMoment,
+  queueHallOfFameMoments,
+  queuePlayoffSeriesMoment,
+} from './sim.worker.ceremony.js';
+import {
+  advanceNegotiationSession,
   clearPendingTradeOffers,
+  executeMultiTeamTradeFramework,
+  proposeMultiTeamFramework,
+  pruneExpiredNegotiations,
+  resolveNegotiationSession,
+  startNegotiation,
   isTradeMarketOpen,
   processTradeMarketActivity,
+  proposeTradePackage,
   recordAcceptedUserTrade,
+  resetTradeDeadlineState,
   respondToTradeOffer,
 } from './sim.worker.trade.js';
+import { publishDraftGradesNarrative } from './sim.worker.draft.js';
 import {
+  recordSeasonArchive,
   ensureNarrativeState,
   ensureAwardHistoryForSeason,
+  finalizeRivalriesForSeason,
   finalizeSeasonHistoryRetirements,
   recordBreakoutNarratives,
   recordSeasonHistory,
@@ -92,8 +196,64 @@ import {
   accrueCareerStatsForSeason,
   enrichFranchiseTimelineWithDepartures,
   processHallOfFameForRetirements,
+  syncHistoricalPlayersForRetirements,
   upsertFranchiseTimelineEntry,
 } from './sim.worker.legacy.js';
+import {
+  acknowledgeMonthlyReport,
+  applyMonthlyLeagueEvents,
+  captureMonthlyAdvanceContext,
+  dismissDecisionSpotlight,
+  generateMonthlyPulse,
+} from './sim.worker.monthlyPulse.js';
+import { createEmptyMonthlyPulseState } from './sim.worker.state.js';
+import {
+  buildNewGameState,
+  getDifficultyAdjustedCompetitiveAav,
+  getTeamFreeAgencyAppealScore,
+  type NewGameOptions,
+} from './sim.worker.setup.js';
+import { syncRecordTracking } from './sim.worker.records.js';
+import { refreshTickerFeed } from './sim.worker.ticker.js';
+import {
+  advanceMonthlyStoryArcs,
+  syncSeasonStartStoryArcs,
+} from './sim.worker.storyArcs.js';
+import {
+  applyDevelopmentSetbackCheckpoint,
+  applySeasonEndProspectBondUpdates,
+  getLoyaltyAdjustedAppeal,
+  recordProspectBondDebuts,
+} from './sim.worker.farm.js';
+import {
+  applyBreakoutCountdowns,
+  applyDebutFlashbacks,
+  applyMonthlyNarrativeHooks,
+  applyOffseasonNarrativeHooks,
+  applyMonthlyPressConference,
+  applyRegularSeasonPositionGroupMoments,
+  applyRegularSeasonPlayerMicroArcMoments,
+  applyRegularSeasonTeamDynastyMarkers,
+  applySeasonEndPlayerMicroArcMoments,
+  applySeasonEndTeamDynastyMarkers,
+  applySeasonEndPlayerArcMoments,
+  applyWeeklyMomentsForCompletedRange,
+} from './sim.worker.narrativeFarm.js';
+import {
+  archiveOldSeasonsInState,
+  buildPerformanceDiagnosticsView,
+  estimateSnapshotSizeBytes,
+  measureRuntimeAsync,
+  measureRuntimeSync,
+  normalizePerformanceDiagnostics,
+  pruneStaleWorkerData,
+} from './sim.worker.diagnostics.js';
+import {
+  createBranchSave,
+  deleteSaveById,
+  loadGameById,
+  saveGameById,
+} from '../shared/lib/saveSystem.js';
 
 function applyAISigningProgress(
   s: FullGameState,
@@ -115,6 +275,832 @@ function applyAISigningProgress(
       signing.marketValue,
     );
   }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+const PLATE_APPEARANCE_OUTS: Record<string, number> = {
+  K: 1,
+  GB_OUT: 1,
+  FB_OUT: 1,
+  LD_OUT: 1,
+  DOUBLE_PLAY: 2,
+  SAC_FLY: 1,
+};
+
+const AT_BAT_OUTCOMES = new Set([
+  'SINGLE',
+  'DOUBLE',
+  'TRIPLE',
+  'HR',
+  'K',
+  'GB_OUT',
+  'FB_OUT',
+  'LD_OUT',
+  'DOUBLE_PLAY',
+]);
+
+const ROSTER_PLAN_HITTER_POSITIONS = new Set(['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH']);
+const ROSTER_PLAN_PITCHER_POSITIONS = new Set(['SP', 'RP', 'CL']);
+
+function uniqueRosterPlanIds(playerIds: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const playerId of playerIds) {
+    if (!playerId || seen.has(playerId)) {
+      continue;
+    }
+    seen.add(playerId);
+    ordered.push(playerId);
+  }
+  return ordered;
+}
+
+function playerRatingDesc(left: { overallRating: number }, right: { overallRating: number }): number {
+  return right.overallRating - left.overallRating;
+}
+
+function buildDefaultRosterPlan(s: FullGameState): DayOneOpeningPlan {
+  const mlbPlayers = s.players.filter((player) =>
+    player.teamId === s.userTeamId && player.rosterStatus === 'MLB',
+  );
+  const hitters = mlbPlayers
+    .filter((player) => ROSTER_PLAN_HITTER_POSITIONS.has(player.position))
+    .sort(playerRatingDesc);
+  const starters = mlbPlayers
+    .filter((player) => player.position === 'SP')
+    .sort(playerRatingDesc);
+  const relievers = mlbPlayers
+    .filter((player) => player.position === 'RP' || player.position === 'CL')
+    .sort(playerRatingDesc);
+  const closer = relievers.find((player) => player.position === 'CL') ?? relievers[0] ?? null;
+  const setupIds = relievers
+    .filter((player) => player.id !== closer?.id)
+    .slice(0, 2)
+    .map((player) => player.id);
+  const longRelief = [
+    ...starters.slice(5),
+    ...relievers,
+  ].find((player) => player.id !== closer?.id && !setupIds.includes(player.id)) ?? null;
+
+  return {
+    lineupPlayerIds: hitters.slice(0, 9).map((player) => player.id),
+    rotationPlayerIds: starters.slice(0, 5).map((player) => player.id),
+    bullpen: {
+      closerId: closer?.id ?? null,
+      setupIds,
+      longReliefId: longRelief?.id ?? null,
+    },
+  };
+}
+
+function normalizeRosterPlan(s: FullGameState, plan: DayOneOpeningPlan): DayOneOpeningPlan {
+  const defaults = buildDefaultRosterPlan(s);
+  const playerById = new Map(
+    s.players
+      .filter((player) => player.teamId === s.userTeamId && player.rosterStatus === 'MLB')
+      .map((player) => [player.id, player]),
+  );
+  const isHitter = (playerId: string) => {
+    const player = playerById.get(playerId);
+    return player != null && ROSTER_PLAN_HITTER_POSITIONS.has(player.position);
+  };
+  const isStarter = (playerId: string) => playerById.get(playerId)?.position === 'SP';
+  const isPitcher = (playerId: string) => {
+    const player = playerById.get(playerId);
+    return player != null && ROSTER_PLAN_PITCHER_POSITIONS.has(player.position);
+  };
+
+  const lineupPlayerIds = uniqueRosterPlanIds([
+    ...plan.lineupPlayerIds.filter(isHitter),
+    ...defaults.lineupPlayerIds,
+  ]).slice(0, Math.min(9, defaults.lineupPlayerIds.length || 9));
+
+  const rotationPlayerIds = uniqueRosterPlanIds([
+    ...plan.rotationPlayerIds.filter(isStarter),
+    ...defaults.rotationPlayerIds,
+  ]).slice(0, Math.min(5, defaults.rotationPlayerIds.length || 5));
+
+  const candidateBullpen = plan.bullpen ?? defaults.bullpen;
+  if (candidateBullpen == null) {
+    return {
+      lineupPlayerIds,
+      rotationPlayerIds,
+      bullpen: null,
+    };
+  }
+
+  const closerId = uniqueRosterPlanIds([
+    candidateBullpen.closerId,
+    defaults.bullpen?.closerId,
+  ]).find((playerId) => isPitcher(playerId) && !rotationPlayerIds.includes(playerId)) ?? null;
+  const setupIds = uniqueRosterPlanIds([
+    ...candidateBullpen.setupIds,
+    ...(defaults.bullpen?.setupIds ?? []),
+  ])
+    .filter((playerId) => isPitcher(playerId) && playerId !== closerId && !rotationPlayerIds.includes(playerId))
+    .slice(0, 2);
+  const longReliefId = uniqueRosterPlanIds([
+    candidateBullpen.longReliefId,
+    defaults.bullpen?.longReliefId,
+  ]).find((playerId) =>
+    isPitcher(playerId)
+    && playerId !== closerId
+    && !setupIds.includes(playerId)
+    && !rotationPlayerIds.includes(playerId),
+  ) ?? null;
+
+  return {
+    lineupPlayerIds,
+    rotationPlayerIds,
+    bullpen: {
+      closerId,
+      setupIds,
+      longReliefId,
+    },
+  };
+}
+
+function parseSimDayFromTimestamp(value: string): number | null {
+  const match = /D(\d+)$/.exec(value);
+  return match ? Number(match[1]) : null;
+}
+
+function compareSignatureMomentRecency(
+  left: { season: number; day?: number; timestamp?: string; type: string },
+  right: { season: number; day?: number; timestamp?: string; type: string },
+): number {
+  const leftDay = left.day ?? (left.timestamp ? parseSimDayFromTimestamp(left.timestamp) : null) ?? 0;
+  const rightDay = right.day ?? (right.timestamp ? parseSimDayFromTimestamp(right.timestamp) : null) ?? 0;
+  return right.season - left.season
+    || rightDay - leftDay
+    || right.type.localeCompare(left.type);
+}
+
+function createEmptyPlayerGameStats(playerId: string, teamId: string): PlayerGameStats {
+  return {
+    playerId,
+    teamId,
+    gamesPlayed: 0,
+    gamesMissedToInjury: 0,
+    pa: 0,
+    ab: 0,
+    hits: 0,
+    doubles: 0,
+    triples: 0,
+    hr: 0,
+    rbi: 0,
+    bb: 0,
+    k: 0,
+    runs: 0,
+    hbp: 0,
+    sacFlies: 0,
+    ip: 0,
+    earnedRuns: 0,
+    strikeouts: 0,
+    walks: 0,
+    hitsAllowed: 0,
+    homeRunsAllowed: 0,
+    hitBatters: 0,
+    flyBallsAllowed: 0,
+    wins: 0,
+    saves: 0,
+    losses: 0,
+  };
+}
+
+function buildMomentPlayerStats(
+  s: FullGameState,
+  game: FullGameState['seasonState']['gameLog'][number],
+): Map<string, PlayerGameStats> {
+  const playersById = new Map(s.players.map((player) => [player.id, player]));
+  const stats = new Map<string, PlayerGameStats>();
+
+  const ensureStats = (playerId: string, teamId: string): PlayerGameStats => {
+    let existing = stats.get(playerId);
+    if (!existing) {
+      existing = createEmptyPlayerGameStats(playerId, teamId);
+      stats.set(playerId, existing);
+    }
+    return existing;
+  };
+
+  for (const result of game.paResults) {
+    const batter = playersById.get(result.batterId);
+    const pitcher = playersById.get(result.pitcherId);
+    if (!batter || !pitcher) {
+      continue;
+    }
+
+    const batterStats = ensureStats(batter.id, batter.teamId);
+    batterStats.pa += 1;
+    batterStats.rbi += result.rbiOnPlay;
+
+    if (AT_BAT_OUTCOMES.has(result.outcome)) {
+      batterStats.ab += 1;
+    }
+
+    switch (result.outcome) {
+      case 'SINGLE':
+        batterStats.hits += 1;
+        break;
+      case 'DOUBLE':
+        batterStats.hits += 1;
+        batterStats.doubles += 1;
+        break;
+      case 'TRIPLE':
+        batterStats.hits += 1;
+        batterStats.triples += 1;
+        break;
+      case 'HR':
+        batterStats.hits += 1;
+        batterStats.hr += 1;
+        break;
+      case 'BB':
+        batterStats.bb += 1;
+        break;
+      case 'HBP':
+        batterStats.hbp += 1;
+        break;
+      case 'K':
+        batterStats.k += 1;
+        break;
+      case 'SAC_FLY':
+        batterStats.sacFlies += 1;
+        break;
+    }
+
+    const pitcherStats = ensureStats(pitcher.id, pitcher.teamId);
+    pitcherStats.ip += PLATE_APPEARANCE_OUTS[result.outcome] ?? 0;
+
+    switch (result.outcome) {
+      case 'SINGLE':
+      case 'DOUBLE':
+      case 'TRIPLE':
+        pitcherStats.hitsAllowed += 1;
+        break;
+      case 'HR':
+        pitcherStats.hitsAllowed += 1;
+        pitcherStats.homeRunsAllowed += 1;
+        break;
+      case 'BB':
+        pitcherStats.walks += 1;
+        break;
+      case 'HBP':
+        pitcherStats.hitBatters += 1;
+        break;
+      case 'K':
+        pitcherStats.strikeouts += 1;
+        break;
+      case 'FB_OUT':
+      case 'SAC_FLY':
+        pitcherStats.flyBallsAllowed += 1;
+        break;
+    }
+  }
+
+  if (game.winningPitcherId) {
+    const winningPitcher = playersById.get(game.winningPitcherId);
+    if (winningPitcher) {
+      ensureStats(winningPitcher.id, winningPitcher.teamId).wins += 1;
+    }
+  }
+
+  if (game.losingPitcherId) {
+    const losingPitcher = playersById.get(game.losingPitcherId);
+    if (losingPitcher) {
+      ensureStats(losingPitcher.id, losingPitcher.teamId).losses += 1;
+    }
+  }
+
+  if (game.savePitcherId) {
+    const savePitcher = playersById.get(game.savePitcherId);
+    if (savePitcher) {
+      const saveStats = ensureStats(savePitcher.id, savePitcher.teamId);
+      saveStats.saves = (saveStats.saves ?? 0) + 1;
+    }
+  }
+
+  return stats;
+}
+
+function buildCareerTotalsBeforeChunk(
+  s: FullGameState,
+): Map<string, { hr: number; hits: number; wins: number }> {
+  const totals = new Map<string, { hr: number; hits: number; wins: number }>();
+
+  for (const ledger of s.careerStats) {
+    totals.set(ledger.playerId, {
+      hr: ledger.batting?.hr ?? 0,
+      hits: ledger.batting?.hits ?? 0,
+      wins: ledger.pitching?.wins ?? 0,
+    });
+  }
+
+  for (const [playerId, seasonStats] of s.seasonState.playerSeasonStats.entries()) {
+    const existing = totals.get(playerId) ?? { hr: 0, hits: 0, wins: 0 };
+    totals.set(playerId, {
+      hr: existing.hr + seasonStats.hr,
+      hits: existing.hits + seasonStats.hits,
+      wins: existing.wins + seasonStats.wins,
+    });
+  }
+
+  return totals;
+}
+
+function applyGameTotals(
+  totals: Map<string, { hr: number; hits: number; wins: number }>,
+  gameStats: ReadonlyMap<string, PlayerGameStats>,
+) {
+  for (const [playerId, stats] of gameStats.entries()) {
+    const existing = totals.get(playerId) ?? { hr: 0, hits: 0, wins: 0 };
+    totals.set(playerId, {
+      hr: existing.hr + stats.hr,
+      hits: existing.hits + stats.hits,
+      wins: existing.wins + stats.wins,
+    });
+  }
+}
+
+function applySignatureMomentEffects(
+  s: FullGameState,
+  playerId: string,
+  updatedMoments: FullGameState['playerMoments'] extends Map<string, infer TValue> ? TValue : never,
+) {
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  if (!player) {
+    return;
+  }
+
+  const modifiers = applyMomentEffects(player, updatedMoments, s.season);
+  player.personality.mentalToughness = clamp(
+    player.personality.mentalToughness + modifiers.pressureDelta,
+    0,
+    100,
+  );
+
+  if (player.pitcherAttributes) {
+    player.pitcherAttributes.stuff = clamp(
+      player.pitcherAttributes.stuff + modifiers.pitcherAttributeDelta,
+      0,
+      550,
+    );
+  } else {
+    player.hitterAttributes.power = clamp(
+      player.hitterAttributes.power + modifiers.hitterAttributeDelta,
+      0,
+      550,
+    );
+  }
+
+  const existingTraits = new Set(player.personalityTraits ?? []);
+  for (const trait of modifiers.activeTraits) {
+    existingTraits.add(trait);
+  }
+  player.personalityTraits = [...existingTraits].sort((left, right) => left.localeCompare(right));
+
+  if (modifiers.storyFlags.length > 0) {
+    const existingFlags = new Set(s.storyFlags.get(player.teamId) ?? []);
+    for (const flag of modifiers.storyFlags) {
+      existingFlags.add(flag);
+    }
+    s.storyFlags.set(player.teamId, [...existingFlags].sort((left, right) => left.localeCompare(right)));
+  }
+}
+
+function processSignatureMoments(
+  s: FullGameState,
+  games: readonly FullGameState['seasonState']['gameLog'][number][],
+) {
+  if (games.length === 0) {
+    return;
+  }
+
+  const playerNames = new Map(
+    s.players.map((player) => [player.id, `${player.firstName} ${player.lastName}`]),
+  );
+  const runningTotals = buildCareerTotalsBeforeChunk(s);
+  const orderedGames = [...games].sort((left, right) =>
+    left.date.localeCompare(right.date)
+    || left.homeTeamId.localeCompare(right.homeTeamId)
+    || left.awayTeamId.localeCompare(right.awayTeamId),
+  );
+
+  const queueCareerShutoutMilestoneContent = (
+    player: FullGameState['players'][number],
+    gameDate: string,
+  ) => {
+    const playerName = `${player.firstName} ${player.lastName}`;
+    const newsId = `milestone-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`;
+    if (!s.news.some((item) => item.id === newsId)) {
+      s.news.unshift({
+        id: newsId,
+        headline: `${playerName} records career shutout #${CAREER_SHUTOUT_MILESTONE}`,
+        body: `${playerName} reached ${CAREER_SHUTOUT_MILESTONE} career complete-game shutouts and pushed into one of baseball's smallest pitching milestones.`,
+        priority: 1,
+        category: 'milestone',
+        timestamp: gameDate,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [player.teamId],
+        read: false,
+      });
+    }
+
+    const milestoneDay = parseSimDayFromTimestamp(gameDate) ?? s.day;
+    const tickerId = `ticker-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`;
+    if (!s.tickerFeed.some((entry) => entry.id === tickerId)) {
+      s.tickerFeed.unshift({
+        id: tickerId,
+        timestamp: gameDate,
+        category: 'milestone',
+        text: `${playerName} reaches ${CAREER_SHUTOUT_MILESTONE} career shutouts.`,
+        priority: 5,
+        relatedTeamIds: [player.teamId],
+        relatedPlayerIds: [player.id],
+        expiresDay: (s.season * 1000) + milestoneDay + 30,
+      });
+    }
+
+    if (player.teamId === s.userTeamId) {
+      queueCeremonyMoment(s, {
+        id: `career-shutout-${player.id}-${CAREER_SHUTOUT_MILESTONE}`,
+        type: 'career_milestone',
+        title: `${CAREER_SHUTOUT_MILESTONE} SHUTOUTS`,
+        subtitle: playerName,
+        detailLines: ['A rare pitching ledger just hit triple digits.'],
+        soundEffect: 'achievement_unlock',
+        autoDismissMs: 5000,
+        createdAt: gameDate,
+        theme: 'historic',
+        relatedTeamIds: [player.teamId],
+        relatedPlayerIds: [player.id],
+      });
+    }
+  };
+
+  for (const game of orderedGames) {
+    const gameStats = buildMomentPlayerStats(s, game);
+    for (const [playerId, stats] of gameStats.entries()) {
+      const playerIndex = s.players.findIndex((candidate) => candidate.id === playerId);
+      if (playerIndex < 0) {
+        continue;
+      }
+      const result = recordCareerShutout(s.players[playerIndex]!, game, stats);
+      if (!result.recorded) {
+        continue;
+      }
+      s.players[playerIndex] = result.player;
+      if (result.crossedMilestone) {
+        queueCareerShutoutMilestoneContent(result.player, game.date);
+      }
+    }
+    const updates = detectMoment(game, gameStats, {
+      currentSeason: s.season,
+      existingMomentsByPlayer: s.playerMoments,
+      careerTotalsBeforeGameByPlayer: runningTotals,
+      round: null,
+      isPlayoff: game.isPlayoff,
+      isEliminationGame: false,
+      worldSeriesClincher: false,
+      decisiveErrorPlayerId: null,
+      blownSavePitcherId: null,
+      playerNameById: playerNames,
+    }, s.rng.fork());
+
+    for (const update of updates) {
+      const enrichedMoments = update.updatedMoments
+        .map<PersistedSignatureMoment>((moment) => ({
+          ...moment,
+          day: parseSimDayFromTimestamp(game.date) ?? s.day,
+          timestamp: game.date,
+        }))
+        .sort(compareSignatureMomentRecency)
+        .slice(0, MAX_MOMENTS_PER_PLAYER);
+      s.playerMoments.set(update.playerId, enrichedMoments);
+      applySignatureMomentEffects(s, update.playerId, enrichedMoments);
+    }
+
+    applyGameTotals(runningTotals, gameStats);
+  }
+}
+
+function buildNicknameCareerStats(
+  s: FullGameState,
+  player: FullGameState['players'][number],
+) {
+  const ledger = s.careerStats.find((entry) => entry.playerId === player.id);
+  const goldGloveAwards = s.awardHistory.filter((award) =>
+    award.playerId === player.id && award.award.toLowerCase().includes('gold glove')).length;
+
+  return {
+    debutAge: Math.max(16, player.age - Math.max(0, ledger?.seasonsPlayed ?? 0) + 1),
+    currentAge: player.age,
+    currentOverall: toDisplayRating(player.overallRating),
+    peakOverall: ledger?.peakOverall ?? toDisplayRating(player.overallRating),
+    potentialRating: toDisplayRating(player.potentialRating ?? player.overallRating),
+    leadership: player.personality.leadership,
+    careerWar: ledger?.war ?? 0,
+    championships: ledger?.championshipRings ?? 0,
+    yearsWithCurrentTeam: ledger?.teamIds.filter((teamId) => teamId === player.teamId).length ?? 0,
+    goldGloveAwards,
+    captainSeasons: 0,
+    careerBatting: ledger?.batting ? {
+      hits: ledger.batting.hits,
+      hr: ledger.batting.hr,
+    } : null,
+    careerPitching: ledger?.pitching ? {
+      wins: ledger.pitching.wins,
+      strikeouts: ledger.pitching.strikeouts,
+      saves: ledger.saves ?? 0,
+    } : null,
+    careerPlayoffBatting: null,
+  };
+}
+
+function updateEarnedNicknamesForSeason(s: FullGameState) {
+  for (const player of s.players) {
+    const seasonStats = s.seasonState.playerSeasonStats.get(player.id);
+    const existingState = s.playerNicknames.get(player.id) ?? {
+      seasonHistory: [],
+      earnedNicknames: [],
+      primaryNickname: null,
+      badgeNicknames: [],
+    };
+    const seasonHistory = existingState.seasonHistory.filter((entry) => entry.season !== s.season);
+    seasonHistory.push({
+      season: s.season,
+      age: player.age,
+      teamId: player.teamId,
+      gamesPlayed: seasonStats?.gamesPlayed ?? 0,
+      pa: seasonStats?.pa ?? 0,
+      hits: seasonStats?.hits ?? 0,
+      hr: seasonStats?.hr ?? 0,
+      battingWalks: seasonStats?.bb ?? 0,
+      battingStrikeouts: seasonStats?.k ?? 0,
+      stolenBases: 0,
+      saves: seasonStats?.saves ?? 0,
+      blownSaves: 0,
+      wins: seasonStats?.wins ?? 0,
+      era: seasonStats?.ip ? (seasonStats.earnedRuns * 27) / Math.max(1, seasonStats.ip) : 0,
+      pitchingStrikeouts: seasonStats?.strikeouts ?? 0,
+      injuryCount: 0,
+      overallStart: toDisplayRating(player.overallRating),
+      overallEnd: toDisplayRating(player.overallRating),
+      wasOnMlbRoster: player.rosterStatus === 'MLB',
+      ledLeagueInStolenBases: false,
+    });
+    seasonHistory.sort((left, right) => left.season - right.season);
+
+    const evaluation = evaluateNicknames(
+      player,
+      buildNicknameCareerStats(s, player),
+      seasonHistory,
+    );
+
+    s.playerNicknames.set(player.id, {
+      seasonHistory,
+      earnedNicknames: evaluation.earnedNicknames,
+      primaryNickname: evaluation.primaryNickname,
+      badgeNicknames: evaluation.badgeNicknames,
+    });
+  }
+}
+
+function upsertDynastyCard(
+  s: FullGameState,
+  card: FullGameState['dynastyCards'][number],
+) {
+  const existingIndex = s.dynastyCards.findIndex((entry) => entry.id === card.id);
+  if (existingIndex >= 0) {
+    s.dynastyCards.splice(existingIndex, 1, card);
+    return;
+  }
+  s.dynastyCards.unshift(card);
+}
+
+function syncCareerOverviewCard(s: FullGameState) {
+  if (s.gmCareer.careerHistory.length < 2) {
+    return;
+  }
+
+  upsertDynastyCard(
+    s,
+    generateDynastyCard(exportGameSnapshot(s), 'career_overview'),
+  );
+}
+
+function exportSnapshotWithDiagnostics(s: FullGameState) {
+  normalizePerformanceDiagnostics(s);
+  let snapshot = exportGameSnapshot(s);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const snapshotSizeBytes = estimateSnapshotSizeBytes(snapshot);
+    if (s.performanceDiagnostics.snapshotSizeBytes === snapshotSizeBytes) {
+      return snapshot;
+    }
+
+    s.performanceDiagnostics = {
+      ...s.performanceDiagnostics,
+      snapshotSizeBytes,
+    };
+    snapshot = exportGameSnapshot(s);
+  }
+
+  return snapshot;
+}
+
+async function persistCurrentStateToSave(saveId: string) {
+  const save = await loadGameById(saveId);
+  if (!save) {
+    throw new Error(`Save ${saveId} was not found.`);
+  }
+
+  const snapshot = exportSnapshotWithDiagnostics(requireState());
+  await measureRuntimeAsync('lastSaveMs', async () => {
+    await saveGameById(saveId, save.name, snapshot, {
+      slotNumber: save.slotNumber,
+      parentSaveId: save.parentSaveId,
+      isRootSave: save.isRootSave,
+      branchMeta: save.branchMeta,
+    });
+  });
+
+  return buildPerformanceDiagnosticsView(requireState());
+}
+
+function queueContractReactionWatcher(
+  s: FullGameState,
+  playerId: string,
+  playerName: string,
+  annualSalary: number,
+  years: number,
+  marketValue: number,
+) {
+  s.consequenceWatchers = appendConsequenceWatchers(s.consequenceWatchers, [{
+    id: `contract-reaction-${s.season}-${s.day}-${playerId}`,
+    type: 'contract_reaction',
+    createdSeason: s.season,
+    createdDay: s.day,
+    expiresSeason: s.season + 1,
+    expiresDay: 1,
+    resolved: false,
+    context: {
+      playerId,
+      playerName,
+      annualSalary,
+      years,
+      marketValue,
+    },
+  }]);
+}
+
+function queueProspectRiskWatcher(
+  s: FullGameState,
+  playerId: string,
+  playerName: string,
+  currentLevel: string,
+  targetLevel: string,
+) {
+  const player = s.players.find((candidate) => candidate.id === playerId);
+  if (!player) {
+    return;
+  }
+
+  const risk = calculateRushingRisk(player, currentLevel, targetLevel);
+  s.consequenceWatchers = appendConsequenceWatchers(s.consequenceWatchers, [{
+    id: `prospect-risk-${s.season}-${s.day}-${playerId}`,
+    type: 'prospect_risk',
+    createdSeason: s.season,
+    createdDay: s.day,
+    expiresSeason: s.season + 1,
+    expiresDay: 1,
+    resolved: false,
+    context: {
+      playerId,
+      playerName,
+      currentLevel,
+      targetLevel,
+      injuryMultiplier: risk.injuryMultiplier,
+      regressionChance: risk.regressionChance,
+      confidenceHit: risk.confidenceHit,
+    },
+  }]);
+}
+
+function refreshFanSentiment(s: FullGameState) {
+  const record = s.seasonState.standings.getRecord(s.userTeamId);
+  s.fanSentiment = calculateFanSentiment({
+    season: s.season,
+    day: s.day,
+    priorScore: s.fanSentiment.score,
+    wins: record?.wins ?? 0,
+    losses: record?.losses ?? 0,
+    tradePulse: s.news.filter((item) =>
+      item.category === 'trade'
+      && item.relatedTeamIds.includes(s.userTeamId)
+      && item.timestamp.startsWith(`S${s.season}D`),
+    ).length * 2,
+    signingPulse: s.news.filter((item) =>
+      item.category === 'signing'
+      && item.relatedTeamIds.includes(s.userTeamId)
+      && item.timestamp.startsWith(`S${s.season}D`),
+    ).length * 2,
+    prospectDebuts: s.news.filter((item) =>
+      item.category === 'development'
+      && item.relatedTeamIds.includes(s.userTeamId)
+      && item.timestamp.startsWith(`S${s.season}D`),
+    ).length,
+    championshipSeasons: s.franchiseTimeline.filter((entry) => entry.championship).map((entry) => entry.season),
+  });
+
+  const owner = s.ownerState.get(s.userTeamId);
+  if (!owner) {
+    return;
+  }
+
+  const modifier = clamp(Math.round((s.fanSentiment.score - 50) / 10), -5, 5);
+  s.ownerState.set(s.userTeamId, {
+    ...owner,
+    satisfaction: clamp((owner.satisfaction ?? 50) + modifier, 0, 100),
+  });
+}
+
+function resolveConsequenceChains(s: FullGameState) {
+  if (!s.consequenceWatchers.some((watcher) => !watcher.resolved)) {
+    return;
+  }
+
+  const evaluated = evaluateConsequenceWatchers({
+    rng: s.rng.fork(),
+    season: s.season,
+    day: s.day,
+    userTeamId: s.userTeamId,
+    players: s.players,
+    playerStats: Array.from(s.seasonState.playerSeasonStats.entries()),
+    watchers: s.consequenceWatchers,
+  });
+
+  s.consequenceWatchers = evaluated.updatedWatchers;
+  if (evaluated.newsItems.length > 0) {
+    s.news = deduplicateNews([...evaluated.newsItems, ...s.news]);
+  }
+}
+
+function updateScenarioProgress(s: FullGameState) {
+  if (!s.challengeState) {
+    return;
+  }
+
+  const scenario = getScenarioById(s.challengeState.scenarioId);
+  if (!scenario) {
+    return;
+  }
+
+  const progress = evaluateScenarioProgress(exportGameSnapshot(s), scenario);
+  const seasonsElapsed = (s.season - s.challengeState.startSeason) + 1;
+  const failed = !progress.met && seasonsElapsed > s.challengeState.maxSeasons;
+
+  s.challengeState = {
+    ...s.challengeState,
+    progress: progress.progress,
+    completed: progress.met,
+    completedSeason: progress.met ? s.season : s.challengeState.completedSeason,
+    failed,
+    summary: failed
+      ? `${scenario.name} expired before the goal was met.`
+      : progress.message,
+  };
+
+  if (progress.met) {
+    upsertDynastyCard(
+      s,
+      generateDynastyCard(exportGameSnapshot(s), 'scenario_complete'),
+    );
+  }
+}
+
+function franchiseLockMessage(s: FullGameState): string {
+  if (s.gmCareer.jobSearchActive) {
+    return s.gmCareer.lastFiredReason ?? 'The GM has been dismissed and must accept a new job before continuing.';
+  }
+  return s.franchise.endReason ?? 'Owner fired the GM. This dynasty is now read-only.';
+}
+
+function syncFranchiseTerminationFromOwner(s: FullGameState): boolean {
+  return s.franchise.status === 'fired' || s.gmCareer.jobSearchActive;
+}
+
+function blockedSimResult(s: FullGameState): SimResultDTO {
+  return {
+    day: s.day,
+    season: s.season,
+    phase: s.phase,
+    gamesPlayed: 0,
+    seasonComplete: true,
+  };
 }
 
 function teamLabel(teamId: string): string {
@@ -290,6 +1276,31 @@ function recordPlayoffProgressCoverage(
         1,
       );
       applySeriesOutcomeConsequences(s, series.winnerId ?? series.higherSeed.teamId, series.loserId ?? series.lowerSeed.teamId);
+      queuePlayoffSeriesMoment(s, series);
+      s.playoffSeriesHistory.push({
+        season: s.season,
+        round: series.round,
+        higherSeedTeamId: series.higherSeed.teamId,
+        lowerSeedTeamId: series.lowerSeed.teamId,
+        bestOf: series.bestOf,
+        deficitReached: series.deficitReached,
+        deficitTeamId: series.deficitTeamId,
+        winnerTeamId: series.winnerId ?? series.higherSeed.teamId,
+      });
+      const gauntlet = detectPlayoffGauntlet(
+        s.playoffSeriesHistory[s.playoffSeriesHistory.length - 1]!,
+        s.day,
+      );
+      if (gauntlet) {
+        const existing = s.teamMoments.get(gauntlet.teamId) ?? [];
+        if (!existing.some((moment) =>
+          moment.type === gauntlet.moment.type
+          && moment.season === gauntlet.moment.season
+          && moment.description === gauntlet.moment.description
+        )) {
+          appendTeamMoments(s, gauntlet.teamId, [gauntlet.moment]);
+        }
+      }
     }
   }
 
@@ -316,10 +1327,20 @@ function finalizePlayoffRunIfNeeded(s: FullGameState) {
     return;
   }
 
+  finalizeRivalriesForSeason(s);
   ensureAwardHistoryForSeason(s);
+  queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
   const seasonMoments = applyPostseasonConsequences(s);
   recordSeasonHistory(s, seasonMoments);
+  recordSeasonArchive(s);
   upsertFranchiseTimelineEntry(s);
+  if (s.playoffBracket.champion === s.userTeamId) {
+    upsertDynastyCard(s, generateChampionshipCard(exportGameSnapshot(s), s.season));
+  }
+  syncCareerOverviewCard(s);
+  updateScenarioProgress(s);
+  captureSeasonAchievementFacts(s);
+  syncAchievementState(s);
   clearPendingTradeOffers(s);
 }
 
@@ -343,13 +1364,84 @@ function playoffResult(s: FullGameState, gamesPlayed: number): SimResultDTO {
   };
 }
 
+function applyWave4PlayoffIntroMoments(s: FullGameState) {
+  const playoffTeamIds = new Set(
+    determinePlayoffSeeds(s.seasonState.standings.getFullStandings()).map((seed) => seed.teamId),
+  );
+
+  for (const entry of s.seasonState.standings.getLeagueStandings()) {
+    if (!playoffTeamIds.has(entry.teamId)) {
+      continue;
+    }
+
+    const septemberHeroics = detectSeptemberHeroics({
+      teamId: entry.teamId,
+      wins: entry.wins,
+      losses: entry.losses,
+      madePlayoffs: true,
+      isChampion: false,
+    }, {
+      season: s.season,
+      day: s.day,
+      teams: [],
+      monthlyRecordSplits: s.seasonState.monthlyRecordSplits,
+      teamMoments: s.teamMoments,
+    });
+
+    if (septemberHeroics) {
+      appendTeamMoments(s, septemberHeroics.teamId, [septemberHeroics.moment]);
+    }
+  }
+
+  for (const player of s.players) {
+    if (player.teamId !== s.userTeamId || player.rosterStatus !== 'MLB') {
+      continue;
+    }
+
+    const comebackPlayer = detectComebackPlayer(
+      player,
+      s.seasonState.playerSeasonStats.get(player.id),
+      s.season,
+      s.day,
+      s.playerMoments,
+    );
+    if (comebackPlayer) {
+      appendPlayerMoments(s, comebackPlayer.playerId, [comebackPlayer.moment]);
+    }
+  }
+
+  for (const rookieMoment of detectRookieSensation(
+    s.userTeamId,
+    s.players,
+    s.rookieOfTheYearVoting,
+    s.season,
+    s.day,
+    s.playerMoments,
+  )) {
+    appendPlayerMoments(s, rookieMoment.playerId, [rookieMoment.moment]);
+  }
+}
+
 function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonComplete: boolean): SimResultDTO {
   if (seasonComplete) {
     ensureAwardHistoryForSeason(s);
+    queueAwardMoments(s, s.awardHistory.filter((entry) => entry.season === s.season));
+    maybeQueuePlayoffClinchMoment(s);
+    syncRecordTracking(s, {
+      includeCurrentSeasonPlayoffAppearance: true,
+      clearWatches: true,
+      publishBrokenRecords: true,
+    });
+    captureSeasonAchievementFacts(s);
+    syncAchievementState(s);
     clearPendingTradeOffers(s);
+    applySeasonEndPlayerMicroArcMoments(s);
     s.phase = 'playoffs';
     s.day = 1;
     s.playoffBracket = null;
+    applyWave4PlayoffIntroMoments(s);
+    applyRegularSeasonTeamDynastyMarkers(s);
+    applyRegularSeasonPositionGroupMoments(s);
   }
 
   return {
@@ -362,48 +1454,323 @@ function transitionToPlayoffIntro(s: FullGameState, gamesPlayed: number, seasonC
   };
 }
 
+function monthFromDay(day: number): number {
+  return getRegularSeasonMonthForDay(day).month;
+}
+
+function getCrossedRegularSeasonMonths(previousDay: number, currentDay: number): number[] {
+  const previousMonth = monthFromDay(previousDay);
+  const currentMonth = monthFromDay(currentDay);
+  if (currentMonth <= previousMonth) {
+    return [];
+  }
+
+  const crossedMonths: number[] = [];
+  for (let month = previousMonth + 1; month <= currentMonth; month += 1) {
+    crossedMonths.push(month);
+  }
+  return crossedMonths;
+}
+
+function publishMonthlyNarrativeHooks(s: FullGameState, crossedMonths: readonly number[]) {
+  for (const month of crossedMonths) {
+    applyMonthlyNarrativeHooks(s, month);
+  }
+}
+
+function applyMonthlyDevelopmentCheckpoints(
+  s: FullGameState,
+  previousDay: number,
+  currentDay: number,
+) {
+  const crossedMonths = getCrossedRegularSeasonMonths(previousDay, currentDay);
+  for (const month of crossedMonths) {
+    const monthView = getRegularSeasonMonthForDay(Math.min(currentDay, (month * 30) - 1));
+    const checkpoint = runMonthlyDevelopmentCheckpoint(
+      s.rng.fork(),
+      s.season,
+      month,
+      s.players,
+      s.coachingStaffs,
+      s.minorLeagueState,
+    );
+    s.players = checkpoint.players;
+    s.minorLeagueState = checkpoint.state;
+    applyDevelopmentSetbackCheckpoint(s, month);
+    advanceMonthlyStoryArcs(s, s.season, currentDay);
+    applyBreakoutCountdowns(s);
+    applyMonthlyPressConference(s);
+    applyMonthlyLeagueEvents(s, monthView);
+  }
+
+  return crossedMonths;
+}
+
 function simWeekInternal(): SimResultDTO {
   const s = requireState();
-  if (s.phase !== 'regular') {
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
+  if (s.phase === 'preseason') {
+    s.phase = 'regular';
+    s.day = 1;
+  } else if (s.phase !== 'regular') {
     return simDayInternal();
   }
 
   const previousDay = s.day;
-  const { newState, result } = simulateWeek(s.rng, s.seasonState, s.schedule, s.players);
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
+  incrementGamesMissedToInjury(s, s.day, Math.min(s.day + 7, 187));
+  const { newState, result } = simulateWeek(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    buildSeasonSimulationOptions(s),
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
+  const crossedMonths = applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
+  normalizeLeagueActiveRosters(s);
+  processSignatureMoments(s, result.games);
+  applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
+  applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
+  resolveConsequenceChains(s);
+  syncRecordTracking(s);
+  publishMonthlyNarrativeHooks(s, crossedMonths);
+  updateScenarioProgress(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+}
+
+function buildTeamPerformanceModifiers(s: FullGameState): Map<string, number> {
+  const modifiers = new Map(
+    TEAMS.map((team) => [
+      team.id,
+      chemistryScoreToModifier(s.teamChemistry.get(team.id)?.score ?? 50),
+    ] as const),
+  );
+  const todayGames = s.schedule.filter((game) => game.day === s.day);
+
+  for (const game of todayGames) {
+    const homeChemistry = s.teamChemistry.get(game.homeTeamId)?.score ?? 50;
+    const awayChemistry = s.teamChemistry.get(game.awayTeamId)?.score ?? 50;
+    modifiers.set(
+      game.homeTeamId,
+      Number(((modifiers.get(game.homeTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.homeTeamId, game.awayTeamId, homeChemistry)).toFixed(4)),
+    );
+    modifiers.set(
+      game.awayTeamId,
+      Number(((modifiers.get(game.awayTeamId) ?? 1) + rivalryGameModifier(s.rivalries, game.awayTeamId, game.homeTeamId, awayChemistry)).toFixed(4)),
+    );
+  }
+
+  return modifiers;
+}
+
+function buildSeasonSimulationOptions(s: FullGameState) {
+  return {
+    teamModifiers: buildTeamPerformanceModifiers(s),
+    unavailablePlayerIds: buildUnavailablePlayerIds(s),
+    openingDayPlans: s.franchise.dayOne.openingDayPlan == null
+      ? undefined
+      : new Map([[s.userTeamId, s.franchise.dayOne.openingDayPlan]]),
+  };
+}
+
+function buildUnavailablePlayerIds(s: FullGameState): Set<string> {
+  return new Set(
+    Array.from(s.injuries.entries())
+      .filter(([, injury]) => injury.daysRemaining > 0)
+      .map(([playerId]) => playerId),
+  );
+}
+
+function incrementGamesMissedToInjury(
+  s: FullGameState,
+  startDayInclusive: number,
+  endDayExclusive: number,
+) {
+  const unavailablePlayerIds = buildUnavailablePlayerIds(s);
+  if (unavailablePlayerIds.size === 0) {
+    return;
+  }
+
+  const scheduledGamesByTeamId = new Map<string, number>();
+  for (const game of s.schedule) {
+    if (game.day < startDayInclusive || game.day >= endDayExclusive) {
+      continue;
+    }
+    scheduledGamesByTeamId.set(game.homeTeamId, (scheduledGamesByTeamId.get(game.homeTeamId) ?? 0) + 1);
+    scheduledGamesByTeamId.set(game.awayTeamId, (scheduledGamesByTeamId.get(game.awayTeamId) ?? 0) + 1);
+  }
+
+  for (const player of s.players) {
+    if (
+      !unavailablePlayerIds.has(player.id)
+      || player.rosterStatus !== 'MLB'
+      || !player.teamId
+    ) {
+      continue;
+    }
+
+    const scheduledGames = scheduledGamesByTeamId.get(player.teamId) ?? 0;
+    if (scheduledGames <= 0) {
+      continue;
+    }
+
+    const currentStats = s.seasonState.playerSeasonStats.get(player.id)
+      ?? createEmptyPlayerGameStats(player.id, player.teamId);
+    currentStats.gamesMissedToInjury = (currentStats.gamesMissedToInjury ?? 0) + scheduledGames;
+    s.seasonState.playerSeasonStats.set(player.id, currentStats);
+  }
+}
+
+function normalizeLeagueActiveRosters(s: FullGameState) {
+  for (const team of TEAMS) {
+    const mlbPlayers = s.players
+      .filter((player) => player.teamId === team.id && player.rosterStatus === 'MLB')
+      .sort((left, right) => left.overallRating - right.overallRating || left.id.localeCompare(right.id));
+
+    while (mlbPlayers.length > 30) {
+      const overflow = mlbPlayers.shift();
+      if (!overflow) {
+        break;
+      }
+      overflow.rosterStatus = 'AAA';
+      overflow.minorLeagueLevel = 'AAA';
+    }
+
+    const rosterState = buildRosterState(team.id, s.players);
+    const filledRoster = autoFillMLBRoster(team.id, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(team.id, filledRoster.rosterState);
+  }
 }
 
 function simMonthInternal(): SimResultDTO {
   const s = requireState();
-  if (s.phase !== 'regular') {
+  if (syncFranchiseTerminationFromOwner(s)) {
+    return blockedSimResult(s);
+  }
+  const owner = s.ownerState.get(s.userTeamId);
+  if (
+    owner?.hotSeat
+    && (
+      (owner.satisfaction ?? 100) < 45
+      || owner.patience < 35
+      || owner.confidence < 35
+    )
+  ) {
+    const existingFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    const flag = `owner_meeting_${s.season}`;
+    if (!existingFlags.includes(flag)) {
+      s.storyFlags.set(s.userTeamId, [...existingFlags, flag]);
+    }
+  }
+  if (s.phase === 'preseason') {
+    s.phase = 'regular';
+    s.day = 1;
+  } else if (s.phase !== 'regular') {
     return simDayInternal();
   }
 
+  const monthlyContext = captureMonthlyAdvanceContext(s);
   const previousDay = s.day;
-  const { newState, result } = simulateMonth(s.rng, s.seasonState, s.schedule, s.players);
+  const previousStandings = s.seasonState.standings.serialize();
+  const previousInjuryIds = new Set(s.injuries.keys());
+  const previousTradeCount = s.tradeState.tradeHistory.length;
+  incrementGamesMissedToInjury(s, s.day, getRegularSeasonMonthForDay(s.day).endDay + 1);
+  const { newState, result } = simulateMonth(
+    s.rng,
+    s.seasonState,
+    s.schedule,
+    s.players,
+    buildSeasonSimulationOptions(s),
+  );
   s.seasonState = newState;
   s.day = newState.currentDay;
+  const crossedMonths = applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
   processTradeMarketActivity(s, previousDay, s.day);
   processDayInjuriesAndNews(s);
+  normalizeLeagueActiveRosters(s);
+  processSignatureMoments(s, result.games);
+  applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
+  applyRegularSeasonPlayerMicroArcMoments(s);
   refreshNarrativeState(s, result.games);
+  refreshTickerFeed(s, {
+    simDay: Math.max(previousDay, s.day - 1),
+    games: result.games,
+    previousStandings,
+    previousInjuryIds,
+    previousTradeCount,
+  });
+  applyDebutFlashbacks(s, recordProspectBondDebuts(s));
+  resolveConsequenceChains(s);
+  refreshFanSentiment(s);
+  syncRecordTracking(s, { publishWatchStories: true, publishBrokenRecords: true });
+  publishMonthlyNarrativeHooks(s, crossedMonths);
+  s.monthlyPulse = generateMonthlyPulse(s, monthlyContext);
+  recordMonthlyDivisionLead(s);
+  syncAchievementState(s);
+  updateScenarioProgress(s);
   return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
 }
 
 function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
+  applySeasonEndPlayerArcMoments(s);
+  applySeasonEndTeamDynastyMarkers(s);
   accrueCareerStatsForSeason(s);
+  for (const player of s.players) {
+    const seasonStats = s.seasonState.playerSeasonStats.get(player.id);
+    player.priorSeasonGamesMissed = seasonStats?.gamesMissedToInjury ?? 0;
+    player.priorSeasonEstimatedWar = seasonStats != null && (seasonStats.pa > 0 || seasonStats.ip > 0)
+      ? estimatedWar(seasonStats)
+      : player.rosterStatus === 'MLB'
+        ? 0
+        : null;
+  }
+  syncRecordTracking(s, {
+    includeCurrentSeasonPlayoffAppearance: true,
+    clearWatches: true,
+    publishBrokenRecords: true,
+  });
 
   const beforePlayers = s.players;
-  const developedPlayers = developAllPlayers(s.rng.fork(), s.players);
+  const kernelPlayers = s.players.map((player) => developPlayer(s.rng.fork(), player));
+  const developedPlayers = reconcileDevelopmentPipeline(
+    s.rng.fork(),
+    kernelPlayers,
+    s.coachingStaffs,
+    s.minorLeagueState,
+  );
   recordBreakoutNarratives(s, beforePlayers, developedPlayers);
   s.players = developedPlayers;
+  applySeasonEndProspectBondUpdates(s);
 
   const retired = determineRetirements(s.rng.fork(), s.players);
-  processHallOfFameForRetirements(s, retired);
+  for (const playerId of retired) {
+    const player = s.players.find((candidate) => candidate.id === playerId);
+    if (player) {
+      retirePlayerAssignment(player, s.season);
+    }
+  }
+  syncHistoricalPlayersForRetirements(s, retired);
+  const inductees = processHallOfFameForRetirements(s, retired);
+  queueHallOfFameMoments(s, inductees);
+  syncAchievementState(s);
   enrichFranchiseTimelineWithDepartures(s, retired);
   if (s.offseasonState) {
     s.offseasonState = recordRetirements(
@@ -425,6 +1792,15 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 
   applyRetirementConsequences(s, retired);
   finalizeSeasonHistoryRetirements(s, retired);
+  applyOffseasonNarrativeHooks(s);
+  updateEarnedNicknamesForSeason(s);
+  s.playerMoments = new Map(
+    [...s.playerMoments.entries()].map(([playerId, moments]) => [playerId, decayMoments(moments)]),
+  );
+  recordSeasonArchive(s, { includeOffseasonData: true });
+  upsertDynastyCard(s, generateSeasonRecapCard(exportGameSnapshot(s), s.season));
+  resolvePersistedScoutConflicts(s);
+  syncCareerOverviewCard(s);
   s.players = s.players.filter((player) => !retired.includes(player.id));
   s.season++;
   s.day = 1;
@@ -437,13 +1813,22 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
   s.draftClass = null;
   s.freeAgencyMarket = null;
   s.tradeState = createEmptyTradeState();
+  s.internationalScoutingState = createEmptyInternationalScoutingState(s.season);
+  s.draftState = createEmptyDraftState();
+  s.minorLeagueState = createEmptyMinorLeagueState(s.season);
+  s.monthlyPulse = createEmptyMonthlyPulseState();
   const teamIds = TEAMS.map((team) => team.id);
   s.schedule = generateSchedule(s.rng.fork());
   s.seasonState = createSeasonState(s.season, teamIds);
   for (const teamId of teamIds) {
-    s.rosterStates.set(teamId, buildRosterState(teamId, s.players));
+    const rosterState = buildRosterState(teamId, s.players);
+    const filledRoster = autoFillMLBRoster(teamId, s.players, rosterState);
+    s.players = filledRoster.players;
+    s.rosterStates.set(teamId, filledRoster.rosterState);
   }
   ensureNarrativeState(s);
+  syncSeasonStartStoryArcs(s);
+  updateScenarioProgress(s);
   return {
     day: 1,
     season: s.season,
@@ -455,47 +1840,96 @@ function finalizeOffseasonRollover(s: FullGameState): SimResultDTO {
 }
 
 function simDayInternal(): SimResultDTO {
-  const s = requireState();
-  if (s.phase === 'preseason') {
-    s.phase = 'regular';
-    s.day = 1;
-  }
-
-  if (s.phase === 'regular') {
-    const previousDay = s.day;
-    const { newState, result } = simulateDay(s.rng, s.seasonState, s.schedule, s.players);
-    s.seasonState = newState;
-    s.day = newState.currentDay;
-    processTradeMarketActivity(s, previousDay, s.day);
-    processDayInjuriesAndNews(s);
-    refreshNarrativeState(s, result.games);
-    return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
-  }
-
-  if (s.phase === 'playoffs') {
-    if (ensurePlayoffBracket(s)) {
-      return playoffResult(s, 0);
+  return measureRuntimeSync('lastSimDayMs', () => {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
+    if (s.phase === 'preseason') {
+      s.phase = 'regular';
+      s.day = 1;
     }
 
-    if (s.playoffBracket?.champion) {
+    if (s.phase === 'regular') {
+      const previousDay = s.day;
+      const previousStandings = s.seasonState.standings.serialize();
+      const previousInjuryIds = new Set(s.injuries.keys());
+      const previousTradeCount = s.tradeState.tradeHistory.length;
+      incrementGamesMissedToInjury(s, s.day, s.day + 1);
+      const { newState, result } = simulateDay(
+        s.rng,
+        s.seasonState,
+        s.schedule,
+        s.players,
+        buildSeasonSimulationOptions(s),
+      );
+      s.seasonState = newState;
+      s.day = newState.currentDay;
+      s.gmRelationships = decayRelationships(s.gmRelationships, s.season);
+      advanceMinorLeagueDay(s);
+      const crossedMonths = applyMonthlyDevelopmentCheckpoints(s, previousDay, s.day);
+      processTradeMarketActivity(s, previousDay, s.day);
+      processDayInjuriesAndNews(s);
+      processSignatureMoments(s, result.games);
+      applyWeeklyMomentsForCompletedRange(s, previousDay, s.day, result.seasonComplete);
+      applyRegularSeasonPlayerMicroArcMoments(s);
+      refreshNarrativeState(s, result.games);
+      refreshTickerFeed(s, {
+        simDay: previousDay,
+        games: result.games,
+        previousStandings,
+        previousInjuryIds,
+        previousTradeCount,
+      });
+      applyDebutFlashbacks(s, recordProspectBondDebuts(s));
+      resolveConsequenceChains(s);
+      syncRecordTracking(s);
+      publishMonthlyNarrativeHooks(s, crossedMonths);
+      updateScenarioProgress(s);
+      return transitionToPlayoffIntro(s, result.games.length, result.seasonComplete);
+    }
+
+    if (s.phase === 'playoffs') {
+      if (ensurePlayoffBracket(s)) {
+        return playoffResult(s, 0);
+      }
+
+      if (s.playoffBracket?.champion) {
+        finalizePlayoffRunIfNeeded(s);
+        return playoffResult(s, 0);
+      }
+
+      const before = s.playoffBracket!;
+      const gamesBefore = countBracketGames(before);
+      let working = before;
+      while (!isPlayoffComplete(working)) {
+        working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+          teamModifiers: buildTeamPerformanceModifiers(s),
+          unavailablePlayerIds: buildUnavailablePlayerIds(s),
+        });
+      }
+      s.playoffBracket = working;
+      recordPlayoffProgressCoverage(s, before, s.playoffBracket);
       finalizePlayoffRunIfNeeded(s);
-      return playoffResult(s, 0);
+      return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
     }
 
-    const before = s.playoffBracket!;
-    const gamesBefore = countBracketGames(before);
-    let working = before;
-    while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
-    }
-    s.playoffBracket = working;
-    recordPlayoffProgressCoverage(s, before, s.playoffBracket);
-    finalizePlayoffRunIfNeeded(s);
-    return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
-  }
+    if (s.phase === 'offseason') {
+      if (s.offseasonState?.completed) {
+        return {
+          day: s.day,
+          season: s.season,
+          phase: 'offseason',
+          gamesPlayed: 0,
+          seasonComplete: true,
+        };
+      }
 
-  if (s.phase === 'offseason') {
-    if (s.offseasonState?.completed) {
+      const offseasonProgress = advanceOffseasonOnce(s);
+      applyAISigningProgress(s, offseasonProgress.aiSignings);
+      resolveConsequenceChains(s);
+      updateScenarioProgress(s);
+
       return {
         day: s.day,
         season: s.season,
@@ -505,99 +1939,54 @@ function simDayInternal(): SimResultDTO {
       };
     }
 
-    const offseasonProgress = advanceOffseasonOnce(s);
-    applyAISigningProgress(s, offseasonProgress.aiSignings);
-
     return {
       day: s.day,
       season: s.season,
-      phase: 'offseason',
+      phase: s.phase,
       gamesPlayed: 0,
-      seasonComplete: true,
+      seasonComplete: false,
+      flowStateChanged: true,
     };
-  }
-
-  return {
-    day: s.day,
-    season: s.season,
-    phase: s.phase,
-    gamesPlayed: 0,
-    seasonComplete: false,
-    flowStateChanged: true,
-  };
+  });
 }
 
 export const actionApi = {
-  newGame(seed: number, userTeamId: string = 'nyy') {
-    const rng = new GameRNG(seed);
-    const teamIds = TEAMS.map((team) => team.id);
-    const players = generateLeaguePlayers(rng.fork(), teamIds);
-    ensurePlayersHaveRule5Eligibility(players, 1);
-    const schedule = generateSchedule(rng.fork());
-    const seasonState = createSeasonState(1, teamIds);
-
-    const serviceTime = new Map<string, number>();
-    for (const player of players) {
-      if (player.rosterStatus === 'MLB') {
-        serviceTime.set(player.id, rng.nextInt(0, 8));
+  newGame(options: NewGameOptions) {
+    resetTradeDeadlineState();
+    const initialState = buildNewGameState(options);
+    let nextState = initialState;
+    if (options.scenarioId) {
+      const scenario = getScenarioById(options.scenarioId);
+      if (scenario) {
+        nextState = importGameSnapshot(
+          applyScenarioOverrides(
+            new GameRNG(options.seed + 50_001),
+            exportGameSnapshot(initialState),
+            scenario,
+          ),
+        );
+        nextState.franchise = {
+          ...nextState.franchise,
+          playMode: scenario.requiresCareerMode ? 'career' : (options.playMode ?? 'standard'),
+        };
       }
     }
-
-    const scoutingStaffs = new Map();
-    const gmPersonalities = new Map();
-    const rosterStates = new Map();
-    for (const teamId of teamIds) {
-      scoutingStaffs.set(teamId, generateScoutingStaff(rng.fork(), teamId));
-      gmPersonalities.set(teamId, assignGMPersonality(rng.fork(), teamId));
-      rosterStates.set(teamId, buildRosterState(teamId, players));
-    }
-
-    setState({
-      rng,
-      season: 1,
-      day: 1,
-      phase: 'preseason',
-      players,
-      schedule,
-      seasonState,
-      userTeamId,
-      playoffBracket: null,
-      injuries: new Map(),
-      serviceTime,
-      scoutingStaffs,
-      gmPersonalities,
-      offseasonState: null,
-      rule5Session: null,
-      rule5Obligations: [],
-      rule5OfferBackStates: [],
-      draftClass: null,
-      freeAgencyMarket: null,
-      news: [],
-      rosterStates,
-      playerMorale: new Map(),
-      teamChemistry: new Map(),
-      ownerState: new Map(),
-      briefingQueue: [],
-      storyFlags: new Map(),
-      rivalries: new Map(),
-      awardHistory: [],
-      hallOfFame: [],
-      hallOfFameBallot: [],
-      franchiseTimeline: [],
-      careerStats: [],
-      seasonHistory: [],
-      tradeState: createEmptyTradeState(),
-    });
+    setState(nextState);
     ensureNarrativeState(requireState());
+    syncSeasonStartStoryArcs(requireState());
 
     return {
       success: true as const,
       season: 1,
       day: 1,
       phase: 'preseason' as const,
-      playerCount: players.length,
-      teamCount: teamIds.length,
-      gamesScheduled: schedule.length,
+      userTeamId: nextState.userTeamId,
+      teamName: nextState.franchise.teamName,
+      gmName: nextState.franchise.gmName,
+      difficulty: nextState.franchise.difficulty,
+      playerCount: nextState.players.length,
+      teamCount: TEAMS.length,
+      gamesScheduled: nextState.schedule.length,
       flowStateChanged: true as const,
     };
   },
@@ -614,26 +2003,184 @@ export const actionApi = {
     return simMonthInternal();
   },
 
-  simToPlayoffs(): SimResultDTO {
-    const s = requireState();
-    let result = simDayInternal();
+  acknowledgeMonthlyReport(reportId: string) {
+    return acknowledgeMonthlyReport(requireState(), reportId);
+  },
 
-    while (s.phase === 'regular') {
-      const remainingDays = Math.max(0, 163 - s.day);
-      if (remainingDays >= 30) {
-        result = simMonthInternal();
-      } else if (remainingDays >= 7) {
-        result = simWeekInternal();
-      } else {
-        result = simDayInternal();
+  dismissDecisionSpotlight(decisionId: string) {
+    return dismissDecisionSpotlight(requireState(), decisionId);
+  },
+
+  dismissWelcomeBriefing() {
+    const s = requireState();
+    if (s.franchise.onboarding.welcomeBriefingSeen) {
+      return { success: true as const };
+    }
+
+    s.franchise = {
+      ...s.franchise,
+      onboarding: {
+        ...s.franchise.onboarding,
+        welcomeBriefingSeen: true,
+      },
+    };
+    return { success: true as const };
+  },
+
+  dismissCeremonyMoment(momentId: string) {
+    return dismissCeremonyMomentState(requireState(), momentId);
+  },
+
+  respondToPressConference(conferenceId: string, responseId: string) {
+    const s = requireState();
+
+    // Regenerate the conference to validate the response
+    const pcStandings = s.seasonState.standings.getFullStandings();
+    const pcUserStanding = Object.values(pcStandings).flat().find((e) => e.teamId === s.userTeamId);
+    if (!pcUserStanding) return { success: false as const, error: 'No standings.' };
+
+    const pcOwner = s.ownerState.get(s.userTeamId);
+    const pcOwnerTone: 'supportive' | 'neutral' | 'impatient' =
+      pcOwner && pcOwner.patience < 30 ? 'impatient'
+        : pcOwner && pcOwner.patience > 70 ? 'supportive'
+          : 'neutral';
+    const pcProspects = s.players.filter(
+      (p) => p.teamId === s.userTeamId && p.rosterStatus !== 'MLB' && (p.ceiling ?? p.overallRating) >= 350,
+    );
+    const pcTrade = s.tradeState.tradeHistory
+      .filter((t) => t.fromTeamId === s.userTeamId || t.toTeamId === s.userTeamId)
+      .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))[0];
+    const pcDivRank = pcUserStanding.gamesBack === 0 ? 1 : Math.ceil(pcUserStanding.gamesBack / 3) + 1;
+
+    const conf = generateInteractivePressConference({
+      season: s.season, day: s.day, userTeamId: s.userTeamId,
+      teamRecord: { wins: pcUserStanding.wins, losses: pcUserStanding.losses, divisionRank: pcDivRank, gamesBack: pcUserStanding.gamesBack },
+      ownerTone: pcOwnerTone,
+      recentTradeHeadline: pcTrade?.summary ?? null,
+      farmStrength: Math.min(100, pcProspects.length * 20),
+      topProspectCount: pcProspects.length,
+    });
+    if (!conf || conf.id !== conferenceId) {
+      return { success: false as const, error: 'Press conference expired.' };
+    }
+
+    const response = conf.responses.find((r) => r.id === responseId);
+    if (!response) {
+      return { success: false as const, error: 'Invalid response.' };
+    }
+
+    // Apply morale delta to all players on the user's team
+    // playerMorale is Map<playerId, { playerId, score, trend, summary, lastUpdated }>
+    for (const player of s.players) {
+      if (player.teamId !== s.userTeamId) continue;
+      const morale = s.playerMorale.get(player.id);
+      if (morale) {
+        morale.score = Math.max(0, Math.min(100, morale.score + response.moraleDelta));
       }
     }
 
-    return result;
+    // Apply owner satisfaction delta
+    const pcOwnerForUpdate = s.ownerState.get(s.userTeamId);
+    if (pcOwnerForUpdate) {
+      s.ownerState.set(s.userTeamId, {
+        ...pcOwnerForUpdate,
+        patience: Math.max(0, Math.min(100, pcOwnerForUpdate.patience + response.ownerDelta)),
+      });
+    }
+
+    // Generate news story if the response warrants it
+    if (response.generatesNews) {
+      const toneLabel = response.tone === 'confident' ? 'bold' : response.tone === 'deflect' ? 'evasive' : 'measured';
+      s.news.unshift({
+        id: `press-response-${conferenceId}-${response.tone}`,
+        headline: `GM takes ${toneLabel} stance in press conference`,
+        body: `"${response.quote}" — the GM's response drew ${response.tone === 'confident' ? 'applause from the fanbase' : 'mixed reactions from the media'}.`,
+        priority: 3,
+        category: 'press_conference',
+        tag: 'ANALYSIS',
+        timestamp: `S${s.season}D${s.day}`,
+        relatedPlayerIds: [],
+        relatedTeamIds: [s.userTeamId],
+        read: false,
+      });
+    }
+
+    return {
+      success: true as const,
+      tone: response.tone,
+      moraleDelta: response.moraleDelta,
+      ownerDelta: response.ownerDelta,
+    };
+  },
+
+  applyForJob(teamId: string) {
+    const s = requireState();
+    if (!s.gmCareer.jobSearchActive) {
+      return { success: false as const, error: 'No active job search.' };
+    }
+
+    if (!s.jobMarket.availableJobs.some((job) => job.teamId === teamId)) {
+      return { success: false as const, error: 'Job opening not available.' };
+    }
+
+    s.gmCareer = applyForJobCareer(s.gmCareer, teamId, s.season);
+    s.userTeamId = teamId;
+    s.jobMarket = {
+      availableJobs: [],
+      applicationDeadlineSeason: null,
+    };
+    s.franchise = createDefaultFranchiseState(teamId, s.season, s.day, {
+      gmName: s.franchise.gmName,
+      difficulty: s.franchise.difficulty,
+      playMode: s.franchise.playMode,
+      createdAt: s.franchise.createdAt,
+      onboarding: s.franchise.onboarding,
+    });
+    s.ownerState.set(teamId, createOwnerState(teamId, getTeamBudget(teamId)));
+    s.frontOfficeState.set(teamId, createFrontOfficeState(teamId));
+
+    return {
+      success: true as const,
+      teamId,
+      teamName: s.franchise.teamName,
+    };
+  },
+
+  simToPlayoffs(): SimResultDTO {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
+    const userFlags = s.storyFlags.get(s.userTeamId) ?? [];
+    if (!userFlags.includes('suppress_owner_firing')) {
+      s.storyFlags.set(s.userTeamId, [...userFlags, 'suppress_owner_firing']);
+    }
+    try {
+      let result = simDayInternal();
+
+      while (s.phase === 'regular') {
+        const remainingDays = Math.max(0, 163 - s.day);
+        if (remainingDays >= 30) {
+          result = simMonthInternal();
+        } else if (remainingDays >= 7) {
+          result = simWeekInternal();
+        } else {
+          result = simDayInternal();
+        }
+      }
+
+      return result;
+    } finally {
+      const nextFlags = (s.storyFlags.get(s.userTeamId) ?? []).filter((flag) => flag !== 'suppress_owner_firing');
+      s.storyFlags.set(s.userTeamId, nextFlags);
+    }
   },
 
   simPlayoffGame(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -647,7 +2194,10 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork());
+    s.playoffBracket = simNextPlayoffGame(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -655,6 +2205,9 @@ export const actionApi = {
 
   simPlayoffSeries(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -668,7 +2221,10 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketSeries(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -676,6 +2232,9 @@ export const actionApi = {
 
   simPlayoffRound(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -689,7 +2248,10 @@ export const actionApi = {
 
     const before = s.playoffBracket;
     const gamesBefore = countBracketGames(before);
-    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork());
+    s.playoffBracket = simPlayoffBracketRound(before, s.players, s.rng.fork(), {
+      teamModifiers: buildTeamPerformanceModifiers(s),
+      unavailablePlayerIds: buildUnavailablePlayerIds(s),
+    });
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
     finalizePlayoffRunIfNeeded(s);
     return playoffResult(s, countBracketGames(s.playoffBracket) - gamesBefore);
@@ -697,6 +2259,9 @@ export const actionApi = {
 
   simRemainingPlayoffs(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase !== 'playoffs') {
       return playoffResult(s, 0);
     }
@@ -712,7 +2277,10 @@ export const actionApi = {
     const gamesBefore = countBracketGames(before);
     let working = before;
     while (!isPlayoffComplete(working)) {
-      working = simPlayoffBracketRound(working, s.players, s.rng.fork());
+      working = simPlayoffBracketRound(working, s.players, s.rng.fork(), {
+        teamModifiers: buildTeamPerformanceModifiers(s),
+        unavailablePlayerIds: buildUnavailablePlayerIds(s),
+      });
     }
     s.playoffBracket = working;
     recordPlayoffProgressCoverage(s, before, s.playoffBracket);
@@ -722,6 +2290,9 @@ export const actionApi = {
 
   proceedToOffseason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'playoffs' && s.playoffBracket?.champion) {
       s.phase = 'offseason';
       s.day = 1;
@@ -739,6 +2310,9 @@ export const actionApi = {
 
   startNextSeason(): SimResultDTO {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return blockedSimResult(s);
+    }
     if (s.phase === 'offseason' && s.offseasonState?.completed) {
       return finalizeOffseasonRollover(s);
     }
@@ -753,27 +2327,107 @@ export const actionApi = {
     };
   },
 
+  getRosterPlan() {
+    const s = requireState();
+    const plan = s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s);
+    return normalizeRosterPlan(s, plan);
+  },
+
+  updateRosterPlan(patch: Partial<DayOneOpeningPlan>) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false as const,
+        error: franchiseLockMessage(s),
+        plan: normalizeRosterPlan(s, s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s)),
+      };
+    }
+    const current = s.franchise.dayOne.openingDayPlan ?? buildDefaultRosterPlan(s);
+    const next = normalizeRosterPlan(s, {
+      lineupPlayerIds: patch.lineupPlayerIds ?? current.lineupPlayerIds,
+      rotationPlayerIds: patch.rotationPlayerIds ?? current.rotationPlayerIds,
+      bullpen: patch.bullpen === undefined ? current.bullpen : patch.bullpen,
+    });
+    s.franchise.dayOne = {
+      ...s.franchise.dayOne,
+      openingDayPlan: next,
+    };
+    return { success: true as const, plan: next };
+  },
+
   exportSnapshot() {
     return exportGameSnapshot(requireState());
   },
 
   importSnapshot(snapshot: unknown) {
-    setState(importGameSnapshot(snapshot));
+    return measureRuntimeSync('lastLoadMs', () => {
+      const compat = isSaveCompatible(snapshot);
+      if (!compat.compatible) {
+        return { success: false as const, error: compat.reason ?? 'Incompatible save.' };
+      }
+      resetTradeDeadlineState();
+      const importedState = importGameSnapshot(snapshot);
+      const preservedBriefing = importedState.briefingQueue.map((item) => ({ ...item }));
+      setState(importedState);
+      const s = requireState();
+      ensureNarrativeState(s);
+      s.briefingQueue = preservedBriefing;
+      syncAchievementState(s, { publish: false });
+      return {
+        success: true as const,
+        season: s.season,
+        day: s.day,
+        phase: s.phase,
+        playerCount: s.players.length,
+        userTeamId: s.userTeamId,
+        teamName: s.franchise.teamName,
+        gmName: s.franchise.gmName,
+        difficulty: s.franchise.difficulty,
+        flowStateChanged: true as const,
+      };
+    });
+  },
+
+  async createWhatIfBranch(parentSaveId: string, description: string) {
+    return measureRuntimeAsync('lastSaveMs', async () => createBranchSave(
+      parentSaveId,
+      exportSnapshotWithDiagnostics(requireState()),
+      description.trim() || 'What If Branch',
+    ));
+  },
+
+  async deleteWhatIfBranch(branchSaveId: string) {
+    await deleteSaveById(branchSaveId);
+    return { success: true as const };
+  },
+
+  async archiveOldSeasons(saveId: string) {
     const s = requireState();
-    ensureNarrativeState(s);
+    const archivedCount = archiveOldSeasonsInState(s);
+    const diagnostics = await persistCurrentStateToSave(saveId);
     return {
       success: true as const,
-      season: s.season,
-      day: s.day,
-      phase: s.phase,
-      playerCount: s.players.length,
-      userTeamId: s.userTeamId,
-      flowStateChanged: true as const,
+      archivedCount,
+      diagnostics,
+    };
+  },
+
+  async pruneStaleData(saveId: string) {
+    const s = requireState();
+    const prunedCount = pruneStaleWorkerData(s);
+    const diagnostics = await persistCurrentStateToSave(saveId);
+    return {
+      success: true as const,
+      prunedCount,
+      diagnostics,
     };
   },
 
   startDraft() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
     return {
       ...startDraftSession(s, generateDraftClass(s.rng.fork(), s.season)),
       flowStateChanged: true,
@@ -781,68 +2435,196 @@ export const actionApi = {
   },
 
   makeDraftPick(prospectId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    const result = makeUserDraftSelection(s, prospectId);
+    if (result.success && result.draft?.status === 'complete') {
+      publishDraftGradesNarrative(s);
+    }
     return {
-      ...makeUserDraftSelection(requireState(), prospectId),
+      ...result,
+      flowStateChanged: true,
+    };
+  },
+
+  scoutDraftPlayer(prospectId: string) {
+    return {
+      ...scoutUserDraftPlayer(requireState(), prospectId),
+      flowStateChanged: true,
+    };
+  },
+
+  toggleDraftBigBoard(prospectId: string) {
+    return {
+      ...toggleUserDraftBigBoardPlayer(requireState(), prospectId),
+      flowStateChanged: true,
+    };
+  },
+
+  signDraftPick(playerId: string, bonusAmount: number) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    const result = signUserDraftPick(s, playerId, bonusAmount);
+    if (result.success && result.signed) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordDraftedHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'ROOKIE');
+      syncAchievementState(s);
+    }
+    return {
+      ...result,
       flowStateChanged: true,
     };
   },
 
   simulateRemainingDraft() {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false as const, error: franchiseLockMessage(s), flowStateChanged: false as const };
+    }
+    const result = simulateRemainingDraftSession(s);
+    if (result.success && result.draft?.status === 'complete') {
+      publishDraftGradesNarrative(s);
+    }
     return {
-      ...simulateRemainingDraftSession(requireState()),
+      ...result,
       flowStateChanged: true,
     };
   },
 
-  proposeTrade(offered: string[], requested: string[], toTeamId: string) {
+  proposeTrade(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
     const s = requireState();
-    if (!isTradeMarketOpen(s)) {
-      return { decision: 'rejected', reason: 'Trade market closed — reopens in offseason' };
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { decision: 'rejected' as const, reason: franchiseLockMessage(s) };
     }
-    const gm = s.gmPersonalities.get(toTeamId);
-    if (!gm) {
-      return { decision: 'rejected', reason: 'Unknown team' };
-    }
-
-    const preTradeUserPlayers = getTeamPlayers(s.userTeamId);
-    const preTradePartnerPlayers = getTeamPlayers(toTeamId);
-    const proposal: TradeProposal = {
-      id: generateTradeId(s.rng.fork()),
-      fromTeamId: s.userTeamId,
+    const result = proposeTradePackage(
+      s,
+      offeringAssets,
+      requestingAssets,
       toTeamId,
-      playersOffered: offered,
-      playersRequested: requested,
-      status: 'proposed',
-      reason: '',
-    };
-    const result = evaluateTradeProposal(
-      s.rng.fork(),
-      proposal,
-      preTradeUserPlayers,
-      preTradePartnerPlayers,
-      gm,
-      false,
     );
     if (result.decision === 'accepted') {
-      executeTrade(proposal, s.players);
-      s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
-      s.rosterStates.set(toTeamId, buildRosterState(toTeamId, s.players));
-      recordAcceptedUserTrade(s, proposal);
-      applyTradeConsequences(s, offered, requested, toTeamId, preTradeUserPlayers, preTradePartnerPlayers);
+      syncAchievementState(s);
     }
-    return { decision: result.decision, reason: result.reason, counter: result.counter ?? undefined };
+    return result;
+  },
+
+  startNegotiation(offeringAssets: TradeAsset[], requestingAssets: TradeAsset[], toTeamId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false,
+        decision: 'rejected' as const,
+        message: franchiseLockMessage(s),
+        negotiation: null,
+        tradeExecuted: false,
+      };
+    }
+    pruneExpiredNegotiations(s);
+    const result = startNegotiation(
+      s,
+      offeringAssets,
+      requestingAssets,
+      toTeamId,
+    );
+    if (result.tradeExecuted) {
+      syncAchievementState(s);
+    }
+    return result;
+  },
+
+  advanceNegotiation(negotiationId: string, counterPackage: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] }) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false,
+        decision: 'rejected' as const,
+        message: franchiseLockMessage(s),
+        negotiation: null,
+        tradeExecuted: false,
+      };
+    }
+    pruneExpiredNegotiations(s);
+    return advanceNegotiationSession(s, negotiationId, counterPackage);
+  },
+
+  resolveNegotiation(negotiationId: string, action: 'accept' | 'reject') {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false,
+        decision: 'rejected' as const,
+        message: franchiseLockMessage(s),
+        negotiation: null,
+        tradeExecuted: false,
+      };
+    }
+    pruneExpiredNegotiations(s);
+    const result = resolveNegotiationSession(s, negotiationId, action);
+    if (result.tradeExecuted) {
+      syncAchievementState(s);
+    }
+    return result;
+  },
+
+  proposeMultiTeam(proposal: Parameters<typeof proposeMultiTeamFramework>[1]) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false,
+        accepted: false,
+        message: franchiseLockMessage(s),
+        narrative: franchiseLockMessage(s),
+        fairness: null,
+      };
+    }
+    return proposeMultiTeamFramework(s, proposal);
+  },
+
+  executeMultiTeamTrade(proposal: Parameters<typeof executeMultiTeamTradeFramework>[1]) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return {
+        success: false,
+        accepted: false,
+        message: franchiseLockMessage(s),
+        narrative: franchiseLockMessage(s),
+        fairness: null,
+        cascadeEvents: [],
+        pendingTrades: [],
+      };
+    }
+    const result = executeMultiTeamTradeFramework(s, proposal);
+    if (result.success && result.accepted) {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   respondToTradeOffer(
     offerId: string,
     action: 'accept' | 'decline' | 'counter',
-    counterPackage?: { offeringPlayerIds: string[]; requestingPlayerIds: string[] },
+    counterPackage?: { offeringAssets: TradeAsset[]; requestingAssets: TradeAsset[] },
   ) {
-    return respondToTradeOffer(requireState(), offerId, action, counterPackage);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, decision: 'rejected' as const, message: franchiseLockMessage(s) };
+    }
+    const result = respondToTradeOffer(s, offerId, action, counterPackage);
+    if (result.success && result.decision === 'accepted') {
+      syncAchievementState(s);
+    }
+    return result;
   },
 
   promotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -854,13 +2636,48 @@ export const actionApi = {
     }
 
     const result = promotePlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const promotedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (promotedPlayer && player.rosterStatus !== 'MLB' && promotedPlayer.rosterStatus === 'MLB') {
+      queueProspectRiskWatcher(
+        s,
+        promotedPlayer.id,
+        `${promotedPlayer.firstName} ${promotedPlayer.lastName}`,
+        player.rosterStatus,
+        promotedPlayer.rosterStatus,
+      );
+      s.news.unshift(...generateNews(s.rng.fork(), {
+        type: 'development',
+        season: s.season,
+        day: s.day,
+        data: {
+          playerId: promotedPlayer.id,
+          playerName: `${promotedPlayer.firstName} ${promotedPlayer.lastName}`,
+          teamId: promotedPlayer.teamId,
+          teamName: teamLabel(promotedPlayer.teamId),
+          level: player.rosterStatus,
+          streak: 'call',
+        },
+      }, s.players, s.season, s.day));
+      recordProspectCallup(s, promotedPlayer.id);
+      syncAchievementState(s);
+    }
     return { success: result.success, error: result.error };
   },
 
   demotePlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -876,14 +2693,36 @@ export const actionApi = {
       return rule5Restriction;
     }
 
+    if (player.rosterStatus === 'MLB' && !player.isOutOfOptions) {
+      const optionResult = consumeOptionYear(player, s.minorLeagueState, s.season);
+      s.minorLeagueState = optionResult.state;
+      s.players = s.players.map((candidate) =>
+        candidate.id === playerId ? optionResult.player : candidate,
+      );
+    }
+
     const result = demotePlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const updatedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (updatedPlayer && player.rosterStatus === 'MLB' && updatedPlayer.isOutOfOptions) {
+      placePlayerOnWaivers(s, updatedPlayer);
+    }
     return { success: result.success, error: result.error };
   },
 
   dfaPlayerAction(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     const player = s.players.find((candidate) => candidate.id === playerId);
     if (!player) {
       return { success: false, error: 'Player not found' };
@@ -900,13 +2739,47 @@ export const actionApi = {
     }
 
     const result = dfaPlayer(playerId, s.players, rosterState, timestamp());
-    s.players = result.players;
+    s.players = result.players.map((candidate) =>
+      candidate.id === playerId
+        ? {
+          ...candidate,
+          minorLeagueLevel: candidate.rosterStatus === 'MLB' ? null : candidate.rosterStatus,
+        }
+        : candidate,
+    );
     s.rosterStates.set(player.teamId, result.rosterState);
+    const updatedPlayer = s.players.find((candidate) => candidate.id === playerId);
+    if (updatedPlayer) {
+      placePlayerOnWaivers(s, updatedPlayer);
+    }
     return { success: result.success, error: result.error };
+  },
+
+  promotePlayer(playerId: string) {
+    return this.promotePlayerAction(playerId);
+  },
+
+  demotePlayer(playerId: string) {
+    return this.demotePlayerAction(playerId);
+  },
+
+  designateForAssignment(playerId: string) {
+    return this.dfaPlayerAction(playerId);
+  },
+
+  claimOffWaivers(playerId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return claimPlayerOffWaivers(s, playerId, s.userTeamId);
   },
 
   makeContractOffer(playerId: string, years: number, salary: number) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { accepted: false, reason: franchiseLockMessage(s) };
+    }
     if (!s.freeAgencyMarket) {
       s.freeAgencyMarket = createFreeAgencyMarket(s.season, s.players);
     }
@@ -923,7 +2796,15 @@ export const actionApi = {
       teamOption: false,
       signingBonus: 0,
     };
-    const result = makeUserOffer(s.freeAgencyMarket, offer);
+    const result = makeUserOffer(s.freeAgencyMarket, {
+      ...offer,
+      annualSalary: getDifficultyAdjustedCompetitiveAav(s, offer.annualSalary),
+    }, getLoyaltyAdjustedAppeal(
+      s,
+      s.userTeamId,
+      playerId,
+      getTeamFreeAgencyAppealScore(s, s.userTeamId),
+    ));
     if (!result.accepted || !freeAgent) {
       return result;
     }
@@ -934,13 +2815,19 @@ export const actionApi = {
     }
 
     const previousTeamId = player.teamId;
-    player.teamId = s.userTeamId;
+    updatePlayerTeamAssignment(player, s.userTeamId, s.season);
     player.contract = {
       years,
       annualSalary: salary,
+      totalValue: offer.totalValue,
       noTradeClause: false,
+      noTradeClauseType: 'none',
       playerOption: false,
       teamOption: false,
+      optOutYears: [],
+      signingBonus: 0,
+      buyoutAmount: 0,
+      deferredMoney: [],
     };
 
     s.freeAgencyMarket.freeAgents = s.freeAgencyMarket.freeAgents.filter(
@@ -954,13 +2841,85 @@ export const actionApi = {
     });
 
     s.rosterStates.set(previousTeamId, buildRosterState(previousTeamId, s.players));
+    s.rivalries = recordStarDefectionRivalry(s.rivalries, {
+      season: s.season,
+      fromTeamId: previousTeamId,
+      toTeamId: s.userTeamId,
+      playerName: `${player.firstName} ${player.lastName}`,
+      starScore: player.overallRating,
+    });
     s.rosterStates.set(s.userTeamId, buildRosterState(s.userTeamId, s.players));
+    if (result.reason.toLowerCase().includes('clubhouse fit feels right')) {
+      s.news.unshift({
+        id: `clubhouse-signing-${s.season}-${playerId}`,
+        headline: 'FA cites great clubhouse as reason for signing discount',
+        body: `${player.firstName} ${player.lastName} accepted less than full market value because the room felt like the right fit.`,
+        priority: 3,
+        category: 'signing',
+        tag: 'ANALYSIS',
+        timestamp: `S${s.season}D${s.day}`,
+        relatedPlayerIds: [player.id],
+        relatedTeamIds: [s.userTeamId],
+        read: false,
+      });
+    }
+    applyQualifyingOfferCompensationIfNeeded(s, playerId, s.userTeamId);
     applySigningConsequences(s, playerId, salary, years, freeAgent.marketValue);
+    recordFreeAgentSigning(s, playerId, salary);
+    syncAchievementState(s);
     return result;
+  },
+
+  negotiateExtension(playerId: string, offer: Parameters<typeof negotiatePlayerExtension>[2]) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { status: 'rejected' as const, rounds: [], reason: franchiseLockMessage(s) };
+    }
+    const result = negotiatePlayerExtension(s, playerId, offer);
+    if (result?.status === 'accepted') {
+      recordExtensionCompleted(s);
+      syncAchievementState(s);
+    }
+    return result;
+  },
+
+  issueQualifyingOffer(playerId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return issueTeamQualifyingOffer(s, playerId);
+  },
+
+  resolveQualifyingOffers() {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { resolved: [], error: franchiseLockMessage(s) };
+    }
+    return resolveOutstandingQualifyingOffers(s);
+  },
+
+  hireCoach(coachId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return hireCoachForUserTeam(s, coachId);
+  },
+
+  fireCoach(coachId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return fireCoachForUserTeam(s, coachId);
   },
 
   advanceOffseason(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = advanceOffseasonOnce(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
@@ -969,19 +2928,59 @@ export const actionApi = {
 
   skipOffseasonPhase(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const progress = skipOffseasonPhaseWithAI(s);
     applyAISigningProgress(s, progress.aiSignings);
     const view = buildOffseasonStateView(s);
     return view ? { ...view, flowStateChanged: true } : null;
   },
 
+  scoutIFAPlayer(playerId: string) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return scoutUserIFAPlayer(s, playerId);
+  },
+
+  signIFAPlayer(playerId: string, bonusAmount: number) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    const result = signUserIFAPlayer(s, playerId, bonusAmount);
+    if (result.success) {
+      const player = s.players.find((candidate) => candidate.id === playerId);
+      recordInternationalHomegrownPlayer(s, playerId, player?.rosterStatus ?? 'INTERNATIONAL');
+      syncAchievementState(s);
+    }
+    return result.success ? { ...result, flowStateChanged: true as const } : result;
+  },
+
+  tradeIFAPoolSpace(toTeamId: string, amount: number) {
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    const result = tradeUserIFABonusPool(s, toTeamId, amount);
+    return result.success ? { ...result, flowStateChanged: true as const } : result;
+  },
+
   toggleRule5Protection(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return toggleUserRule5Protection(s, playerId);
   },
 
   lockRule5Protection(): OffseasonStateView | null {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return null;
+    }
     const result = lockUserRule5Protection(s);
     if (!result.success) {
       return null;
@@ -991,16 +2990,26 @@ export const actionApi = {
 
   makeRule5Pick(playerId: string) {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return makeUserRule5Selection(s, playerId);
   },
 
   passRule5Pick() {
     const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
     return passUserRule5Turn(s);
   },
 
   resolveRule5OfferBack(playerId: string, acceptReturn: boolean) {
-    return resolveRule5OfferBackDecision(requireState(), playerId, acceptReturn);
+    const s = requireState();
+    if (syncFranchiseTerminationFromOwner(s)) {
+      return { success: false, error: franchiseLockMessage(s) };
+    }
+    return resolveRule5OfferBackDecision(s, playerId, acceptReturn);
   },
 
   markNewsRead(newsId: string) {

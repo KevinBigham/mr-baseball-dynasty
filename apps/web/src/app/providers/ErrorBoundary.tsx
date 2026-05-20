@@ -1,8 +1,16 @@
 import { Component, type ReactNode } from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
+import { logger } from '@/shared/lib/logger';
+
+const IS_DEV = (import.meta as unknown as { env: { DEV: boolean } }).env.DEV;
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  contextLabel?: string;
+  recoveryLabel?: string;
+  onRecover?: () => void;
+  onRetry?: () => void;
+  showBugLink?: boolean;
 }
 
 interface ErrorBoundaryState {
@@ -20,7 +28,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    const contextLabel = this.props.contextLabel ?? 'Application Shell';
+    logger.error(`ErrorBoundary caught an error in ${contextLabel}:`, error, info);
+  }
+
   private handleReload = () => {
+    if (this.props.onRecover) {
+      this.props.onRecover();
+      return;
+    }
+
     window.location.reload();
   };
 
@@ -41,7 +59,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               safe in local storage.
             </p>
 
-            {this.state.error && (
+            {this.state.error && IS_DEV && (
               <div className="mb-6 overflow-auto rounded border border-dynasty-border bg-dynasty-base p-4">
                 <pre className="font-data text-xs text-accent-danger">
                   {this.state.error.message}
@@ -54,22 +72,36 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </div>
             )}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
+              {this.props.onRetry && (
+                <button
+                  onClick={() => {
+                    this.setState({ hasError: false, error: null });
+                    this.props.onRetry?.();
+                  }}
+                  className="focus-ring flex items-center gap-2 rounded-md border border-accent-info bg-accent-info/10 px-4 py-2 font-heading text-sm font-semibold text-accent-info transition-colors hover:bg-accent-info/20"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Try Again
+                </button>
+              )}
               <button
                 onClick={this.handleReload}
                 className="focus-ring flex items-center gap-2 rounded-md bg-accent-primary px-4 py-2 font-heading text-sm font-semibold text-white transition-colors hover:bg-accent-primaryHover"
               >
                 <RefreshCw className="h-4 w-4" />
-                Reload Application
+                {this.props.recoveryLabel ?? 'Reload Application'}
               </button>
-              <a
-                href="https://github.com/kevinbigham/mr-baseball-dynasty/issues"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="focus-ring flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"
-              >
-                Report Bug
-              </a>
+              {this.props.showBugLink !== false ? (
+                <a
+                  href="https://github.com/KevinBigham/MBD/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="focus-ring flex items-center gap-2 rounded-md border border-dynasty-border px-4 py-2 font-heading text-sm text-dynasty-muted transition-colors hover:border-dynasty-muted hover:text-dynasty-text"
+                >
+                  Report Bug
+                </a>
+              ) : null}
             </div>
           </div>
         </div>

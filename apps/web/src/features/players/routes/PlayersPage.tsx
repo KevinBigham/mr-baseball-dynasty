@@ -1,46 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { useWorker } from '@/shared/hooks/useWorker';
 import { useGameStore } from '@/shared/hooks/useGameStore';
-
-interface PlayerDTO {
-  id: string;
-  firstName: string;
-  lastName: string;
-  age: number;
-  position: string;
-  overallRating: number;
-  displayRating: number;
-  letterGrade: string;
-  rosterStatus: string;
-  teamId: string;
-  stats: {
-    pa: number;
-    ab: number;
-    hits: number;
-    hr: number;
-    rbi: number;
-    bb: number;
-    k: number;
-    avg: string;
-    ip: number;
-    earnedRuns: number;
-    strikeouts: number;
-    walks: number;
-    era: string;
-  } | null;
-}
-
-function gradeColor(grade: string): string {
-  switch (grade) {
-    case 'A': return 'bg-accent-success/20 text-accent-success';
-    case 'B': return 'bg-accent-info/20 text-accent-info';
-    case 'C': return 'bg-accent-warning/20 text-accent-warning';
-    case 'D': return 'bg-accent-danger/20 text-accent-danger';
-    default:  return 'bg-dynasty-border text-dynasty-muted';
-  }
-}
+import { TeamLogo } from '@/shared/components/TeamLogo';
+import { ResponsiveTable, type ColumnDef } from '@/shared/components/ResponsiveTable';
+import { gradeBadgeColor } from '@/shared/lib/grade';
+import type { PlayerDTO } from '@/workers/sim.worker.helpers';
 
 export default function PlayersPage() {
   const worker = useWorker();
@@ -73,6 +39,50 @@ export default function PlayersPage() {
   }, [query, workerReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const players = query ? results : defaultPlayers;
+  const navigate = useNavigate();
+
+  const columns = useMemo((): ColumnDef<PlayerDTO>[] => [
+    {
+      key: 'name',
+      label: 'Player',
+      primary: true,
+      hideOnMobile: true,
+      render: (p) => (
+        <Link
+          to={`/players/${p.id}`}
+          className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
+        >
+          {p.firstName} {p.lastName}
+        </Link>
+      ),
+    },
+    { key: 'pos', label: 'POS', render: (p) => <span className="text-dynasty-muted">{p.position}</span> },
+    {
+      key: 'team',
+      label: 'Team',
+      render: (p) => (
+        <div className="flex items-center gap-1.5">
+          <TeamLogo teamId={p.teamId} size="xs" />
+          <span className="text-dynasty-muted">{p.teamId.toUpperCase()}</span>
+        </div>
+      ),
+    },
+    { key: 'ovr', label: 'OVR', className: 'text-right', highlight: true, render: (p) => p.displayRating },
+    {
+      key: 'grd',
+      label: 'GRD',
+      className: 'text-center',
+      render: (p) => (
+        <span className={`inline-block w-6 rounded text-center text-xs font-bold ${gradeBadgeColor(p.letterGrade)}`}>
+          {p.letterGrade}
+        </span>
+      ),
+    },
+    { key: 'age', label: 'AGE', className: 'text-right', render: (p) => <span className="text-dynasty-muted">{p.age}</span> },
+    { key: 'avg', label: 'AVG', className: 'text-right', render: (p) => <span className="text-dynasty-muted">{p.stats?.avg ?? '-'}</span> },
+    { key: 'hr', label: 'HR', className: 'text-right', render: (p) => p.stats?.hr ?? '-' },
+    { key: 'rbi', label: 'RBI', className: 'text-right', render: (p) => p.stats?.rbi ?? '-' },
+  ], []);
 
   return (
     <div className="space-y-6">
@@ -88,63 +98,20 @@ export default function PlayersPage() {
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Search players by name..."
+          placeholder="Search players or nicknames..."
           className="w-full rounded-lg border border-dynasty-border bg-dynasty-surface py-2.5 pl-10 pr-4 font-heading text-sm text-dynasty-text placeholder:text-dynasty-muted focus:border-accent-primary focus:outline-none"
         />
       </div>
 
-      {/* Results table */}
-      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-dynasty-border text-xs text-dynasty-muted">
-                <th className="px-4 py-2 text-left font-heading">Player</th>
-                <th className="px-2 py-2 text-left font-heading">POS</th>
-                <th className="px-2 py-2 text-left font-heading">TEAM</th>
-                <th className="px-2 py-2 text-right font-data">OVR</th>
-                <th className="px-2 py-2 text-center font-heading">GRD</th>
-                <th className="px-2 py-2 text-right font-data">AGE</th>
-                <th className="px-2 py-2 text-right font-data">AVG</th>
-                <th className="px-2 py-2 text-right font-data">HR</th>
-                <th className="px-2 py-2 text-right font-data">RBI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {players.map(player => (
-                <tr key={player.id} className="border-b border-dynasty-border/50 text-sm hover:bg-dynasty-elevated">
-                  <td className="px-4 py-2">
-                    <Link
-                      to={`/players/${player.id}`}
-                      className="font-heading font-medium text-dynasty-text hover:text-accent-primary"
-                    >
-                      {player.firstName} {player.lastName}
-                    </Link>
-                  </td>
-                  <td className="px-2 py-2 font-data text-dynasty-muted">{player.position}</td>
-                  <td className="px-2 py-2 font-data text-dynasty-muted">{player.teamId.toUpperCase()}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.displayRating}</td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`inline-block w-6 rounded text-center font-data text-xs font-bold ${gradeColor(player.letterGrade)}`}>
-                      {player.letterGrade}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.age}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-muted">{player.stats?.avg ?? '-'}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.hr ?? '-'}</td>
-                  <td className="px-2 py-2 text-right font-data text-dynasty-text">{player.stats?.rbi ?? '-'}</td>
-                </tr>
-              ))}
-              {players.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center font-heading text-sm text-dynasty-muted">
-                    {query ? 'No players found' : 'Sim games to see player stats'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Results — responsive table/cards */}
+      <div className="rounded-lg border border-dynasty-border bg-dynasty-surface p-2 md:p-0">
+        <ResponsiveTable
+          data={players}
+          columns={columns}
+          keyExtractor={(p) => p.id}
+          onRowClick={(p) => navigate(`/players/${p.id}`)}
+          emptyMessage={query ? 'No players found' : 'Sim games to see player stats'}
+        />
       </div>
     </div>
   );

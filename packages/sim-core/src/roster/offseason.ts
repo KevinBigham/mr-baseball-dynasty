@@ -1,7 +1,8 @@
 /**
  * @module offseason
- * Offseason phase sequencing: arbitration → tender/non-tender → extensions →
- * free agency → draft → rule 5 → spring training.
+ * Offseason phase sequencing: arbitration → tender/non-tender → qualifying offers →
+ * free agency → draft → rule 5 → international signing → coaching changes →
+ * spring training.
  * Pure engine logic — no React, no DOM.
  */
 
@@ -16,10 +17,14 @@ export const OFFSEASON_PHASES = [
   'season_review',
   'arbitration',
   'tender_nontender',
+  'extensions',
+  'qualifying_offers',
   'free_agency',
   'draft',
   'protection_audit',
   'rule5_draft',
+  'international_signing',
+  'coaching_changes',
   'spring_training',
 ] as const;
 
@@ -30,10 +35,14 @@ const PHASE_DURATIONS: Record<OffseasonPhase, number> = {
   season_review: 3,
   arbitration: 7,
   tender_nontender: 5,
+  extensions: 5,
+  qualifying_offers: 4,
   free_agency: 30,
   draft: 3,
   protection_audit: 4,
   rule5_draft: 3,
+  international_signing: 10,
+  coaching_changes: 7,
   spring_training: 12,
 };
 
@@ -54,8 +63,12 @@ export interface PhaseResults {
   arbitrationResolved: ArbitrationResult[];
   tenderedPlayers: string[];          // Player IDs that were tendered
   nonTenderedPlayers: string[];       // Player IDs that were non-tendered (become FAs)
+  extensions: ExtensionPhaseResult[];
+  qualifyingOffers: QualifyingOfferPhaseResult[];
+  coachChanges: CoachChangeResult[];
   freeAgentSignings: FASigningResult[];
   draftPicks: DraftPickResult[];
+  ifaSignings: IFASigningResult[];
   retiredPlayers: RetirementResult[];
 }
 
@@ -75,6 +88,33 @@ export interface FASigningResult {
   totalValue: number;
 }
 
+export interface ExtensionPhaseResult {
+  playerId: string;
+  teamId: string;
+  status: 'accepted' | 'rejected';
+  years: number;
+  annualSalary: number;
+  totalValue: number;
+}
+
+export interface QualifyingOfferPhaseResult {
+  playerId: string;
+  teamId: string;
+  amount: number;
+  status: 'offered' | 'accepted' | 'rejected' | 'compensated' | 'expired';
+  signingTeamId: string | null;
+  compensationPickId: string | null;
+}
+
+export interface CoachChangeResult {
+  teamId: string;
+  coachId: string;
+  coachName: string;
+  role: string;
+  action: 'hired' | 'fired';
+  salary: number;
+}
+
 export interface DraftPickResult {
   round: number;
   pickNumber: number;
@@ -84,6 +124,15 @@ export interface DraftPickResult {
   position: string;
   scoutingGrade: number;
   origin: string;
+}
+
+export interface IFASigningResult {
+  playerId: string;
+  teamId: string;
+  playerName: string;
+  position: string;
+  country: string;
+  bonusAmount: number;
 }
 
 export interface RetirementResult {
@@ -110,8 +159,12 @@ export function createOffseasonState(season: number): OffseasonState {
       arbitrationResolved: [],
       tenderedPlayers: [],
       nonTenderedPlayers: [],
+      extensions: [],
+      qualifyingOffers: [],
+      coachChanges: [],
       freeAgentSignings: [],
       draftPicks: [],
+      ifaSignings: [],
       retiredPlayers: [],
     },
   };
@@ -241,6 +294,45 @@ export function recordTenderDecisions(
   };
 }
 
+export function recordExtensionResults(
+  state: OffseasonState,
+  results: ExtensionPhaseResult[],
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      extensions: [...state.phaseResults.extensions, ...results],
+    },
+  };
+}
+
+export function recordQualifyingOfferResults(
+  state: OffseasonState,
+  results: QualifyingOfferPhaseResult[],
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      qualifyingOffers: [...state.phaseResults.qualifyingOffers, ...results],
+    },
+  };
+}
+
+export function recordCoachChange(
+  state: OffseasonState,
+  result: CoachChangeResult,
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      coachChanges: [...state.phaseResults.coachChanges, result],
+    },
+  };
+}
+
 /** Record a free agent signing. */
 export function recordFASigning(
   state: OffseasonState,
@@ -265,6 +357,19 @@ export function recordDraftPicks(
     phaseResults: {
       ...state.phaseResults,
       draftPicks: [...state.phaseResults.draftPicks, ...picks],
+    },
+  };
+}
+
+export function recordIFASigning(
+  state: OffseasonState,
+  signing: IFASigningResult,
+): OffseasonState {
+  return {
+    ...state,
+    phaseResults: {
+      ...state.phaseResults,
+      ifaSignings: [...state.phaseResults.ifaSignings, signing],
     },
   };
 }
@@ -357,6 +462,10 @@ export function determineRetirements(
     const durabilityAttr = player.pitcherAttributes
       ? player.pitcherAttributes.stamina
       : player.hitterAttributes.durability;
+    if (player.age >= 44) {
+      retired.push(player.id);
+      continue;
+    }
     if (durabilityAttr < 80) {
       retireChance += 0.10;
     }

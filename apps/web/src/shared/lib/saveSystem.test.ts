@@ -1,20 +1,46 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest';
-import type { GameSnapshot } from '@mbd/contracts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  CURRENT_GAME_SNAPSHOT_VERSION,
+  type GameSnapshot,
+} from '@mbd/contracts';
 import {
   buildSaveRecord,
+  clearAllSaves,
+  createBranchSave,
+  createAutoSaveScheduler,
+  deleteSaveById,
+  db,
+  exportSnapshotToJson,
+  flushAutoSaveQueueForTesting,
+  importSnapshotFromJson,
+  inspectSave,
+  inspectSaveById,
+  loadGame,
+  loadGameSafe,
+  listBranches,
+  listSaveTree,
+  loadSaveSafely,
   normalizeLoadedSaveRecord,
+  repairSave,
+  saveGame,
+  saveGameById,
+  scheduleAutoSave,
 } from './saveSystem';
+import {
+  clearPerformanceMetrics,
+  getLatestPerformanceMetric,
+} from './performance';
 
 function createSnapshot(): GameSnapshot {
   return {
-    schemaVersion: 6,
+    schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
     rng: { seed: 7, callCount: 14 },
     season: 3,
     day: 97,
     phase: 'regular',
-    userTeamId: 'nyy',
+    userTeamId: 'nym',
     players: [],
     schedule: [],
     seasonState: {
@@ -38,6 +64,8 @@ function createSnapshot(): GameSnapshot {
     freeAgencyMarket: null,
     news: [],
     rosterStates: [],
+    coachingStaffs: [],
+    coachFreeAgentPool: [],
     narrative: {
       playerMorale: [],
       teamChemistry: [],
@@ -45,16 +73,33 @@ function createSnapshot(): GameSnapshot {
       briefingQueue: [],
       storyFlags: [],
       rivalries: [],
+      tickerFeed: [],
+      playerMoments: [],
+      playerNicknames: [],
+      playerStoryArcs: [],
+      prospectBonds: [],
+      gmRelationships: [],
+      leagueEvents: [],
+      playerOrigins: [],
+      debutFlashbacks: [],
       awardHistory: [],
       hallOfFame: [],
       hallOfFameBallot: [],
       franchiseTimeline: [],
       careerStats: [],
+      recordBook: [],
+      recordWatch: [],
+      seasonArchive: [],
+      archivedSeasons: [],
+      historicalPlayers: [],
+      mentorRelationships: [],
+      frontOfficeState: [],
+      whatIfBranches: [],
       seasonHistory: [
         {
           season: 2,
-          championTeamId: 'nyy',
-          runnerUpTeamId: 'lad',
+          championTeamId: 'nym',
+          runnerUpTeamId: 'lax',
           worldSeriesRecord: '4-2',
           summary: 'New York finished the job.',
           awards: [],
@@ -76,12 +121,82 @@ function createSnapshot(): GameSnapshot {
     tradeState: {
       pendingOffers: [],
       tradeHistory: [],
+      negotiations: [],
+      multiTeamPendingTrades: [],
+    },
+    internationalScoutingState: {
+      season: 3,
+      ifaPool: [],
+      budgets: [],
+      scoutingHistory: [],
+    },
+    draftState: {
+      scoutingReports: [],
+      signability: [],
+      qualifyingOffers: [],
+      compensatoryPicks: [],
+      pickOwnership: [],
+      bigBoards: [],
+      signingDecisions: [],
+    },
+    minorLeagueState: {
+      serviceTimeLedger: [],
+      optionUsage: [],
+      waiverClaims: [],
+      affiliateStates: [],
+      affiliateBoxScores: [],
+      minorLeagueStatHistory: [],
+      activeDevelopmentSetbacks: [],
+      processedDevelopmentMonths: [],
+      developmentLedger: [],
+      developmentReports: [],
+      conversionRecommendations: [],
+    },
+    monthlyPulse: {
+      pendingReport: null,
+      decisionQueue: [],
+    },
+    franchise: {
+      gmName: 'General Manager',
+      difficulty: 'standard',
+      playMode: 'standard',
+      createdAt: 'S3D97',
+      teamId: 'nym',
+      teamName: 'New York Tycoons',
+      teamAbbreviation: 'NYT',
+      teamDivision: 'AL East',
+      onboarding: {
+        welcomeBriefingSeen: true,
+        firstMonthlyPulseSeen: true,
+      },
+      assistantGMId: null,
+      gmPhilosophy: null,
+      scoutingDirector: null,
+    },
+    ceremony: {
+      pendingMoments: [],
+      seenMomentIds: [],
+    },
+    achievements: {
+      unlocked: [],
+      progress: [],
+      counters: [],
+      ledgers: [],
+    },
+    performanceDiagnostics: {
+      totalSeasons: 3,
+      snapshotSizeBytes: 512,
     },
   } as unknown as GameSnapshot;
 }
 
 describe('saveSystem helpers', () => {
-  it('builds a v6 save record from a canonical snapshot', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearPerformanceMetrics();
+  });
+
+  it('builds a current-schema save record from a canonical snapshot', () => {
     const snapshot = createSnapshot();
 
     const record = buildSaveRecord(2, 'Dynasty Slot', snapshot);
@@ -91,16 +206,133 @@ describe('saveSystem helpers', () => {
     expect(record.season).toBe(3);
     expect(record.day).toBe(97);
     expect(record.phase).toBe('regular');
-    expect(record.schemaVersion).toBe(6);
+    expect(record.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(record.hasSnapshot).toBe(true);
     expect(record.snapshot?.rng.callCount).toBe(14);
-    expect(record.snapshot?.schemaVersion).toBe(6);
+    expect(record.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(record.parentSaveId).toBeNull();
+    expect(record.isRootSave).toBe(true);
+    expect(record.branchMeta).toBeNull();
     expect(record.snapshot?.narrative.seasonHistory[0]?.worldSeriesRecord).toBe('4-2');
+    expect(record.snapshot?.narrative.archivedSeasons).toEqual([]);
+    expect(record.snapshot?.narrative.whatIfBranches).toEqual([]);
+    expect(record.snapshot?.narrative.playerMoments).toEqual([]);
+    expect(record.snapshot?.narrative.playerNicknames).toEqual([]);
+    expect(record.snapshot?.narrative.gmRelationships).toEqual([]);
+    expect(record.snapshot?.narrative.leagueEvents).toEqual([]);
+    expect(record.snapshot?.performanceDiagnostics).toEqual({
+      totalSeasons: 3,
+      snapshotSizeBytes: 512,
+    });
     expect(record.snapshot?.tradeState.pendingOffers).toEqual([]);
+    expect(record.snapshot?.tradeState.negotiations).toEqual([]);
+    expect(record.snapshot?.tradeState.multiTeamPendingTrades).toEqual([]);
     expect(record.snapshot?.rule5Session).toBeNull();
     expect(record.snapshot?.rule5Obligations).toEqual([]);
     expect(record.snapshot?.rule5OfferBackStates).toEqual([]);
+    expect(record.snapshot?.internationalScoutingState.season).toBe(3);
+    expect(record.snapshot?.draftState.bigBoards).toEqual([]);
+    expect(record.snapshot?.minorLeagueState.affiliateStates).toEqual([]);
+    expect(record.snapshot?.monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
     expect(record.legacyState).toBeNull();
+  });
+
+  it('round-trips exported snapshot json through the import parser', () => {
+    const snapshot = createSnapshot();
+
+    const serialized = exportSnapshotToJson('Dynasty Export', snapshot);
+    const imported = importSnapshotFromJson(serialized);
+
+    expect(imported.name).toBe('Dynasty Export');
+    expect(imported.snapshot.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(imported.snapshot.franchise.gmName).toBe('General Manager');
+  });
+
+  it('saves and inspects branch records by id without assigning a slot', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('branch-alpha' as never);
+    const snapshot = createSnapshot();
+
+    await saveGameById('branch-alpha', 'What If Alpha', snapshot, {
+      slotNumber: null,
+      parentSaveId: 'save-slot-1',
+      isRootSave: false,
+      branchMeta: {
+        id: 'branch-alpha',
+        saveId: 'branch-alpha',
+        branchedAtSeason: 3,
+        branchedAtDay: 97,
+        description: 'What if we kept the ace?',
+        createdAt: '2026-04-03T00:00:00.000Z',
+      },
+    });
+
+    expect(putSpy).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'branch-alpha',
+      slotNumber: null,
+      parentSaveId: 'save-slot-1',
+      isRootSave: false,
+    }));
+
+    vi.spyOn(db.saves, 'get').mockResolvedValue(putSpy.mock.calls[0]?.[0] as never);
+
+    await expect(inspectSaveById('branch-alpha')).resolves.toMatchObject({
+      status: 'ok',
+      save: expect.objectContaining({
+        id: 'branch-alpha',
+        slotNumber: null,
+        parentSaveId: 'save-slot-1',
+        isRootSave: false,
+      }),
+    });
+  });
+
+  it('creates and lists branches under a root save tree', async () => {
+    const root = buildSaveRecord(1, 'Root Dynasty', createSnapshot());
+    vi.spyOn(db.saves, 'get').mockResolvedValue(root as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('branch-beta' as never);
+    vi.spyOn(db.saves, 'toArray').mockResolvedValue([
+      root,
+      {
+        ...root,
+        id: 'branch-beta',
+        slotNumber: null,
+        isRootSave: false,
+        parentSaveId: 'save-slot-1',
+        branchMeta: {
+          id: 'branch-beta',
+          saveId: 'branch-beta',
+          branchedAtSeason: 3,
+          branchedAtDay: 97,
+          description: 'Alt timeline',
+          createdAt: '2026-04-03T00:00:00.000Z',
+        },
+      },
+    ] as never);
+
+    await createBranchSave('save-slot-1', createSnapshot(), 'Alt timeline');
+
+    expect(putSpy).toHaveBeenCalled();
+    await expect(listBranches('save-slot-1')).resolves.toHaveLength(1);
+    await expect(listSaveTree()).resolves.toEqual([
+      expect.objectContaining({
+        save: expect.objectContaining({ id: 'save-slot-1' }),
+        branches: [
+          expect.objectContaining({ id: 'branch-beta' }),
+        ],
+      }),
+    ]);
+  });
+
+  it('clears every save slot in one call', async () => {
+    const clearSpy = vi.spyOn(db.saves, 'clear').mockResolvedValue(undefined as never);
+
+    await clearAllSaves();
+
+    expect(clearSpy).toHaveBeenCalledTimes(1);
   });
 
   it('normalizes legacy records into metadata-only entries without deleting them', () => {
@@ -122,7 +354,7 @@ describe('saveSystem helpers', () => {
     expect(normalized.legacyState).toBe('{"old":true}');
   });
 
-  it('migrates v2 snapshots to v6 on load', () => {
+  it('migrates v2 snapshots to the current schema on load', () => {
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-3',
       slotNumber: 3,
@@ -135,7 +367,7 @@ describe('saveSystem helpers', () => {
         season: 5,
         day: 12,
         phase: 'offseason',
-        userTeamId: 'nyy',
+        userTeamId: 'nym',
         players: [],
         schedule: [],
         seasonState: {
@@ -186,14 +418,14 @@ describe('saveSystem helpers', () => {
               season: 4,
               award: 'MVP',
               playerId: 'player-1',
-              teamId: 'nyy',
+              teamId: 'nym',
               summary: 'Carried the lineup.',
             },
           ],
           seasonHistory: [
             {
               season: 4,
-              championTeamId: 'nyy',
+              championTeamId: 'nym',
               summary: 'Won it all.',
               awards: [],
               keyMoments: ['Wrapped up the title.'],
@@ -205,10 +437,12 @@ describe('saveSystem helpers', () => {
       // This fixture intentionally uses the legacy v2 shape.
     } as any);
 
-    expect(normalized.schemaVersion).toBe(6);
-    expect(normalized.snapshot?.schemaVersion).toBe(6);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].wins).toBe(0);
     expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].losses).toBe(0);
+    expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].hbp).toBe(0);
+    expect(normalized.snapshot?.seasonState.playerSeasonStats[0]?.[1].homeRunsAllowed).toBe(0);
     expect(normalized.snapshot?.narrative.awardHistory[0]?.league).toBe('MLB');
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.runnerUpTeamId).toBeNull();
     expect(normalized.snapshot?.narrative.seasonHistory[0]?.statLeaders.w).toEqual([]);
@@ -218,9 +452,16 @@ describe('saveSystem helpers', () => {
     expect(normalized.snapshot?.rule5Session).toBeNull();
     expect(normalized.snapshot?.rule5Obligations).toEqual([]);
     expect(normalized.snapshot?.rule5OfferBackStates).toEqual([]);
+    expect(normalized.snapshot?.internationalScoutingState.ifaPool).toEqual([]);
+    expect(normalized.snapshot?.draftState.signability).toEqual([]);
+    expect(normalized.snapshot?.minorLeagueState.optionUsage).toEqual([]);
+    expect(normalized.snapshot?.monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
   });
 
-  it('migrates v3 snapshots to v6 on load', () => {
+  it('migrates v3 snapshots to the current schema on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-5',
@@ -234,13 +475,17 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(6);
-    expect(normalized.snapshot?.schemaVersion).toBe(6);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.tradeState.tradeHistory).toEqual([]);
     expect(normalized.snapshot?.rule5Obligations).toEqual([]);
+    expect(normalized.snapshot?.monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
   });
 
-  it('migrates v4 snapshots to v6 on load', () => {
+  it('migrates v4 snapshots to the current schema on load', () => {
     const snapshot = createSnapshot();
     const normalized = normalizeLoadedSaveRecord({
       id: 'save-slot-6',
@@ -264,12 +509,376 @@ describe('saveSystem helpers', () => {
       },
     } as any);
 
-    expect(normalized.schemaVersion).toBe(6);
-    expect(normalized.snapshot?.schemaVersion).toBe(6);
+    expect(normalized.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
+    expect(normalized.snapshot?.schemaVersion).toBe(CURRENT_GAME_SNAPSHOT_VERSION);
     expect(normalized.snapshot?.narrative.hallOfFame).toEqual([]);
     expect(normalized.snapshot?.narrative.hallOfFameBallot).toEqual([]);
     expect(normalized.snapshot?.narrative.franchiseTimeline).toEqual([]);
     expect(normalized.snapshot?.narrative.careerStats).toEqual([]);
     expect(normalized.snapshot?.rule5OfferBackStates).toEqual([]);
+    expect(normalized.snapshot?.monthlyPulse).toEqual({
+      pendingReport: null,
+      decisionQueue: [],
+    });
+  });
+
+  it('coalesces queued autosaves so only the latest pending snapshot is written', async () => {
+    let flushQueuedSave: (() => void) | null = null;
+    const writeSave = vi.fn().mockImplementation(async () => undefined);
+    const scheduler = createAutoSaveScheduler(
+      writeSave,
+      (callback) => {
+        flushQueuedSave = callback;
+        return () => {
+          flushQueuedSave = null;
+        };
+      },
+    );
+
+    const first = scheduler.schedule({
+      slot: 1,
+      name: 'Season 4',
+      state: { season: 4, day: 100 },
+    });
+    const second = scheduler.schedule({
+      slot: 1,
+      name: 'Season 4 Updated',
+      state: { season: 4, day: 101 },
+    });
+
+    expect(writeSave).not.toHaveBeenCalled();
+    expect(flushQueuedSave).toBeTypeOf('function');
+
+    const flushQueuedSaveFn = flushQueuedSave as (() => void) | null;
+    if (typeof flushQueuedSaveFn !== 'function') {
+      throw new Error('Expected idle flush callback to be scheduled.');
+    }
+
+    flushQueuedSaveFn();
+    await Promise.all([first, second]);
+
+    expect(writeSave).toHaveBeenCalledTimes(1);
+    expect(writeSave).toHaveBeenCalledWith({
+      slot: 1,
+      name: 'Season 4 Updated',
+      state: { season: 4, day: 101 },
+    });
+  });
+
+  it('records save and load timings against the runtime performance ledger', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+    const nowSpy = vi.spyOn(globalThis.performance, 'now');
+    nowSpy
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(120)
+      .mockReturnValueOnce(200)
+      .mockReturnValueOnce(320);
+
+    await saveGame(1, 'Dynasty', createSnapshot());
+    await loadGame(1);
+
+    expect(getLatestPerformanceMetric('save.write')).toEqual({
+      durationMs: 120,
+      budgetMs: 500,
+      overBudget: false,
+    });
+    expect(getLatestPerformanceMetric('save.load')).toEqual({
+      durationMs: 120,
+      budgetMs: 500,
+      overBudget: false,
+    });
+  });
+
+  it('exposes the shared autosave queue for app-level callers', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue(undefined as never);
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-1' as never);
+
+    const scheduled = scheduleAutoSave(1, 'Dynasty', createSnapshot());
+    await flushAutoSaveQueueForTesting();
+    await scheduled;
+
+    expect(putSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks an invalid snapshot payload as corrupt instead of throwing during inspection', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Broken Save',
+      season: 5,
+      day: 44,
+      phase: 'regular',
+      schemaVersion: 12,
+      hasSnapshot: true,
+      snapshot: { schemaVersion: 12, broken: true },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadGameSafe(2)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 2,
+    });
+    await expect(inspectSave(2)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 2,
+    });
+  });
+
+  it('repairs a legacy snapshot payload and promotes it into the canonical current-schema save shape', async () => {
+    const putSpy = vi.spyOn(db.saves, 'put').mockResolvedValue('save-slot-3' as never);
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-3',
+      slotNumber: 3,
+      name: 'Repairable Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: JSON.stringify(createSnapshot()),
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    const repaired = await repairSave(3);
+
+    expect(repaired).toMatchObject({
+      status: 'ok',
+      save: expect.objectContaining({
+        slotNumber: 3,
+        schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+        hasSnapshot: true,
+      }),
+    });
+    expect(putSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a corrupt repair result when no migration path can salvage the record', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-4',
+      slotNumber: 4,
+      name: 'Unrepairable Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 1,
+      hasSnapshot: false,
+      snapshot: null,
+      legacyState: '{"broken-json"',
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(repairSave(4)).resolves.toMatchObject({
+      status: 'corrupt',
+      slot: 4,
+    });
+  });
+
+  it('classifies malformed serialized snapshot JSON without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-1',
+      slotNumber: 1,
+      name: 'Truncated Save',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      hasSnapshot: true,
+      snapshot: '{"schemaVersion":33,' as unknown as GameSnapshot,
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    const result = await loadSaveSafely(1);
+    if (result.ok) {
+      throw new Error('Expected malformed JSON to return a failure.');
+    }
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'parse',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-1',
+        slotNumber: 1,
+      }),
+    });
+    expect(result.detail.rawJson).toContain('Truncated Save');
+  });
+
+  it('classifies current-schema Zod failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-2',
+      slotNumber: 2,
+      name: 'Wrong Shape',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      hasSnapshot: true,
+      snapshot: {
+        ...createSnapshot(),
+        season: 'third',
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(2)).resolves.toMatchObject({
+      ok: false,
+      reason: 'zod',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-2',
+        slotNumber: 2,
+      }),
+    });
+  });
+
+  it('refuses saves from newer snapshot versions without attempting migration', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-3',
+      slotNumber: 3,
+      name: 'Future Save',
+      season: 3,
+      day: 97,
+      phase: 'regular',
+      schemaVersion: 999,
+      hasSnapshot: true,
+      snapshot: {
+        ...createSnapshot(),
+        schemaVersion: 999,
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(3)).resolves.toMatchObject({
+      ok: false,
+      reason: 'version_too_new',
+      detail: expect.objectContaining({
+        schemaVersion: 999,
+        currentVersion: CURRENT_GAME_SNAPSHOT_VERSION,
+      }),
+    });
+  });
+
+  it('refuses saves older than the supported migration floor', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-4',
+      slotNumber: 4,
+      name: 'Pre Release Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 0,
+      hasSnapshot: true,
+      snapshot: {
+        schemaVersion: 0,
+        season: 1,
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(4)).resolves.toMatchObject({
+      ok: false,
+      reason: 'version_too_old',
+      detail: expect.objectContaining({
+        schemaVersion: 0,
+        minimumSupportedVersion: 2,
+      }),
+    });
+  });
+
+  it('classifies supported legacy migration failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockResolvedValue({
+      id: 'save-slot-5',
+      slotNumber: 5,
+      name: 'Broken Legacy Save',
+      season: 1,
+      day: 1,
+      phase: 'preseason',
+      schemaVersion: 2,
+      hasSnapshot: true,
+      snapshot: {
+        schemaVersion: 2,
+        season: 'bad legacy payload',
+      },
+      legacyState: null,
+      createdAt: '2026-04-01T00:00:00.000Z',
+      updatedAt: '2026-04-01T00:00:00.000Z',
+    } as never);
+
+    await expect(loadSaveSafely(5)).resolves.toMatchObject({
+      ok: false,
+      reason: 'migration_failed',
+      detail: expect.objectContaining({
+        schemaVersion: 2,
+      }),
+    });
+  });
+
+  it('classifies storage read failures without throwing', async () => {
+    vi.spyOn(db.saves, 'get').mockRejectedValue(new Error('QuotaExceededError') as never);
+
+    await expect(loadSaveSafely(1)).resolves.toMatchObject({
+      ok: false,
+      reason: 'storage_failed',
+      detail: expect.objectContaining({
+        slotId: 'save-slot-1',
+        message: 'QuotaExceededError',
+      }),
+    });
+  });
+
+  it('round-trips exported snapshot json with canonical equality after import', () => {
+    const snapshot = createSnapshot();
+    const exported = exportSnapshotToJson('Round Trip', snapshot);
+    const imported = importSnapshotFromJson(exported);
+    const reexported = exportSnapshotToJson('Round Trip', imported.snapshot);
+    const canonicalExported = JSON.parse(exported) as { exportedAt?: string; snapshot: unknown };
+    const canonicalReexported = JSON.parse(reexported) as { exportedAt?: string; snapshot: unknown };
+    delete canonicalExported.exportedAt;
+    delete canonicalReexported.exportedAt;
+
+    expect(canonicalReexported).toEqual(canonicalExported);
+  });
+
+  it('loads one slot without mutating another saved slot on disk', async () => {
+    const slotA = buildSaveRecord(1, 'Slot A', {
+      ...createSnapshot(),
+      rng: { seed: 101, callCount: 1 },
+    });
+    const slotB = buildSaveRecord(2, 'Slot B', {
+      ...createSnapshot(),
+      rng: { seed: 202, callCount: 2 },
+      season: 4,
+    });
+    const rawSlotA = JSON.stringify(slotA);
+    const records = new Map([
+      ['save-slot-1', slotA],
+      ['save-slot-2', slotB],
+    ]);
+    vi.spyOn(db.saves, 'get').mockImplementation(((id: unknown) =>
+      Promise.resolve(records.get(String(id)))) as never);
+
+    const loadedB = await loadSaveSafely(2);
+
+    expect(loadedB).toMatchObject({
+      ok: true,
+      snapshot: expect.objectContaining({
+        season: 4,
+        rng: { seed: 202, callCount: 2 },
+      }),
+    });
+    expect(JSON.stringify(records.get('save-slot-1'))).toBe(rawSlotA);
   });
 });

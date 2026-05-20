@@ -1,10 +1,10 @@
 /**
  * @module rule5
  * Core Rule 5 Draft state and eligibility helpers.
- * Pure engine code — no React, no DOM, no Math.random().
+ * Pure engine code — no React, no DOM, no ambient randomness.
  */
 
-import { FORTY_MAN_LIMIT } from './rosterManager.js';
+import { FORTY_MAN_LIMIT } from '../player/enums.js';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { RosterState } from './rosterManager.js';
 

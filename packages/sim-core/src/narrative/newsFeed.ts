@@ -6,7 +6,11 @@
  */
 
 import type { GameRNG } from '../math/prng.js';
+import type { CareerStatsLedger } from '../league/hallOfFame.js';
+import { toDisplayRating } from '../player/attributes.js';
 import type { GeneratedPlayer } from '../player/generation.js';
+import { REGULAR_SEASON_DAYS } from '../sim/calendar.js';
+import { pickRetirementSpeechLine, resolveRetirementBranch } from './retirementProse.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,18 +18,30 @@ import type { GeneratedPlayer } from '../player/generation.js';
 
 export type NewsPriority = 1 | 2 | 3 | 4 | 5;
 
+export type NewsTag = 'BREAKING' | 'ANALYSIS' | 'RECAP' | 'RUMOR' | 'WATCH';
+
 export type NewsCategory =
   | 'injury'
   | 'trade'
   | 'signing'
+  | 'extension'
+  | 'qualifying_offer'
+  | 'coaching'
   | 'draft'
   | 'milestone'
   | 'performance'
   | 'standings'
   | 'roster_move'
+  | 'development'
+  | 'rumor'
+  | 'rivalry'
   | 'award'
   | 'record'
-  | 'playoff';
+  | 'playoff'
+  | 'arbitration'
+  | 'holdout'
+  | 'press_conference'
+  | 'league_event';
 
 export interface NewsItem {
   id: string;
@@ -33,6 +49,7 @@ export interface NewsItem {
   body: string;
   priority: NewsPriority;
   category: NewsCategory;
+  tag?: NewsTag;
   /** Format: "S{season}D{day}", e.g. "S3D45" */
   timestamp: string;
   relatedPlayerIds: string[];
@@ -78,10 +95,25 @@ export interface GameEvent {
     | 'roster_move'
     | 'draft_pick'
     | 'season_end'
-    | 'milestone';
+    | 'milestone'
+    | 'extension'
+    | 'qualifying_offer'
+    | 'coaching'
+    | 'development'
+    | 'rivalry'
+    | 'rumor';
   data: Record<string, unknown>;
   season: number;
   day: number;
+}
+
+export interface RetirementNewsContext {
+  readonly careerStats?: CareerStatsLedger | null;
+  readonly teamIds?: readonly string[];
+  readonly championshipRings?: number;
+  readonly peakOverall?: number;
+  readonly priorSeasonGamesMissed?: number;
+  readonly currentTeamId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +134,8 @@ const INJURY_TEMPLATES = [
   '{player} activated from injured list',
   'Devastating blow: {player} out for the season with {injury}',
   '{team} loses {player} to {injury}, timetable uncertain',
+  '{team} scrambles after {player} suffers {injury}',
+  '{player} cleared to return as {team} chases ground in the race',
 ];
 
 const TRADE_TEMPLATES = [
@@ -117,6 +151,62 @@ const SIGNING_TEMPLATES = [
   'Free agent {player} agrees to terms with {team}',
 ];
 
+const EXTENSION_TEMPLATES = [
+  '{player} signs {years}-year, ${total}M extension with {team}',
+  '{team} secures franchise cornerstone {player} on a {years}-year pact',
+  'Extension talks end with {player} staying put in {team}',
+  '{team} and {player} hammer out a ${total}M long-term extension',
+  '{player} commits to {team} with a {years}-year extension',
+];
+
+const EXTENSION_BREAKDOWN_TEMPLATES = [
+  'Negotiations break down between {team} and {player}',
+  '{player} declines extension overture from {team}',
+  '{team} cannot bridge the gap with {player}',
+  'Long-term talks stall for {player} and {team}',
+  '{team} leaves extension talks with {player} unresolved',
+];
+
+const QUALIFYING_OFFER_TEMPLATES = [
+  '{player} rejects the qualifying offer and enters the market',
+  '{player} accepts the qualifying offer and returns to {team}',
+  '{team} extends a qualifying offer to {player}',
+  '{player} weighs the qualifying offer as free agency opens',
+  '{team} keeps compensation options alive with a QO for {player}',
+];
+
+const COACHING_TEMPLATES = [
+  '{team} hires {coach} to reshape the staff',
+  '{team} brings in {coach} as a new voice in the room',
+  '{team} makes a coaching change and tabs {coach}',
+  '{coach} joins {team} with player development on the agenda',
+  '{team} turns to {coach} for a jolt on the staff',
+];
+
+const RUMOR_TEMPLATES = [
+  'Sources: {team} checking in on {target}',
+  '{team} exploring deadline market for {need}',
+  'Industry buzz links {team} to {target}',
+  '{team} seen as an active buyer with {days} days to the deadline',
+  '{team} listening on veteran pieces as the market heats up',
+];
+
+const DEVELOPMENT_TEMPLATES = [
+  '{player} forcing the issue after tearing through {level}',
+  '{team} weighing a call-up for fast-rising {player}',
+  '{player} has turned heads with a breakout run at {level}',
+  'Development staff sees real momentum in {player} at {level}',
+  '{team} monitoring whether {player} is ready for the next jump',
+];
+
+const RIVALRY_TEMPLATES = [
+  'Bad blood simmers again between {team1} and {team2}',
+  '{team1}-{team2} is becoming the nastiest series on the schedule',
+  'Another tense chapter lands in the {team1}-{team2} rivalry',
+  '{team1} and {team2} keep raising the temperature',
+  'The {team1}-{team2} rivalry is now a pennant-race subplot',
+];
+
 const STANDINGS_TEMPLATES = [
   '{team} clinches {division} division title',
   'Playoff race heats up: {team1} and {team2} separated by {games} games',
@@ -127,7 +217,7 @@ const STANDINGS_TEMPLATES = [
 
 const MILESTONE_TEMPLATES = [
   '{player} hits career home run #{count}',
-  '{player} records {count}th career strikeout',
+  '{player} records career strikeout #{count}',
   '{player} joins the 3,000-hit club',
   '{player} earns career win #{count}',
   '{player} reaches {count} career hits',
@@ -158,6 +248,46 @@ function formatTimestamp(season: number, day: number): string {
   return `S${season}D${day}`;
 }
 
+function parseTimestampRank(timestamp: string): number {
+  const match = /^S(\d+)D(\d+)$/.exec(timestamp);
+  if (!match) {
+    return 0;
+  }
+
+  return (Number(match[1]) * 1000) + Number(match[2]);
+}
+
+function compareStandingsRecord(
+  left: { teamId: string; wins: number; losses: number },
+  right: { teamId: string; wins: number; losses: number },
+): number {
+  const leftWinPct = left.wins / Math.max(left.wins + left.losses, 1);
+  const rightWinPct = right.wins / Math.max(right.wins + right.losses, 1);
+  if (rightWinPct !== leftWinPct) {
+    return rightWinPct - leftWinPct;
+  }
+  if (right.wins !== left.wins) {
+    return right.wins - left.wins;
+  }
+  if (left.losses !== right.losses) {
+    return left.losses - right.losses;
+  }
+  return left.teamId.localeCompare(right.teamId);
+}
+
+function compareNewsItems(left: NewsItem, right: NewsItem): number {
+  if (left.priority !== right.priority) {
+    return left.priority - right.priority;
+  }
+
+  const timestampDelta = parseTimestampRank(right.timestamp) - parseTimestampRank(left.timestamp);
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function playerName(player: GeneratedPlayer): string {
   return `${player.firstName} ${player.lastName}`;
 }
@@ -181,6 +311,41 @@ function fillTemplate(template: string, vars: Record<string, string | number>): 
 function pickTemplate(rng: GameRNG, templates: readonly string[]): string {
   const index = rng.nextInt(0, templates.length - 1);
   return templates[index]!;
+}
+
+function buildContextClause(data: Record<string, unknown>): string {
+  const pieces: string[] = [];
+  const record = data['record'] as string | undefined;
+  const streak = data['streak'] as string | undefined;
+  const playoffPosition = data['playoffPosition'] as string | undefined;
+  const daysToDeadline = data['daysToDeadline'] as number | undefined;
+
+  if (record) pieces.push(`${record} record`);
+  if (streak) pieces.push(`${streak} streak`);
+  if (playoffPosition) pieces.push(playoffPosition);
+  if (daysToDeadline != null) pieces.push(`${daysToDeadline} days to the deadline`);
+
+  return pieces.length > 0 ? `${pieces.join(' | ')}.` : '';
+}
+
+function inferTag(category: NewsCategory, priority: NewsPriority): NewsTag {
+  if (category === 'rumor') return 'RUMOR';
+  if (priority <= 1) return 'BREAKING';
+  if (category === 'extension' || category === 'qualifying_offer' || category === 'coaching' || category === 'development' || category === 'rivalry') {
+    return 'ANALYSIS';
+  }
+  return 'RECAP';
+}
+
+function buildNewsItem(
+  rng: GameRNG,
+  input: Omit<NewsItem, 'id' | 'tag'> & { tag?: NewsTag },
+): NewsItem {
+  return {
+    id: generateNewsId(rng),
+    ...input,
+    tag: input.tag ?? inferTag(input.category, input.priority),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +393,18 @@ export function generateNews(
       return generateSeasonEndNews(rng, event, timestamp);
     case 'milestone':
       return generateMilestoneNews(rng, event, players, timestamp);
+    case 'extension':
+      return generateExtensionNews(rng, event, players, timestamp);
+    case 'qualifying_offer':
+      return generateQualifyingOfferNews(rng, event, players, timestamp);
+    case 'coaching':
+      return generateCoachingNews(rng, event, timestamp);
+    case 'development':
+      return generateDevelopmentNews(rng, event, players, timestamp);
+    case 'rivalry':
+      return generateRivalryNews(rng, event, timestamp);
+    case 'rumor':
+      return generateRumorNews(rng, event, players, timestamp);
     default:
       return [];
   }
@@ -271,17 +448,17 @@ function generateGameResultNews(
   const headline = fillTemplate(pickTemplate(rng, PERFORMANCE_TEMPLATES), vars);
   const body = `${teamName} earned a victory over ${opponentName}.`;
 
-  items.push({
-    id: generateNewsId(rng),
+  items.push(buildNewsItem(rng, {
     headline,
     body,
     priority: 3,
     category: 'performance',
+    tag: 'RECAP',
     timestamp,
     relatedPlayerIds: starPlayerId ? [starPlayerId] : [],
     relatedTeamIds: [teamId, opponentId].filter(Boolean),
     read: false,
-  });
+  }));
 
   return items;
 }
@@ -297,9 +474,10 @@ function generateInjuryNews(
   const player = lookupPlayer(players, playerId);
   const teamId = (data['teamId'] as string) ?? '';
   const teamName = (data['teamName'] as string) ?? teamId;
-  const injuryType = (data['injury'] as string) ?? 'undisclosed injury';
+  const injuryType = ((data['injury'] as string | undefined) ?? (data['description'] as string | undefined)) ?? 'undisclosed injury';
   const ilType = (data['ilDays'] as number) ?? 15;
   const isSeason = (data['seasonEnding'] as boolean) ?? false;
+  const returning = (data['returning'] as boolean) ?? false;
 
   const vars: Record<string, string | number> = {
     player: player ? playerName(player) : 'Unknown',
@@ -308,29 +486,32 @@ function generateInjuryNews(
     il_type: ilType,
   };
 
-  // Season-ending injuries use a specific template
-  const templatePool = isSeason
-    ? [INJURY_TEMPLATES[2]!]
-    : INJURY_TEMPLATES.filter((_, i) => i !== 2);
+  const templatePool = returning
+    ? [INJURY_TEMPLATES[1]!, INJURY_TEMPLATES[5]!]
+    : isSeason
+      ? [INJURY_TEMPLATES[2]!, INJURY_TEMPLATES[4]!]
+      : INJURY_TEMPLATES.filter((_, i) => i !== 1 && i !== 2 && i !== 5);
   const headline = fillTemplate(pickTemplate(rng, templatePool), vars);
 
-  const priority: NewsPriority = isSeason ? 1 : 3;
-  const body = isSeason
-    ? `${player ? playerName(player) : 'A player'} will miss the remainder of the season with ${injuryType}.`
-    : `${player ? playerName(player) : 'A player'} has been placed on the injured list.`;
+  const priority: NewsPriority = returning ? 2 : isSeason ? 1 : 3;
+  const body = returning
+    ? `${player ? playerName(player) : 'A player'} is back in the mix for ${teamName}. ${buildContextClause(data)}`
+    : isSeason
+      ? `${player ? playerName(player) : 'A player'} will miss the remainder of the season with ${injuryType}. ${buildContextClause(data)}`
+      : `${player ? playerName(player) : 'A player'} has been placed on the injured list. ${buildContextClause(data)}`;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority,
       category: 'injury',
+      tag: returning ? 'BREAKING' : undefined,
       timestamp,
       relatedPlayerIds: playerId ? [playerId] : [],
       relatedTeamIds: teamId ? [teamId] : [],
       read: false,
-    },
+    }),
   ];
 }
 
@@ -363,8 +544,7 @@ function generateTradeNews(
   const body = `${team1Name} and ${team2Name} have completed a trade.`;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority: 1,
@@ -373,7 +553,7 @@ function generateTradeNews(
       relatedPlayerIds: [player1Id, player2Id].filter((id): id is string => !!id),
       relatedTeamIds: [team1Id, team2Id].filter(Boolean),
       read: false,
-    },
+    }),
   ];
 }
 
@@ -400,8 +580,7 @@ function generateSigningNews(
   const body = `${player ? playerName(player) : 'A free agent'} has signed a ${years}-year contract with ${teamName}.`;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority: 2,
@@ -410,7 +589,224 @@ function generateSigningNews(
       relatedPlayerIds: playerId ? [playerId] : [],
       relatedTeamIds: teamId ? [teamId] : [],
       read: false,
-    },
+    }),
+  ];
+}
+
+function generateExtensionNews(
+  rng: GameRNG,
+  event: GameEvent,
+  players: GeneratedPlayer[],
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const playerId = data['playerId'] as string | undefined;
+  const player = lookupPlayer(players, playerId);
+  const teamId = (data['teamId'] as string) ?? '';
+  const teamName = (data['teamName'] as string) ?? teamId;
+  const years = (data['years'] as number) ?? 1;
+  const total = Number((data['totalValue'] as number) ?? ((data['annualSalary'] as number) ?? 0) * years).toFixed(1);
+  const accepted = ((data['outcome'] as string | undefined) ?? 'accepted') === 'accepted';
+
+  const vars = {
+    player: player ? playerName(player) : ((data['playerName'] as string | undefined) ?? 'Unknown'),
+    team: teamName,
+    years,
+    total,
+  };
+
+  const headline = fillTemplate(
+    pickTemplate(rng, accepted ? EXTENSION_TEMPLATES : EXTENSION_BREAKDOWN_TEMPLATES),
+    vars,
+  );
+  const body = accepted
+    ? `${vars.player} stays with ${teamName} on a ${years}-year commitment worth $${total}M. ${buildContextClause(data)}`
+    : `${teamName} leaves the table without a long-term deal for ${vars.player}. ${buildContextClause(data)}`;
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body,
+      priority: accepted ? 1 : 2,
+      category: 'extension',
+      tag: accepted ? 'BREAKING' : 'ANALYSIS',
+      timestamp,
+      relatedPlayerIds: playerId ? [playerId] : [],
+      relatedTeamIds: teamId ? [teamId] : [],
+      read: false,
+    }),
+  ];
+}
+
+function generateQualifyingOfferNews(
+  rng: GameRNG,
+  event: GameEvent,
+  players: GeneratedPlayer[],
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const playerId = data['playerId'] as string | undefined;
+  const player = lookupPlayer(players, playerId);
+  const teamId = (data['teamId'] as string) ?? '';
+  const teamName = (data['teamName'] as string) ?? teamId;
+  const amount = Number((data['amount'] as number) ?? 0).toFixed(1);
+  const outcome = (data['outcome'] as string | undefined) ?? (data['status'] as string | undefined) ?? 'issued';
+  const accepted = outcome === 'accepted';
+  const rejected = outcome === 'rejected';
+  const templatePool = accepted
+    ? [QUALIFYING_OFFER_TEMPLATES[1]!, QUALIFYING_OFFER_TEMPLATES[3]!]
+    : rejected
+      ? [QUALIFYING_OFFER_TEMPLATES[0]!, QUALIFYING_OFFER_TEMPLATES[3]!]
+      : [QUALIFYING_OFFER_TEMPLATES[2]!, QUALIFYING_OFFER_TEMPLATES[4]!];
+  const headline = fillTemplate(pickTemplate(rng, templatePool), {
+    player: player ? playerName(player) : ((data['playerName'] as string | undefined) ?? 'Unknown'),
+    team: teamName,
+  });
+
+  const body = accepted
+    ? `${player ? playerName(player) : 'The player'} takes the $${amount}M qualifying offer and stays with ${teamName}. ${buildContextClause(data)}`
+    : rejected
+      ? `${player ? playerName(player) : 'The player'} turns down the $${amount}M qualifying offer and heads into free agency. ${buildContextClause(data)}`
+      : `${teamName} places a $${amount}M qualifying offer in front of ${player ? playerName(player) : 'the player'}. ${buildContextClause(data)}`;
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body,
+      priority: accepted || rejected ? 1 : 2,
+      category: 'qualifying_offer',
+      tag: accepted || rejected ? 'BREAKING' : 'ANALYSIS',
+      timestamp,
+      relatedPlayerIds: playerId ? [playerId] : [],
+      relatedTeamIds: teamId ? [teamId] : [],
+      read: false,
+    }),
+  ];
+}
+
+function generateCoachingNews(
+  rng: GameRNG,
+  event: GameEvent,
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const teamId = (data['teamId'] as string) ?? '';
+  const teamName = (data['teamName'] as string) ?? teamId;
+  const coach = (data['coachName'] as string) ?? 'New coach';
+  const role = ((data['role'] as string | undefined) ?? 'staff').replaceAll('_', ' ');
+  const headline = fillTemplate(pickTemplate(rng, COACHING_TEMPLATES), {
+    team: teamName,
+    coach,
+  });
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body: `${teamName} makes a ${role} move with ${coach}. ${buildContextClause(data)}`,
+      priority: 2,
+      category: 'coaching',
+      tag: 'ANALYSIS',
+      timestamp,
+      relatedPlayerIds: [],
+      relatedTeamIds: teamId ? [teamId] : [],
+      read: false,
+    }),
+  ];
+}
+
+function generateDevelopmentNews(
+  rng: GameRNG,
+  event: GameEvent,
+  players: GeneratedPlayer[],
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const playerId = data['playerId'] as string | undefined;
+  const player = lookupPlayer(players, playerId);
+  const teamId = (data['teamId'] as string) ?? '';
+  const level = (data['level'] as string) ?? ((data['fromLevel'] as string) ?? 'AAA');
+  const headline = fillTemplate(pickTemplate(rng, DEVELOPMENT_TEMPLATES), {
+    player: player ? playerName(player) : ((data['playerName'] as string | undefined) ?? 'Unknown'),
+    team: (data['teamName'] as string) ?? teamId,
+    level,
+  });
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body: `${player ? playerName(player) : 'A prospect'} is drawing attention after strong work at ${level}. ${buildContextClause(data)}`,
+      priority: 2,
+      category: 'development',
+      tag: 'ANALYSIS',
+      timestamp,
+      relatedPlayerIds: playerId ? [playerId] : [],
+      relatedTeamIds: teamId ? [teamId] : [],
+      read: false,
+    }),
+  ];
+}
+
+function generateRivalryNews(
+  rng: GameRNG,
+  event: GameEvent,
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const team1 = (data['team1Name'] as string) ?? ((data['team1'] as string) ?? 'Team A');
+  const team2 = (data['team2Name'] as string) ?? ((data['team2'] as string) ?? 'Team B');
+  const intensity = (data['intensity'] as number) ?? 60;
+  const headline = fillTemplate(pickTemplate(rng, RIVALRY_TEMPLATES), {
+    team1,
+    team2,
+  });
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body: `${team1} and ${team2} are carrying a rivalry intensity score of ${intensity}. ${buildContextClause(data)}`,
+      priority: 3,
+      category: 'rivalry',
+      tag: 'ANALYSIS',
+      timestamp,
+      relatedPlayerIds: [],
+      relatedTeamIds: [((data['team1Id'] as string) ?? ''), ((data['team2Id'] as string) ?? '')].filter(Boolean),
+      read: false,
+    }),
+  ];
+}
+
+function generateRumorNews(
+  rng: GameRNG,
+  event: GameEvent,
+  players: GeneratedPlayer[],
+  timestamp: string,
+): NewsItem[] {
+  const data = event.data;
+  const targetId = data['targetPlayerId'] as string | undefined;
+  const target = lookupPlayer(players, targetId);
+  const teamId = (data['teamId'] as string) ?? '';
+  const teamName = (data['teamName'] as string) ?? teamId;
+  const need = (data['need'] as string) ?? 'rotation help';
+  const days = (data['daysToDeadline'] as number) ?? 0;
+  const headline = fillTemplate(pickTemplate(rng, RUMOR_TEMPLATES), {
+    team: teamName,
+    target: target ? playerName(target) : ((data['targetName'] as string | undefined) ?? 'a veteran target'),
+    need,
+    days,
+  });
+
+  return [
+    buildNewsItem(rng, {
+      headline,
+      body: `${teamName} is one of the clubs drawing league-wide rumor traffic. ${buildContextClause(data)}`,
+      priority: 2,
+      category: 'rumor',
+      tag: 'RUMOR',
+      timestamp,
+      relatedPlayerIds: targetId ? [targetId] : [],
+      relatedTeamIds: teamId ? [teamId] : [],
+      read: false,
+    }),
   ];
 }
 
@@ -437,8 +833,7 @@ function generateRosterMoveNews(
   const body = `${teamName} has made a roster move involving ${player ? playerName(player) : 'a player'}.`;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority: 4,
@@ -447,7 +842,7 @@ function generateRosterMoveNews(
       relatedPlayerIds: playerId ? [playerId] : [],
       relatedTeamIds: teamId ? [teamId] : [],
       read: false,
-    },
+    }),
   ];
 }
 
@@ -476,8 +871,7 @@ function generateDraftNews(
   const priority: NewsPriority = pick <= 10 ? 2 : 4;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority,
@@ -486,7 +880,7 @@ function generateDraftNews(
       relatedPlayerIds: playerId ? [playerId] : [],
       relatedTeamIds: teamId ? [teamId] : [],
       read: false,
-    },
+    }),
   ];
 }
 
@@ -511,8 +905,7 @@ function generateSeasonEndNews(
   const body = `The Season ${seasonNum} championship has been decided. ${championName} are the champions.`;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority: 1,
@@ -521,7 +914,7 @@ function generateSeasonEndNews(
       relatedPlayerIds: [],
       relatedTeamIds: [championId],
       read: false,
-    },
+    }),
   ];
 }
 
@@ -534,33 +927,46 @@ function generateMilestoneNews(
   const data = event.data;
   const playerId = data['playerId'] as string | undefined;
   const player = lookupPlayer(players, playerId);
-  const milestoneType = (data['milestoneType'] as string) ?? 'achievement';
-  const count = (data['count'] as number) ?? 0;
+  const milestoneType = typeof data['milestoneType'] === 'string' ? data['milestoneType'] : null;
+  const count = typeof data['count'] === 'number' && Number.isFinite(data['count']) ? data['count'] : null;
+
+  if (!playerId || !player || !milestoneType || count == null || count <= 0) {
+    return [];
+  }
 
   const vars: Record<string, string | number> = {
-    player: player ? playerName(player) : 'Unknown',
+    player: playerName(player),
     count,
   };
 
-  const headline = fillTemplate(pickTemplate(rng, MILESTONE_TEMPLATES), vars);
-  const body = `${player ? playerName(player) : 'A player'} has reached a career ${milestoneType} milestone.`;
+  const milestoneTemplatePool = milestoneType.includes('home') || milestoneType.includes('hr')
+    ? [MILESTONE_TEMPLATES[0]!]
+    : milestoneType.includes('strikeout') || milestoneType.includes('k')
+      ? [MILESTONE_TEMPLATES[1]!]
+      : milestoneType.includes('win')
+        ? [MILESTONE_TEMPLATES[3]!]
+        : milestoneType.includes('hits')
+          ? [MILESTONE_TEMPLATES[4]!]
+          : MILESTONE_TEMPLATES;
+  const headline = fillTemplate(pickTemplate(rng, milestoneTemplatePool), vars);
+  const body = `${playerName(player)} has reached a career ${milestoneType} milestone. ${buildContextClause(data)}`;
+  const teamId = typeof data['teamId'] === 'string' ? data['teamId'] : player.teamId;
 
   // Major milestones (round numbers, large totals) get higher priority
   const isLandmark = count >= 500 || count % 100 === 0;
   const priority: NewsPriority = isLandmark ? 1 : 2;
 
   return [
-    {
-      id: generateNewsId(rng),
+    buildNewsItem(rng, {
       headline,
       body,
       priority,
       category: 'milestone',
       timestamp,
       relatedPlayerIds: playerId ? [playerId] : [],
-      relatedTeamIds: [],
+      relatedTeamIds: [teamId],
       read: false,
-    },
+    }),
   ];
 }
 
@@ -721,11 +1127,7 @@ export function generateStandingsNews(
   }
 
   // Tight playoff races — find pairs within 2 games
-  const sorted = [...standings].sort((a, b) => {
-    const wpA = a.wins / Math.max(a.wins + a.losses, 1);
-    const wpB = b.wins / Math.max(b.wins + b.losses, 1);
-    return wpB - wpA;
-  });
+  const sorted = [...standings].sort(compareStandingsRecord);
 
   for (let i = 0; i < sorted.length - 1; i++) {
     const a = sorted[i]!;
@@ -762,7 +1164,7 @@ export function generateStandingsNews(
 export function getUnreadNews(news: NewsItem[]): NewsItem[] {
   return news
     .filter((item) => !item.read)
-    .sort((a, b) => a.priority - b.priority);
+    .sort(compareNewsItems);
 }
 
 /** Mark a specific news item as read. Returns a new array. */
@@ -781,11 +1183,11 @@ export function deduplicateNews(news: NewsItem[]): NewsItem[] {
   const seen = new Map<string, NewsItem>();
 
   // Sort by priority first so we keep the most important version
-  const sorted = [...news].sort((a, b) => a.priority - b.priority);
+  const sorted = [...news].sort(compareNewsItems);
 
   for (const item of sorted) {
     // Build a dedup key from category + timestamp + sorted player IDs
-    const playerKey = [...item.relatedPlayerIds].sort().join(',');
+    const playerKey = [...item.relatedPlayerIds].sort((left, right) => left.localeCompare(right)).join(',');
     const key = `${item.category}:${item.timestamp}:${playerKey}`;
 
     if (!seen.has(key)) {
@@ -794,7 +1196,7 @@ export function deduplicateNews(news: NewsItem[]): NewsItem[] {
     // Skip duplicates — the first one (highest priority) wins
   }
 
-  return Array.from(seen.values());
+  return Array.from(seen.values()).sort(compareNewsItems);
 }
 
 // ---------------------------------------------------------------------------
@@ -809,7 +1211,7 @@ export function generateSeasonRecap(
   season: number,
 ): NewsItem[] {
   const items: NewsItem[] = [];
-  const timestamp = formatTimestamp(season, 162);
+  const timestamp = formatTimestamp(season, REGULAR_SEASON_DAYS);
 
   // Champion headline
   if (champion) {
@@ -829,7 +1231,7 @@ export function generateSeasonRecap(
   }
 
   // Best record
-  const sorted = [...standings].sort((a, b) => b.wins - a.wins);
+  const sorted = [...standings].sort(compareStandingsRecord);
   const best = sorted[0];
   if (best) {
     items.push({
@@ -888,14 +1290,36 @@ export function generateRetirementNews(
   season: number,
   day: number,
   teamName?: string,
+  retirementContext: RetirementNewsContext = {},
 ): NewsItem {
   const club = teamName ?? player.teamId.toUpperCase();
+  const playerName = `${player.firstName} ${player.lastName}`;
+  const careerStats = retirementContext.careerStats ?? null;
+  const teamIds = retirementContext.teamIds ?? careerStats?.teamIds ?? [player.teamId];
+  const branch = resolveRetirementBranch({
+    championshipRings: retirementContext.championshipRings ?? careerStats?.championshipRings,
+    currentTeamId: retirementContext.currentTeamId ?? player.teamId,
+    teamIds,
+    peakOverall: retirementContext.peakOverall ?? careerStats?.peakOverall ?? toDisplayRating(player.overallRating),
+    priorSeasonGamesMissed: retirementContext.priorSeasonGamesMissed,
+  });
 
   return {
     id: generateNewsId(rng),
-    headline: `${player.firstName} ${player.lastName} calls it a career.`,
-    body: `${player.firstName} ${player.lastName} has retired from baseball after closing out his run with ${club}.`,
-    priority: 2,
+    headline: `${playerName} calls it a career.`,
+    body: pickRetirementSpeechLine({
+      playerId: player.id,
+      playerName,
+      teamName: club,
+      season,
+      branch,
+      championshipRings: retirementContext.championshipRings ?? careerStats?.championshipRings,
+      currentTeamId: retirementContext.currentTeamId ?? player.teamId,
+      teamIds,
+      peakOverall: retirementContext.peakOverall ?? careerStats?.peakOverall ?? toDisplayRating(player.overallRating),
+      priorSeasonGamesMissed: retirementContext.priorSeasonGamesMissed,
+    }),
+    priority: 1,
     category: 'roster_move',
     timestamp: formatTimestamp(season, day),
     relatedPlayerIds: [player.id],

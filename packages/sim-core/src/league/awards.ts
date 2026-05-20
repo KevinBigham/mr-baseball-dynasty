@@ -1,4 +1,4 @@
-import type { AwardHistoryEntry } from '@mbd/contracts';
+import type { AwardHistoryEntry, RookieOfTheYearVotingEntry } from '@mbd/contracts';
 import type { GeneratedPlayer } from '../player/generation.js';
 import type { PlayerGameStats } from '../sim/gameSimulator.js';
 import { getTeamById } from './teams.js';
@@ -17,6 +17,12 @@ export interface AwardRaces {
 }
 
 type LeagueId = 'AL' | 'NL';
+
+function isRookieEligible(player: GeneratedPlayer): boolean {
+  return player.age <= 23
+    || player.developmentPhase === 'Prospect'
+    || player.developmentPhase === 'Ascent';
+}
 
 function hitterScore(stats: PlayerGameStats): number {
   return (
@@ -37,8 +43,54 @@ function pitcherScore(stats: PlayerGameStats): number {
   );
 }
 
+function silverSluggerScore(stats: PlayerGameStats): number {
+  const average = stats.hits / Math.max(1, stats.ab);
+  return hitterScore(stats) + (average * 140) + (stats.hr * 0.8);
+}
+
+function goldGloveScore(player: GeneratedPlayer, stats: PlayerGameStats): number {
+  if (player.pitcherAttributes != null) {
+    return (
+      player.pitcherAttributes.control * 0.32 +
+      player.pitcherAttributes.movement * 0.24 +
+      player.pitcherAttributes.velocity * 0.12 +
+      (stats.ip / 3) * 0.35 -
+      stats.walks * 0.4
+    );
+  }
+
+  return (
+    player.hitterAttributes.defense * 0.55 +
+    player.hitterAttributes.speed * 0.18 +
+    player.hitterAttributes.durability * 0.12 +
+    stats.pa * 0.06 +
+    stats.hits * 0.08
+  );
+}
+
 function topFive(entries: AwardRaceEntry[]): AwardRaceEntry[] {
   return [...entries].sort((a, b) => b.score - a.score).slice(0, 5);
+}
+
+function topAwardEntry(
+  players: GeneratedPlayer[],
+  statsByPlayer: Map<string, PlayerGameStats>,
+  scorer: (player: GeneratedPlayer, stats: PlayerGameStats) => number,
+  summaryFormatter: (player: GeneratedPlayer) => string,
+): AwardRaceEntry | undefined {
+  return players
+    .map((player) => ({
+      player,
+      stats: statsByPlayer.get(player.id),
+    }))
+    .filter((entry): entry is { player: GeneratedPlayer; stats: PlayerGameStats } => entry.stats != null)
+    .map(({ player, stats }) => ({
+      playerId: player.id,
+      teamId: player.teamId,
+      score: scorer(player, stats),
+      summary: summaryFormatter(player),
+    }))
+    .sort((left, right) => right.score - left.score)[0];
 }
 
 export function calculateAwardRaces(
@@ -72,7 +124,7 @@ export function calculateAwardRaces(
       });
     }
 
-    if (player.age <= 23 || player.developmentPhase === 'Prospect' || player.developmentPhase === 'Ascent') {
+    if (isRookieEligible(player)) {
       roy.push({
         playerId: player.id,
         teamId: player.teamId,
@@ -87,6 +139,10 @@ export function calculateAwardRaces(
     cyYoung: topFive(cyYoung),
     roy: topFive(roy.length > 0 ? roy : mvp),
   };
+}
+
+function rookieRaceIsFallback(players: GeneratedPlayer[], races: AwardRaces): boolean {
+  return races.roy.length === 0 || !players.some(isRookieEligible);
 }
 
 function leagueForTeam(teamId: string): LeagueId | null {
@@ -141,8 +197,71 @@ export function finalizeAwardResults(
         ...createAwardEntry(season, 'ROY', leagueRaces.roy[0], fallback),
         league,
       },
+      {
+        ...createAwardEntry(
+          season,
+          'GOLD_GLOVE',
+          topAwardEntry(
+            leaguePlayers,
+            statsByPlayer,
+            (player, stats) => goldGloveScore(player, stats),
+            (player) => `${player.firstName} ${player.lastName} set the defensive standard in ${league}.`,
+          ),
+          fallback,
+        ),
+        league,
+      },
+      {
+        ...createAwardEntry(
+          season,
+          'SILVER_SLUGGER',
+          topAwardEntry(
+            leaguePlayers.filter((player) => player.pitcherAttributes == null),
+            statsByPlayer,
+            (_player, stats) => silverSluggerScore(stats),
+            (player) => `${player.firstName} ${player.lastName} anchored the league's loudest bat.`,
+          ),
+          fallback,
+        ),
+        league,
+      },
     );
   }
 
   return winners;
+}
+
+export function buildRookieOfTheYearVotingEntries(
+  season: number,
+  players: GeneratedPlayer[],
+  statsByPlayer: Map<string, PlayerGameStats>,
+): RookieOfTheYearVotingEntry[] {
+  const votingEntries: RookieOfTheYearVotingEntry[] = [];
+
+  for (const league of ['AL', 'NL'] as const) {
+    const leaguePlayers = players.filter((player) => leagueForTeam(player.teamId) === league);
+    const leagueRaces = calculateAwardRaces(leaguePlayers, statsByPlayer);
+    if (rookieRaceIsFallback(leaguePlayers, leagueRaces)) {
+      votingEntries.push({
+        season,
+        leagueId: league,
+        placements: [],
+      });
+      continue;
+    }
+
+    votingEntries.push({
+      season,
+      leagueId: league,
+      placements: leagueRaces.roy
+        .slice(0, 3)
+        .map((entry, index) => ({
+          rank: index + 1,
+          playerId: entry.playerId,
+          points: Math.round(entry.score * 10) / 10,
+        })),
+    });
+  }
+
+  return votingEntries;
 }
