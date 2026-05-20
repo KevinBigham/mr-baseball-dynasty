@@ -147,6 +147,41 @@ importers:
         specifier: ^3.0.0
         version: 3.2.4(jiti@2.6.1)(jsdom@29.0.1)(terser@5.46.1)(yaml@2.8.3)
 
+  packages/sim-worker:
+    dependencies:
+      '@mbd/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mbd/sim-core':
+        specifier: workspace:*
+        version: link:../sim-core
+      comlink:
+        specifier: ^4.4.2
+        version: 4.4.2
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.4(jiti@2.6.1)(jsdom@29.0.1)(terser@5.46.1)(yaml@2.8.3)
+
+  packages/test-utils:
+    dependencies:
+      '@mbd/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mbd/sim-core':
+        specifier: workspace:*
+        version: link:../sim-core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/ui:
     dependencies:
       '@mbd/design-tokens':
