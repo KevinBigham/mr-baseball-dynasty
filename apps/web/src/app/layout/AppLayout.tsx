@@ -117,6 +117,7 @@ export function AppLayout() {
   const commandPaletteOpenRef = useRef<boolean | null>(null);
   const previousPhaseRef = useRef(phase);
   const pendingWorldSeriesWinRef = useRef(false);
+  const simInFlightRef = useRef(false);
   const persistActiveSave = useActiveSaveAutosave();
 
   const refreshSeasonFlow = useCallback(async () => {
@@ -178,24 +179,23 @@ export function AppLayout() {
   const handleSim = useCallback(
     async (
       simFn: () => Promise<{ day: number; season: number; phase: string; gamesPlayed: number }>,
-      options: { autoSave?: boolean } = {},
     ) => {
-      if (!workerReady || !isInitialized) return;
+      if (!workerReady || !isInitialized || simInFlightRef.current) return;
+      simInFlightRef.current = true;
       setSimulating(true);
       try {
         const result = await simFn();
         updateFromSim(result);
+        await persistActiveSave({ season: result.season });
         await Promise.all([refreshSeasonFlow(), refreshCeremony(), refreshMonthlyPulse(), refreshTickerFeed()]);
-        if (options.autoSave || result.phase !== phase || result.season !== season) {
-          await persistActiveSave({ season: result.season });
-        }
       } catch (err) {
         logger.error('Simulation error:', err);
       } finally {
+        simInFlightRef.current = false;
         setSimulating(false);
       }
     },
-    [workerReady, isInitialized, persistActiveSave, phase, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, season, setSimulating, updateFromSim]
+    [workerReady, isInitialized, persistActiveSave, refreshCeremony, refreshMonthlyPulse, refreshSeasonFlow, refreshTickerFeed, setSimulating, updateFromSim]
   );
 
   const activeReport = activeMoment ? null : (monthlyPulse?.pendingReport ?? null);
@@ -416,7 +416,7 @@ export function AppLayout() {
       }
 
       if (event.ctrlKey || event.metaKey) {
-        void handleSim(() => worker.simMonth(), { autoSave: true });
+        void handleSim(() => worker.simMonth());
         return;
       }
 
@@ -474,9 +474,10 @@ export function AppLayout() {
       <SimControls
         onSimDay={() => handleSim(() => worker.simDay())}
         onSimWeek={() => handleSim(() => worker.simWeek())}
-        onSimMonth={() => handleSim(() => worker.simMonth(), { autoSave: true })}
-        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs(), { autoSave: true })}
+        onSimMonth={() => handleSim(() => worker.simMonth())}
+        onSimToPlayoffs={() => handleSim(() => worker.simToPlayoffs())}
         onFlowAction={() => void handleFlowAction()}
+        disabled={!workerReady}
         flow={seasonFlow}
       />
 
